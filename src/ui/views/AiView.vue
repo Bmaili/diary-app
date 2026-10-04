@@ -324,6 +324,16 @@ function toggleSel(v: string) {
 .steps li { position: relative; padding-left: 16px; line-height: 1.7; }
 .steps li::before { content: ''; position: absolute; left: 3px; top: 0.7em; width: 6px; height: 6px; border-radius: 50%; border: 1.2px solid var(--m2); }
 .thinking { animation: blink 1.4s ease-in-out infinite; }
+/* 查日记的每一步滑进来，回答浮上来 */
+.steps li { animation: step-in 0.35s var(--ease-out) backwards; }
+@keyframes step-in { from { opacity: 0; transform: translateX(-12px); } }
+.turn .a, .turn .usage { animation: rise-in 0.45s var(--ease-out) backwards; }
+.q { animation: rise-in 0.3s var(--ease-out) backwards; }
+.hello .sug { animation: rise-in 0.4s var(--ease-out) backwards; }
+.hello .sug:nth-of-type(2) { animation-delay: 0.05s; }
+.hello .sug:nth-of-type(3) { animation-delay: 0.1s; }
+.hello .sug:nth-of-type(4) { animation-delay: 0.15s; }
+.sendb:not(:disabled) { animation: pop-in 0.3s var(--spring); }
 @keyframes blink { 50% { opacity: 0.4; } }
 .a { font-size: 16px; }
 .a :deep(a.dl) { font-family: var(--num); font-size: 1.05em; font-weight: 600; text-decoration: none; padding: 0 3px; border-radius: 4px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }

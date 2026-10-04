@@ -24,8 +24,12 @@ function check(name, ok, detail = '') {
 
 /** 等编辑页加载完成（输入框获得焦点或可见）再输入，避免把按键打到空处 */
 async function editorReady(page) {
-  await page.getByLabel('日记正文').waitFor()
   await page.waitForFunction(() => document.querySelector('textarea.input'))
+}
+/** 已写过的日记默认是阅读视图，点右上角的笔进入编辑 */
+async function toEdit(page) {
+  await page.getByRole('button', { name: '编辑', exact: true }).click()
+  await page.getByLabel('日记正文').waitFor()
 }
 /** “返回”时浏览器会先改 URL 再执行离开页面的保存，所以等文件内容满足条件，而不是等 URL */
 async function waitFile(page, date, pred, timeout = 5000) {
@@ -48,6 +52,8 @@ const device = {
   locale: 'zh-CN',
   timezoneId: 'Asia/Shanghai',
   acceptDownloads: true,
+  // 关掉动画，截图不会拍到切换到一半的画面
+  reducedMotion: 'reduce',
 }
 
 try {
@@ -165,6 +171,9 @@ try {
   await page.getByText('外部编辑器写的。').click()
   await page.waitForURL(/entry\/2026-10-01/)
   await editorReady(page)
+  await page.locator('article.reading').waitFor()
+  check('打开已写过的日记默认是阅读视图', await page.locator('article.reading').isVisible())
+  await toEdit(page)
   await ta.press('End')
   await page.keyboard.type('在 app 里补了一句。')
   await page.getByRole('button', { name: '返回' }).click()
@@ -176,6 +185,7 @@ try {
   await page.getByText('外部编辑器写的').click()
   await page.waitForURL(/entry\/2026-10-01/)
   await editorReady(page)
+  await toEdit(page)
   await ta.fill('')
   page.once('dialog', (d) => d.accept())
   await page.getByRole('button', { name: '返回' }).click()
@@ -250,7 +260,6 @@ try {
 
   // 阅读视图
   await p2.goto(BASE + '#/entry/' + lastYear)
-  await p2.getByRole('button', { name: '阅读视图' }).click()
   await p2.locator('article.reading h3').waitFor()
   await p2.screenshot({ path: OUT + '11-reading.png' })
 

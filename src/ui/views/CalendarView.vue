@@ -42,17 +42,55 @@ const cells = computed(() => {
   return out
 })
 
-function shift(n: number) {
+/** 换月动画方向：1 往后（新月份从右边进来），-1 往前 */
+const dir = ref(1)
+function setMonth(y: number, m: number) {
+  month.value = m
+  year.value = y
+}
+function next(n: number) {
   let m = month.value + n
   let y = year.value
   if (m < 1) { m = 12; y-- }
   if (m > 12) { m = 1; y++ }
-  month.value = m
-  year.value = y
+  return { y, m }
+}
+
+// ---------- 换月：跟手拖动，松手后滑走，新月份从另一边滑进来 ----------
+const pane = ref<HTMLElement | null>(null)
+const dx = ref(0)
+const animating = ref(false)
+const noMotion = () => document.documentElement.classList.contains('no-motion')
+
+async function slideTo(n: number, target?: { y: number; m: number }) {
+  const to = target ?? next(n)
+  dir.value = n
+  if (noMotion() || !pane.value) {
+    setMonth(to.y, to.m)
+    dx.value = 0
+    return
+  }
+  const w = pane.value.offsetWidth
+  animating.value = true
+  dx.value = -n * w
+  await new Promise((r) => setTimeout(r, 200))
+  animating.value = false
+  setMonth(to.y, to.m)
+  dx.value = n * w * 0.6
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  animating.value = true
+  dx.value = 0
+  await new Promise((r) => setTimeout(r, 320))
+  animating.value = false
+}
+function shift(n: number) {
+  void slideTo(n)
 }
 function goToday() {
-  year.value = Number(t.slice(0, 4))
-  month.value = Number(t.slice(5, 7))
+  const y = Number(t.slice(0, 4))
+  const m = Number(t.slice(5, 7))
+  const back = y * 12 + m < year.value * 12 + month.value
+  void slideTo(back ? -1 : 1, { y, m })
 }
 
 function open(date: string) {
@@ -63,14 +101,32 @@ function open(date: string) {
 // 左右滑动切换月份
 let x0 = 0
 let y0 = 0
+let axis: '' | 'x' | 'y' = ''
 function onStart(e: TouchEvent) {
+  if (animating.value) return
   x0 = e.touches[0].clientX
   y0 = e.touches[0].clientY
+  axis = ''
+}
+function onMove(e: TouchEvent) {
+  const mx = e.touches[0].clientX - x0
+  const my = e.touches[0].clientY - y0
+  if (!axis && (Math.abs(mx) > 8 || Math.abs(my) > 8)) axis = Math.abs(mx) > Math.abs(my) ? 'x' : 'y'
+  if (axis !== 'x' || animating.value || noMotion()) return
+  // 越拖越沉，像拉橡皮筋
+  dx.value = mx * (1 - Math.min(0.5, Math.abs(mx) / 900))
 }
 function onEnd(e: TouchEvent) {
-  const dx = e.changedTouches[0].clientX - x0
-  const dy = e.changedTouches[0].clientY - y0
-  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) shift(dx < 0 ? 1 : -1)
+  const mx = e.changedTouches[0].clientX - x0
+  const my = e.changedTouches[0].clientY - y0
+  const was = axis
+  axis = ''
+  if (was === 'x' && Math.abs(mx) > 60 && Math.abs(mx) > Math.abs(my) * 1.2) shift(mx < 0 ? 1 : -1)
+  else if (dx.value) {
+    animating.value = true
+    dx.value = 0
+    setTimeout(() => (animating.value = false), 300)
+  }
 }
 
 const isCurrent = computed(() => year.value === Number(t.slice(0, 4)) && month.value === Number(t.slice(5, 7)))
@@ -80,7 +136,11 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
 <template>
   <div class="page">
     <header class="topbar">
-      <h1><span class="num">{{ month }}</span>月<small class="num">{{ year }}</small></h1>
+      <h1>
+        <Transition :name="dir > 0 ? 'roll-up' : 'roll-down'" mode="out-in">
+          <span :key="month" class="num">{{ month }}</span>
+        </Transition>月<small class="num">{{ year }}</small>
+      </h1>
       <button v-if="!isCurrent" class="text-btn" @click="goToday">回到本月</button>
       <button class="icon-btn" aria-label="上个月" @click="shift(-1)"><Icon name="left" /></button>
       <button class="icon-btn" aria-label="下个月" @click="shift(1)"><Icon name="right" /></button>
@@ -95,11 +155,14 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
       <p v-else class="muted">这个月还没有日记。</p>
     </div>
 
-    <div class="grid" @touchstart.passive="onStart" @touchend="onEnd">
+    <div class="grid wk">
       <span v-for="w in ['一', '二', '三', '四', '五', '六', '日']" :key="w" class="wh">{{ w }}</span>
-      <template v-for="(c, i) in cells" :key="i">
+    </div>
+    <div ref="pane" class="grid days" :class="{ animating }" :style="{ transform: dx ? `translateX(${dx}px)` : undefined, opacity: dx ? Math.max(0.3, 1 - Math.abs(dx) / 500) : undefined }"
+      @touchstart.passive="onStart" @touchmove.passive="onMove" @touchend="onEnd" @touchcancel="onEnd">
+      <template v-for="(c, i) in cells" :key="`${year}-${month}-${i}`">
         <span v-if="!c" class="cell blank"></span>
-        <button v-else class="cell" :class="[`mood-${moodOf(c.date)}`, { has: rows.has(c.date), today: c.date === t, future: c.date > t }]"
+        <button v-else class="cell" :style="{ '--i': i }" :class="[`mood-${moodOf(c.date)}`, { has: rows.has(c.date), today: c.date === t, future: c.date > t }]"
           :disabled="c.date > t"
           :aria-label="`${c.day} 日，${rows.has(c.date) ? (moodOf(c.date) ? '心情' + MOOD_LABELS[moodOf(c.date) - 1] : '有日记') : '没写'}`"
           @click="open(c.date)">
@@ -119,12 +182,24 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
 
 <style scoped>
 .topbar h1 { display: flex; align-items: baseline; gap: 4px; margin-left: 12px; font-size: 17px; color: var(--muted); }
+.topbar h1 > .num { display: inline-block; }
 .topbar h1 .num { font-size: 34px; font-weight: 600; color: var(--ink); line-height: 1; }
 .topbar h1 small { margin-left: 6px; font-size: 18px; font-weight: 500; color: var(--faint); }
 .summary { display: flex; align-items: center; gap: 12px; margin: 0 20px 16px; }
 .summary p { margin: 0; font-size: 15px; }
 .summary strong { font-weight: 800; }
 .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px 6px; padding: 0 14px; }
+.grid.days { touch-action: pan-y; will-change: transform; }
+.grid.days.animating { transition: transform 0.3s var(--ease-out), opacity 0.3s; }
+/* 换月后每天依次亮起，有日记的日子弹一下 */
+.cell { animation: cell-in 0.4s var(--ease-out) backwards; animation-delay: calc(var(--i) * 9ms); }
+.cell.has .d { animation: pop-in 0.45s var(--spring) backwards; animation-delay: calc(var(--i) * 9ms + 80ms); }
+@keyframes cell-in { from { opacity: 0; transform: translateY(6px) scale(0.9); } }
+.cell.today .d { animation: today-ring 2.8s ease-in-out infinite; }
+@keyframes today-ring { 50% { outline-offset: 4px; } }
+.roll-up-enter-active, .roll-up-leave-active, .roll-down-enter-active, .roll-down-leave-active { display: inline-block; transition: transform 0.18s var(--ease-out), opacity 0.18s; }
+.roll-up-enter-from, .roll-down-leave-to { transform: translateY(60%); opacity: 0; }
+.roll-up-leave-to, .roll-down-enter-from { transform: translateY(-60%); opacity: 0; }
 .wh { text-align: center; font-size: 12px; color: var(--faint); padding-bottom: 4px; }
 .cell {
   display: flex;

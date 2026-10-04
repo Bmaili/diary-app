@@ -39,20 +39,35 @@ const lines = computed(() => {
 
 <template>
   <svg :viewBox="`0 0 ${W} ${H}`" class="sky" aria-hidden="true">
-    <line v-for="(l, i) in lines" :key="i" :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" class="link" />
-    <g v-for="s in stars" :key="s.date" :class="`mood-${s.has ? s.mood : 0}`">
-      <circle v-if="s.has" :cx="s.x" :cy="s.y" :r="s.r * 2.6" class="halo" />
+    <line v-for="(l, i) in lines" :key="i" :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" pathLength="1" class="link"
+      :style="{ animationDelay: `${0.35 + i * 0.035}s` }" />
+    <g v-for="(s, i) in stars" :key="s.date" :class="`mood-${s.has ? s.mood : 0}`" class="pt"
+      :style="{ animationDelay: `${i * 0.025}s`, transformOrigin: `${s.x}px ${s.y}px` }">
+      <circle v-if="s.has" :cx="s.x" :cy="s.y" :r="s.r * 2.6" class="halo" :style="{ animationDelay: `${(i * 0.37) % 4}s` }" />
       <circle :cx="s.x" :cy="s.y" :r="s.r" :class="s.has ? 'star' : 'dust'" />
-      <circle v-if="s.date === today" :cx="s.x" :cy="s.y" :r="s.r + 3.5" class="today" />
+      <circle v-if="s.date === today" :cx="s.x" :cy="s.y" :r="s.r + 3.5" class="today" :style="{ transformOrigin: `${s.x}px ${s.y}px` }" />
     </g>
   </svg>
 </template>
 
 <style scoped>
 .sky { display: block; width: 100%; height: auto; overflow: visible; }
-.link { stroke: var(--faint); stroke-width: 0.8; opacity: 0.7; vector-effect: non-scaling-stroke; }
+.link {
+  stroke: var(--faint); stroke-width: 0.8; opacity: 0.7; vector-effect: non-scaling-stroke;
+  /* 星座连线一段一段画出来 */
+  stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.5s ease-out forwards;
+}
+@keyframes draw { to { stroke-dashoffset: 0; } }
+/* 星星从左到右依次亮起，光晕缓慢呼吸，今天的虚线圈慢慢转 */
+.pt { animation: star-on 0.5s var(--spring, ease-out) backwards; }
+@keyframes star-on { from { opacity: 0; transform: scale(0); } }
+.halo { animation: breathe 4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: 0.3; } }
+.today { animation: spin-slow 12s linear infinite; }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
 .star { fill: var(--mc); }
 .dust { fill: var(--faint); opacity: 0.6; }
 .halo { fill: var(--mc); opacity: 0.12; }
 .today { fill: none; stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; }
+.no-motion .link { stroke-dashoffset: 0; }
 </style>

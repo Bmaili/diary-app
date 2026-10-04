@@ -6,12 +6,33 @@ import { store } from './app'
 import { ROOT } from './core/repo'
 import { toBase64 } from './core/bytes'
 import { expectExternal } from './lockService'
+import { Capacitor } from '@capacitor/core'
+import { Directory, Filesystem } from '@capacitor/filesystem'
 
-export function pickImage(): Promise<File | null> {
+/**
+ * 拍照时系统相机把原图写在 app 外部目录的 Pictures/JPEG_*.jpg（Capacitor 的做法），
+ * 压缩存进日记后这些原图就没用了，每张好几 MB，在这里清掉。
+ */
+export async function cleanCameraTemp(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return
+  try {
+    const r = await Filesystem.readdir({ path: 'Pictures', directory: Directory.External })
+    for (const f of r.files) {
+      if (/^JPEG_.*\.jpg$/.test(f.name)) await Filesystem.deleteFile({ path: `Pictures/${f.name}`, directory: Directory.External }).catch(() => {})
+    }
+  } catch { /* 目录不存在 */ }
+}
+
+/**
+ * camera：直接打开相机拍一张（安卓 WebView 收到 capture 属性后调系统相机，第一次会请求相机权限）。
+ * 拍的照片只进日记，不会存进系统相册。
+ */
+export function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
+    if (source === 'camera') input.setAttribute('capture', 'environment')
     const done = expectExternal()
     input.onchange = () => {
       done()

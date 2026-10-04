@@ -84,6 +84,7 @@ function key(e: KeyboardEvent) {
 
 <template>
   <div class="mood" :class="{ unset: shown == null, dragging }" :style="{ '--tint': glow }">
+    <div v-if="$slots.top" class="slot top"><slot name="top" /></div>
     <div class="head">
       <span class="title">{{ title }}</span>
       <span class="label" aria-hidden="true">{{ snapped ? MOOD_LABELS[snapped - 1] : '拖一下，或点下面的字' }}</span>
@@ -97,7 +98,7 @@ function key(e: KeyboardEvent) {
         <div class="bar"></div>
         <span v-for="n in 5" :key="n" class="notch" :style="{ left: `${(n - 1) * 25}%` }"></span>
         <div class="thumb" :style="{ left: `${pos * 100}%` }">
-          <MoodFace :value="shown" :size="52" />
+          <MoodFace :value="shown" :size="40" />
         </div>
       </div>
     </div>
@@ -106,14 +107,15 @@ function key(e: KeyboardEvent) {
       <button v-for="(l, i) in MOOD_LABELS" :key="l" :class="{ on: snapped === i + 1 }" :aria-pressed="modelValue === i + 1"
         :style="{ left: `${i * 25}%` }" @click="pick(i + 1)">{{ l }}</button>
     </div>
+    <div v-if="$slots.bottom" class="slot bottom"><slot name="bottom" /></div>
   </div>
 </template>
 
 <style scoped>
 .mood {
   position: relative;
-  margin: 4px 16px 12px;
-  padding: 14px 16px 6px;
+  margin: 4px 16px 10px;
+  padding: 10px 14px 4px;
   border-radius: 24px;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -132,7 +134,7 @@ function key(e: KeyboardEvent) {
 .mood.unset::before { opacity: 0; }
 .head { position: relative; display: flex; align-items: baseline; gap: 10px; min-height: 28px; }
 .title { font-size: 13px; color: var(--muted); font-weight: 600; }
-.label { flex: 1; font-size: 18px; font-weight: 800; }
+.label { flex: 1; font-size: 16px; font-weight: 800; }
 .unset .label { font-size: 14px; font-weight: 500; color: var(--faint); }
 .clear {
   border: 0;
@@ -143,8 +145,8 @@ function key(e: KeyboardEvent) {
 }
 .track {
   position: relative;
-  height: 72px;
-  padding: 0 26px;
+  height: 52px;
+  padding: 0 22px;
   touch-action: none;
   cursor: grab;
   user-select: none;
@@ -157,9 +159,9 @@ function key(e: KeyboardEvent) {
   left: -10px;
   right: -10px;
   top: 50%;
-  height: 12px;
-  margin-top: -6px;
-  border-radius: 6px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 5px;
   background: linear-gradient(90deg, var(--m1), var(--m2), var(--m3), var(--m4), var(--m5));
 }
 .unset .bar { opacity: 0.35; }
@@ -187,19 +189,22 @@ function key(e: KeyboardEvent) {
 .unset .thumb { box-shadow: none; outline: 1.5px dashed var(--faint); outline-offset: -1px; }
 .ticks {
   position: relative;
-  height: 40px;
-  margin: -6px 26px 0;
+  height: 30px;
+  margin: -6px 22px 0;
 }
 .ticks button {
   position: absolute;
   top: 0;
   width: 56px;
   transform: translateX(-50%);
-  min-height: 40px;
+  min-height: 30px;
   border: 0;
   background: transparent;
   color: var(--faint);
-  font-size: 13px;
+  font-size: 12px;
 }
 .ticks button.on { color: var(--ink); font-weight: 800; }
+.slot { position: relative; }
+.slot.top { margin: -2px -4px 6px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
+.slot.bottom { margin: 2px -4px 0; padding: 8px 0 8px; border-top: 1px dashed var(--line); }
 </style>

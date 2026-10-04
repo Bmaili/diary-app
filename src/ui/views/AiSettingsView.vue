@@ -85,10 +85,10 @@ const desc: Record<Task, string> = {
       <label class="item">
         <div>
           <div>带上前几轮对话</div>
-          <div class="desc">追问时 AI 能看到同一个对话里最近几轮的问和答（不含查到的原文）。0 表示每次都是新问题。</div>
+          <div class="desc">追问时 AI 能看到同一个对话里最近几轮的问和答（不含查到的原文）。想换话题就点右上角的“新对话”。</div>
         </div>
         <select v-model.number="prefs.ai.chat.historyTurns" class="field sel">
-          <option v-for="n in [0, 2, 4, 6, 10]" :key="n" :value="n">{{ n }} 轮</option>
+          <option v-for="n in [10, 20, 30, 50]" :key="n" :value="n">{{ n }} 轮</option>
         </select>
       </label>
       <label class="item">
@@ -97,7 +97,7 @@ const desc: Record<Task, string> = {
           <div class="desc">AI 一轮可以调用几个工具。轮数多能回答更复杂的问题，也更费 token。</div>
         </div>
         <select v-model.number="prefs.ai.chat.maxRounds" class="field sel">
-          <option v-for="n in [5, 10, 15, 20]" :key="n" :value="n">{{ n }} 轮</option>
+          <option v-for="n in [10, 15, 20, 30]" :key="n" :value="n">{{ n }} 轮</option>
         </select>
       </label>
     </section>

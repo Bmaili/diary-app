@@ -12,6 +12,7 @@ import { generateTestEntries } from '../../core/testData'
 import { README_MD } from '../../core/readme'
 import { shareFile } from '../../platform/exportShare'
 import Icon from '../components/Icon.vue'
+import Switch from '../components/Switch.vue'
 import { prefs } from '../../prefs'
 import { enabled, syncState, BACKENDS } from '../../syncService'
 import { expectExternal } from '../../lockService'
@@ -177,6 +178,13 @@ const syncLine = computed(() => {
           <option v-for="h in hours" :key="h" :value="h">凌晨 {{ h }}:00</option>
         </select>
       </label>
+      <div class="item">
+        <div>
+          <div>动态效果</div>
+          <div class="desc">页面切换、列表浮现、日历跟手滑动、夜空里的星星和流星。手机系统开了“减少动画”时会自动关掉。</div>
+        </div>
+        <Switch v-model="prefs.ui.motion" label="动态效果" />
+      </div>
     </section>
 
     <section>

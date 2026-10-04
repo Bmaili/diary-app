@@ -113,6 +113,23 @@ function writeToday() {
   router.push({ path: `/entry/${todayStr.value}`, query: { append: '1' } })
 }
 
+// 往下滚时“写今天”缩成一个圆按钮，往上滚或回到顶部时展开
+const fabMini = ref(false)
+let lastY = 0
+let ticking = false
+function onScroll() {
+  if (ticking) return
+  ticking = true
+  requestAnimationFrame(() => {
+    const y = window.scrollY
+    if (Math.abs(y - lastY) > 8) {
+      fabMini.value = y > 160 && y > lastY
+      lastY = y
+    }
+    ticking = false
+  })
+}
+
 // 滚到底部时加载更多
 const sentinel = ref<HTMLElement | null>(null)
 let io: IntersectionObserver | null = null
@@ -122,8 +139,10 @@ onMounted(() => {
   }, { rootMargin: '600px' })
   if (sentinel.value) io.observe(sentinel.value)
   document.addEventListener('visibilitychange', onVisible)
+  window.addEventListener('scroll', onScroll, { passive: true })
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onScroll)
   io?.disconnect()
   document.removeEventListener('visibilitychange', onVisible)
 })
@@ -228,9 +247,9 @@ const memoryDateLabel = (d: string) => {
     </section>
     <div ref="sentinel" class="sentinel"></div>
 
-    <button class="fab solid-btn" @click="writeToday">
+    <button class="fab solid-btn" :class="{ mini: fabMini }" aria-label="写今天" @click="writeToday">
       <Icon name="pen" />
-      写今天
+      <span class="fab-label">写今天</span>
     </button>
   </div>
 </template>
@@ -360,5 +379,23 @@ const memoryDateLabel = (d: string) => {
   font-size: 16px;
   box-shadow: 0 10px 24px -10px rgba(18, 24, 52, 0.6);
 }
-.fab svg { width: 20px; height: 20px; }
+.fab svg { width: 20px; height: 20px; flex: none; transition: transform 0.4s var(--spring); }
+.fab { gap: 0; transition: padding 0.35s var(--spring), transform 0.18s var(--spring); animation: pop-in 0.5s var(--spring) 0.2s backwards; }
+.fab-label { display: inline-block; max-width: 4em; margin-left: 8px; overflow: hidden; white-space: nowrap; transition: max-width 0.35s var(--spring), opacity 0.2s, margin 0.35s; }
+.fab.mini { padding: 0 18px; }
+.fab.mini .fab-label { max-width: 0; margin-left: 0; opacity: 0; }
+.fab.mini svg { transform: rotate(-12deg) scale(1.1); }
+/* 首页顶部依次浮现 */
+.hello, .prompts, .memories { animation: rise-in 0.5s var(--ease-out) backwards; }
+.prompts { animation-delay: 0.08s; }
+.memories { animation-delay: 0.14s; }
+/* 那年今日：滑动时两边的卡片缩小变淡，中间的放大 */
+@supports (animation-timeline: view()) {
+  .mem { animation: mem-focus linear both; animation-timeline: view(inline); }
+  @keyframes mem-focus {
+    0% { transform: scale(0.88); opacity: 0.5; }
+    40%, 60% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.88); opacity: 0.5; }
+  }
+}
 </style>

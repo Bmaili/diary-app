@@ -42,7 +42,7 @@ export const prefs = reactive({
     /** 只给某一项功能的补充说明，接在共用说明后面 */
     taskNotes: { chat: '', extract: '', summary: '' },
     /** 问答：带上最近几轮对话、最多调用几轮工具 */
-    chat: { historyTurns: 6, maxRounds: 10 },
+    chat: { historyTurns: 10, maxRounds: 10 },
     /** 批量抽取同时处理几篇 */
     extract: { concurrency: 2 },
   },
@@ -59,6 +59,10 @@ export const prefs = reactive({
     delaySec: 60,
     /** 在最近任务里隐藏内容并禁止截屏 */
     hideInRecents: true,
+  },
+  ui: {
+    /** 动态效果（页面切换、列表入场、日历跟手滑动等）；系统开了“减少动画”时也会关掉 */
+    motion: true,
   },
   /** 已显示过的一次性提示 */
   seen: [] as string[],
@@ -82,6 +86,9 @@ export async function loadPrefs() {
       merge(prefs as unknown as Record<string, unknown>, JSON.parse(v))
     } catch { /* 损坏就用默认值 */ }
   }
+  // 1.0.4 起问答的这两项最少 10
+  prefs.ai.chat.historyTurns = Math.max(10, Number(prefs.ai.chat.historyTurns) || 10)
+  prefs.ai.chat.maxRounds = Math.max(10, Number(prefs.ai.chat.maxRounds) || 10)
   loaded = true
 }
 

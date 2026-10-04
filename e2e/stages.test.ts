@@ -17,6 +17,8 @@ const BASE = `http://127.0.0.1:${PORT}/`
 const DEVICE = {
   viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
   locale: 'zh-CN', timezoneId: 'Asia/Shanghai',
+  // 关掉动画，截图不会拍到切换到一半的画面
+  reducedMotion: 'reduce' as const,
 }
 const OSS = { id: 'LTAI5tE2E', secret: 'e2e-secret', bucket: 'my-diary' }
 const GH_TOKEN = 'github_pat_e2e'
@@ -253,14 +255,26 @@ describe('阶段 3：位置、天气与插图', () => {
     await page.getByRole('button', { name: '写今天' }).click()
     await page.getByLabel('日记正文').waitFor()
     await page.getByRole('button', { name: /海珠区阅江西路/ }).waitFor()
-    await page.getByRole('button', { name: '重新获取天气' }).filter({ hasText: '晴间多云 27°C' }).waitFor()
+    await page.getByRole('button', { name: '天气：晴间多云 27°C' }).waitFor()
     await page.keyboard.type('在塔下面散步。')
     await page.getByRole('button', { name: /海珠区阅江西路/ }).click()
     await page.getByRole('button', { name: /老王烧烤/ }).waitFor()
     await page.screenshot({ path: OUT + '31-nearby.png' })
     await page.getByRole('button', { name: /老王烧烤/ }).click()
-    await page.getByRole('button', { name: /^老王烧烤$/ }).first().waitFor()
+    await page.getByRole('button', { name: '位置：老王烧烤' }).waitFor()
+    await page.locator('.tok', { hasText: '老王烧烤' }).waitFor()
     await page.screenshot({ path: OUT + '32-editor-place.png' })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '32-editor-place-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
+    // 点天气只是打开查看，不会重新获取覆盖；不改直接完成，天气不变
+    const weatherCalls = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('open-meteo')).length)
+    await page.getByRole('button', { name: '天气：晴间多云 27°C' }).click()
+    expect(await page.getByRole('textbox', { name: '天气', exact: true }).inputValue()).toBe('晴间多云')
+    expect(await page.getByLabel('温度').inputValue()).toBe('27')
+    await page.screenshot({ path: OUT + '34-weather-sheet.png' })
+    await page.getByRole('button', { name: '完成' }).click()
+    expect(await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('open-meteo')).length)).toBe(weatherCalls)
     await page.getByRole('button', { name: '返回' }).click()
     await page.waitForURL(BASE + '#/')
     const raw: string = await page.evaluate(async () => {
@@ -308,8 +322,11 @@ describe('阶段 3：位置、天气与插图', () => {
       const b = await new Promise<Blob>((r) => c.toBlob((x) => r(x!), 'image/png'))
       return Array.from(new Uint8Array(await b.arrayBuffer()))
     })
-    const chooser = page.waitForEvent('filechooser')
     await page.getByRole('button', { name: '插图' }).click()
+    await page.getByRole('button', { name: '拍照' }).waitFor()
+    await page.screenshot({ path: OUT + '35-image-source.png' })
+    const chooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: '从相册选' }).click()
     await (await chooser).setFiles({ name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from(png) })
     await page.waitForFunction(() => (document.querySelector('textarea.input') as HTMLTextAreaElement).value.includes('attachments'))
     const text = await page.getByLabel('日记正文').inputValue()
@@ -444,7 +461,7 @@ describe('阶段 4：AI', () => {
     await page.getByRole('button', { name: '写今天' }).click()
     await page.getByLabel('日记正文').waitFor()
     await page.keyboard.type('和阿杰去了老王烧烤。')
-    await page.getByRole('button', { name: '+ 标签' }).click()
+    await page.getByRole('button', { name: '加标签' }).click()
     await page.getByPlaceholder('输入标签').fill('我的标签')
     await page.getByRole('button', { name: '添加' }).click()
     await page.getByRole('button', { name: '完成' }).click()
@@ -452,8 +469,8 @@ describe('阶段 4：AI', () => {
     await page.getByText('你改过，不会覆盖').waitFor()
     await page.screenshot({ path: OUT + '46-editor-ai.png' })
     await page.getByRole('button', { name: '写入' }).click()
-    await page.getByRole('button', { name: '#我的标签' }).waitFor()
-    await page.getByRole('button', { name: '老王烧烤' }).waitFor()
+    await page.locator('.tok', { hasText: '#我的标签' }).waitFor()
+    await page.locator('.tok', { hasText: '老王烧烤' }).waitFor()
     await page.getByRole('button', { name: '返回' }).click()
     const raw: string = await page.evaluate(async () => {
       const d = (window as unknown as { __diary: { repo: { readEntryRaw(d: string): Promise<string> }; index: { all(): { date: string }[] } } }).__diary

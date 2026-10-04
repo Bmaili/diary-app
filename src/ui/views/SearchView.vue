@@ -194,4 +194,14 @@ const groups: { key: ListField; label: string }[] = [
 .hd { font-family: var(--num); font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
 .snip { margin: 4px 0 0; line-height: 1.7; }
 .more { display: block; margin: 12px auto; }
+/* 结果依次浮现；望远镜轻轻摆动 */
+.results > li { animation: rise-in 0.35s var(--ease-out) backwards; }
+.results > li:nth-child(2) { animation-delay: 0.03s; }
+.results > li:nth-child(3) { animation-delay: 0.06s; }
+.results > li:nth-child(4) { animation-delay: 0.09s; }
+.results > li:nth-child(5) { animation-delay: 0.12s; }
+.results > li:nth-child(n + 6) { animation-delay: 0.15s; }
+.scope { animation: sway 5s ease-in-out infinite; transform-origin: 50% 80%; }
+@keyframes sway { 50% { transform: rotate(-8deg); } }
+.filters { animation: rise-in 0.3s var(--ease-out); }
 </style>

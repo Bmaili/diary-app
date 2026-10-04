@@ -18,10 +18,11 @@ import Sheet from '../components/Sheet.vue'
 import ListEditor from '../components/ListEditor.vue'
 import MoodSlider from '../components/MoodSlider.vue'
 import LocationSheet from '../components/LocationSheet.vue'
+import WeatherSheet from '../components/WeatherSheet.vue'
 import { autoFill, fetchWeather, getPosition } from '../../placeService'
-import { compress, pickImage, resolveImages, saveImage } from '../../imageService'
+import { cleanCameraTemp, compress, pickImage, resolveImages, saveImage } from '../../imageService'
 import { prefs } from '../../prefs'
-import type { Location } from '../../core/types'
+import type { Location, Weather } from '../../core/types'
 import { ensureConsent, extractPreview, profileFor } from '../../aiService'
 import { applyExtraction, type Extraction } from '../../core/llm/extract'
 import { diaryChanged } from '../../app'
@@ -160,6 +161,8 @@ onMounted(async () => {
   if (Capacitor.isNativePlatform()) {
     pauseHandle = await CapApp.addListener('pause', () => void flush())
   }
+  // 已经写过的日记默认打开阅读视图；新的一天和“写今天”追加段落时直接编辑
+  if (!s.error && s.existed && !s.appended) mode.value = 'read'
   await nextTick()
   autosize()
   if (!s.error && (!s.existed || s.appended)) focusEnd()
@@ -217,22 +220,21 @@ const locLabel = computed(() => {
   return '已记坐标'
 })
 
-const weatherBusy = ref(false)
-async function refreshWeather() {
+const weatherOpen = ref(false)
+/** 按现在的位置取天气，只在天气框里点“重新获取”时调用 */
+async function fetchNowWeather() {
   const m = meta.value
-  if (!m || !isToday.value || weatherBusy.value) return
-  weatherBusy.value = true
-  try {
-    const at = m.location?.lat != null ? { lat: m.location.lat, lng: m.location.lng! } : await getPosition().catch(() => prefs.place.defaultCity)
-    if (!at) throw new Error('没有位置，也没有设置默认城市')
-    m.weather = await fetchWeather(at.lat, at.lng)
-    metaDirty = true
-    void flush()
-  } catch (e) {
-    placeNote.value = (e as Error).message
-  } finally {
-    weatherBusy.value = false
-  }
+  const at = m?.location?.lat != null ? { lat: m.location.lat, lng: m.location.lng! } : await getPosition().catch(() => prefs.place.defaultCity)
+  if (!at) throw new Error('没有位置，也没有设置默认城市')
+  return fetchWeather(at.lat, at.lng)
+}
+function saveWeather(w: Weather | null) {
+  const m = meta.value
+  if (!m) return
+  if (w) m.weather = w
+  else delete m.weather
+  metaDirty = true
+  void flush()
 }
 
 // ---------- AI 标注（单篇抽取，规格 7.3：先显示结果，确认后才写入） ----------
@@ -273,15 +275,24 @@ const FIELD_NAMES = { places: '去过的地方', people: '提到的人', tags: '
 // ---------- 插图 ----------
 
 const imgBusy = ref(false)
-async function insertImage() {
+const imgSheet = ref(false)
+/** 打开选图方式前记下光标位置（打开弹窗时编辑框会失焦）；阅读视图里插到末尾 */
+let imgPos: number | null = null
+function chooseImage() {
   if (readOnly.value || imgBusy.value) return
-  const file = await pickImage()
+  imgPos = mode.value === 'write' && textarea.value ? textarea.value.selectionStart : null
+  imgSheet.value = true
+}
+async function insertImage(source: 'camera' | 'gallery') {
+  imgSheet.value = false
+  if (readOnly.value || imgBusy.value) return
+  const file = await pickImage(source)
   if (!file) return
   imgBusy.value = true
   try {
     const md = await saveImage(date, await compress(file))
-    const el = textarea.value
-    const pos = el ? el.selectionStart : text.value.length
+    if (source === 'camera') void cleanCameraTemp()
+    const pos = imgPos ?? text.value.length
     const before = text.value.slice(0, pos)
     const after = text.value.slice(pos)
     const pre = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : ''
@@ -386,7 +397,7 @@ function onTool(a: ToolAction) {
     case 'todo':
     case 'quote': return applyEdit(toggleLines(state(), a))
     case 'time': return applyEdit(insertAt(state(), `${hhmm(new Date())} `))
-    case 'image': return void insertImage()
+    case 'image': return chooseImage()
     case 'undo':
       el.focus()
       document.execCommand('undo')
@@ -407,6 +418,13 @@ function onBeforeInput(ev: InputEvent) {
   applyEdit(e)
 }
 
+/** 阅读视图里双击正文进入编辑（点到待办方框、链接、图片时不算） */
+function onReadingDblClick(e: MouseEvent) {
+  const t = e.target as HTMLElement
+  if (readOnly.value || t.closest('input, a, img')) return
+  toggleMode()
+}
+
 function toggleMode() {
   if (mode.value === 'write') {
     void flush()
@@ -415,7 +433,7 @@ function toggleMode() {
     mode.value = 'write'
     nextTick(() => {
       autosize()
-      textarea.value?.focus()
+      focusEnd()
     })
   }
 }
@@ -501,13 +519,15 @@ function goBack() {
         <h1><MoonIcon :phase="moonOnDate(date).phase" :size="16" class="moon" />{{ title }}</h1>
         <span class="sub">{{ subtitle }}</span>
       </div>
-      <span class="status" aria-live="polite">{{ statusText }}</span>
+      <Transition name="status" mode="out-in">
+        <span :key="statusText" class="status" aria-live="polite">{{ statusText }}</span>
+      </Transition>
       <button v-if="session?.existed" class="icon-btn" aria-label="删除这篇日记" @click="removeEntry">
         <Icon name="trash" />
       </button>
       <button class="icon-btn" :aria-label="mode === 'write' ? '阅读视图' : '编辑'" :disabled="!session"
         @click="toggleMode">
-        <Icon :name="mode === 'write' ? 'read' : 'pen'" />
+        <Transition name="swap" mode="out-in"><Icon :key="mode" :name="mode === 'write' ? 'read' : 'pen'" /></Transition>
       </button>
     </header>
 
@@ -517,27 +537,32 @@ function goBack() {
       </p>
       <p v-if="status === 'error'" class="banner">保存失败：{{ saveError }}。内容还在编辑框里，请稍后再试。</p>
 
-      <MoodSlider v-if="!readOnly" v-model="mood" :title="isToday ? '今天的心情' : '这天的心情'" />
+      <MoodSlider v-if="!readOnly" v-model="mood" :title="isToday ? '今天的心情' : '这天的心情'">
+        <template #top>
+          <div class="readouts">
+            <button class="readout" :class="{ empty: !locLabel }" :aria-label="`位置：${locLabel || '未记录'}`" @click="locOpen = true">
+              <Icon name="pin" class="ri" /><span>{{ locLabel || '记录位置' }}</span>
+            </button>
+            <button class="readout" :class="{ empty: !weatherText }" :aria-label="`天气：${weatherText || '未记录'}`" @click="weatherOpen = true">
+              <Icon name="weather" class="ri" /><span>{{ weatherText || '天气' }}</span>
+            </button>
+          </div>
+        </template>
+        <template #bottom>
+          <TransitionGroup tag="div" name="tok" class="tokens" aria-label="标签、人物和去过的地方">
+            <span v-for="t in meta.tags ?? []" :key="'t' + t" class="tok tag" @click="openSheet('tags')">#{{ t }}</span>
+            <span v-for="t in meta.people ?? []" :key="'u' + t" class="tok" @click="openSheet('more')"><Icon name="person" class="ti" />{{ t }}</span>
+            <span v-for="t in meta.places ?? []" :key="'p' + t" class="tok" @click="openSheet('more')"><Icon name="pin" class="ti" />{{ t }}</span>
+            <span v-if="!meta.tags?.length && !meta.people?.length && !meta.places?.length" key="none" class="tok none">还没有标签、人物和地点</span>
+          </TransitionGroup>
+        </template>
+      </MoodSlider>
 
-      <div v-if="!readOnly" class="chips" role="toolbar" aria-label="标签、人物和地点">
-        <button v-for="t in meta.tags ?? []" :key="'t' + t" class="chip on" @click="openSheet('tags')">#{{ t }}</button>
-        <button class="chip add" @click="openSheet('tags')">{{ meta.tags?.length ? '改标签' : '+ 标签' }}</button>
-        <button v-for="t in [...(meta.people ?? []), ...(meta.places ?? [])]" :key="'p' + t" class="chip"
-          @click="openSheet('more')">{{ t }}</button>
-        <button class="chip add" @click="openSheet('more')">{{ meta.people?.length || meta.places?.length ? '改人物和地点' : '+ 人物和地点' }}</button>
-        <button v-if="canExtract" class="chip add" @click="runExtract"><Icon name="sparkle" class="ci" />AI 标注</button>
-      </div>
-      <div v-if="!readOnly" class="chips" role="toolbar" aria-label="位置、天气和插图">
-        <button class="chip" :class="{ add: !locLabel }" @click="locOpen = true">
-          <Icon name="pin" class="ci" />{{ locLabel || '位置' }}
-        </button>
-        <button v-if="weatherText || isToday" class="chip" :class="{ add: !weatherText }" :disabled="!isToday"
-          :aria-label="isToday ? '重新获取天气' : '天气'" @click="refreshWeather">
-          {{ weatherBusy ? '获取中' : weatherText || '天气' }}
-        </button>
-        <button class="chip add" :disabled="imgBusy" @click="insertImage">
-          <Icon name="image" class="ci" />{{ imgBusy ? '处理中' : '插图' }}
-        </button>
+      <div v-if="!readOnly" class="actions" role="toolbar" aria-label="编辑标签、人物地点和插图">
+        <button class="act" @click="openSheet('tags')"><Icon name="hash" class="ci" />{{ meta.tags?.length ? '改标签' : '加标签' }}</button>
+        <button class="act" @click="openSheet('more')"><Icon name="person" class="ci" />人物和地点</button>
+        <button class="act" :disabled="imgBusy" @click="chooseImage"><Icon name="image" class="ci" />{{ imgBusy ? '处理中' : '插图' }}</button>
+        <button v-if="canExtract" class="act" @click="runExtract"><Icon name="sparkle" class="ci" />AI 标注</button>
       </div>
       <p v-if="placeNote" class="place-note">{{ placeNote }}</p>
 
@@ -546,7 +571,8 @@ function goBack() {
           :placeholder="isToday ? '今天过得怎么样？' : '这一天发生了什么？'" aria-label="日记正文" @input="autosize"
           @focus="onFocus" @blur="onBlur" @beforeinput="onBeforeInput" />
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <article v-if="mode === 'read'" class="prose reading" @change="onReadingChange" v-html="rendered" />
+        <article v-if="mode === 'read'" class="prose reading" @change="onReadingChange" @dblclick="onReadingDblClick" v-html="rendered" />
+        <p v-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑</p>
       </main>
       <EditorToolbar v-if="mode === 'write' && !readOnly && focused" :img-busy="imgBusy" @action="onTool" />
     </template>
@@ -565,6 +591,15 @@ function goBack() {
         <p class="muted small-note">深色的是新增的。确认后写入这篇日记的元数据。</p>
         <button class="solid-btn" @click="acceptExtract">写入</button>
       </template>
+    </Sheet>
+    <WeatherSheet :open="weatherOpen" :current="meta?.weather" :can-fetch="isToday" :fetcher="fetchNowWeather"
+      @close="weatherOpen = false" @save="saveWeather" />
+    <Sheet :open="imgSheet" title="插图" @close="imgSheet = false">
+      <div class="img-src">
+        <button class="src" @click="insertImage('camera')"><Icon name="camera" /><span>拍照</span></button>
+        <button class="src" @click="insertImage('gallery')"><Icon name="image" /><span>从相册选</span></button>
+      </div>
+      <p class="muted small-note">拍的照片只存进日记，不会出现在系统相册里。</p>
     </Sheet>
     <LocationSheet :open="locOpen" :current="meta?.location" :can-locate="isToday" @close="locOpen = false" @pick="pickLocation" />
     <Sheet :open="sheet === 'tags'" title="标签" @close="closeSheet">
@@ -593,16 +628,78 @@ function goBack() {
   color: var(--danger);
   font-size: 14px;
 }
-.chips {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 0 16px 12px;
-  scrollbar-width: none;
+.readouts { display: flex; gap: 6px; }
+.readout {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 62%;
+  min-height: 32px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
 }
-.chips::-webkit-scrollbar { display: none; }
-.chips .chip { max-width: 70vw; overflow: hidden; text-overflow: ellipsis; }
-.chips + .chips { margin-top: -4px; }
+.readout:last-child { flex: none; max-width: 40%; }
+.readout span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.readout:active { background: var(--line); }
+.readout.empty { color: var(--faint); font-weight: 400; }
+.ri { width: 17px; height: 17px; flex: none; color: var(--muted); }
+.tokens { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 0 4px; font-size: 14px; color: var(--muted); }
+.tok { display: inline-flex; align-items: center; gap: 2px; line-height: 1.8; }
+.tok.tag { color: var(--ink); font-weight: 700; }
+.tok.none { color: var(--faint); font-size: 13px; }
+.ti { width: 14px; height: 14px; opacity: 0.75; }
+.tok-enter-active, .tok-leave-active { transition: opacity 0.25s, transform 0.3s cubic-bezier(0.3, 1.4, 0.5, 1); }
+.tok-enter-from, .tok-leave-to { opacity: 0; transform: scale(0.6); }
+.actions { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 12px; scrollbar-width: none; }
+.actions::-webkit-scrollbar { display: none; }
+.act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  min-height: 34px;
+  padding: 0 12px 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.15s;
+}
+.act:active { transform: scale(0.94); background: var(--line); }
+.act:disabled { opacity: 0.6; }
+.status-enter-active, .status-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.status-enter-from { opacity: 0; transform: translateY(6px); }
+.status-leave-to { opacity: 0; transform: translateY(-6px); }
+.swap-enter-active, .swap-leave-active { transition: transform 0.22s var(--spring), opacity 0.15s; }
+.swap-enter-from { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+.swap-leave-to { opacity: 0; transform: rotate(90deg) scale(0.5); }
+/* 切换阅读 / 编辑：内容轻轻浮上来 */
+.reading { animation: rise-in 0.3s var(--ease-out); }
+.reading :deep(img) { animation: pop-in 0.4s var(--ease-out); }
+.read-hint { animation: fade-in 0.6s 0.4s backwards; margin: 24px 0 0; font-size: 12px; color: var(--faint); text-align: center; }
+.img-src { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.src {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 0;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  font-weight: 700;
+}
+.src svg { width: 30px; height: 30px; }
+.src:active { transform: scale(0.96); }
 .ci { width: 16px; height: 16px; flex: none; }
 .chip:disabled { opacity: 1; }
 .ai-row { margin-bottom: 14px; }

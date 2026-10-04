@@ -118,11 +118,11 @@ export async function ask(opts: {
   system: string
   onStep?: (s: Step) => void
   maxRounds?: number
-  /** 带上最近几轮问答，默认 6 */
+  /** 带上最近几轮问答，默认 10 */
   historyTurns?: number
 }): Promise<AskResult> {
   const messages: ChatMsg[] = []
-  const turns = opts.historyTurns ?? 6
+  const turns = opts.historyTurns ?? 10
   for (const h of turns > 0 ? opts.history.slice(-turns) : []) {
     messages.push({ role: 'user', content: h.q })
     messages.push({ role: 'assistant', content: h.a })

@@ -48,4 +48,11 @@
     <!-- 插图时拍照 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Android 11 起要声明才能找到相机 app；不声明时 WebView 的拍照会退回成选文件 -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
 </manifest>

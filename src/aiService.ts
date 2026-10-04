@@ -148,8 +148,8 @@ export async function askQuestion(q: string): Promise<void> {
       history: conv.turns.filter((t) => !t.error).map((t) => ({ q: t.q, a: t.a })),
       system: systemPrompt(today(), all[all.length - 1]?.date ?? null, all[0]?.date ?? null, all.length),
       onStep: (s) => asking.steps.push(s),
-      historyTurns: int(prefs.ai.chat.historyTurns, 0, 20, 6),
-      maxRounds: int(prefs.ai.chat.maxRounds, 2, 20, 10),
+      historyTurns: int(prefs.ai.chat.historyTurns, 10, 50, 10),
+      maxRounds: int(prefs.ai.chat.maxRounds, 10, 30, 10),
     })
     Object.assign(turn, { a: r.answer, steps: r.steps, dates: r.dates, usage: r.usage, ...(r.compacted ? { compacted: true } : {}) })
   } catch (e) {

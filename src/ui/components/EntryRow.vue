@@ -3,16 +3,18 @@ import { computed } from 'vue'
 import type { IndexRow } from '../../core/types'
 import { weekday } from '../../core/time'
 import { moodLabel } from '../mood'
+import Icon from './Icon.vue'
 
 const props = defineProps<{ row: IndexRow }>()
 const day = computed(() => String(Number(props.row.date.slice(8))))
 /** 列表摘要把段落连成一行，避免空行占掉三行里的位置 */
 const excerpt = computed(() => props.row.text.replace(/\s*\n+\s*/g, ' '))
-const extras = computed(() => [props.row.weather, props.row.locationName].filter(Boolean) as string[])
+/** 列表下方：天气、地点（选过的位置和“去过的地方”，去重）、提到的人 */
+const places = computed(() => [...new Set([props.row.locationName, ...props.row.places].filter(Boolean) as string[])])
 </script>
 
 <template>
-  <router-link :to="`/entry/${row.date}`" class="row" :class="`mood-${row.mood ?? 0}`">
+  <router-link :to="`/entry/${row.date}`" class="row" :class="`mood-${row.mood ?? 0}`" :data-date="row.date">
     <div class="side">
       <span class="blob num" :title="moodLabel(row.mood)">{{ day }}</span>
       <span class="wd">{{ weekday(row.date) }}</span>
@@ -20,9 +22,11 @@ const extras = computed(() => [props.row.weather, props.row.locationName].filter
     <div class="content">
       <p v-if="row.error" class="broken">这个文件格式有误，app 不会改动它。打开可查看原文。</p>
       <p class="excerpt">{{ excerpt }}</p>
-      <div v-if="row.tags.length || extras.length" class="meta">
+      <div v-if="row.tags.length || row.weather || places.length || row.people.length" class="meta">
         <span v-for="t in row.tags" :key="t" class="tag">#{{ t }}</span>
-        <span v-for="m in extras" :key="m">{{ m }}</span>
+        <span v-if="row.weather">{{ row.weather }}</span>
+        <span v-for="p in places" :key="'p' + p" class="place"><Icon name="pin" />{{ p }}</span>
+        <span v-for="p in row.people" :key="'u' + p" class="person"><Icon name="person" />{{ p }}</span>
       </div>
     </div>
   </router-link>
@@ -50,6 +54,13 @@ const extras = computed(() => [props.row.weather, props.row.locationName].filter
   background: var(--line);
 }
 .row:active .content { opacity: 0.6; }
+/* 滚动时每一条从下方浮上来，日期圆点像星星一样亮起（浏览器原生的滚动驱动动画，不占主线程） */
+@supports (animation-timeline: view()) {
+  .row { animation: row-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
+  .blob { animation: blob-pop linear both; animation-timeline: view(); animation-range: entry 5% entry 60%; }
+}
+@keyframes row-rise { from { opacity: 0; transform: translateY(32px); } }
+@keyframes blob-pop { from { transform: scale(0.3) rotate(-30deg); opacity: 0; } 70% { transform: scale(1.12); } }
 .side { position: relative; display: flex; flex-direction: column; align-items: center; }
 .blob {
   display: grid;
@@ -77,5 +88,7 @@ const extras = computed(() => [props.row.weather, props.row.locationName].filter
 }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 13px; color: var(--muted); }
 .tag { color: var(--ink); font-weight: 600; }
+.place, .person { display: inline-flex; align-items: center; gap: 2px; }
+.place svg, .person svg { width: 13px; height: 13px; flex: none; opacity: 0.8; }
 .broken { margin: 0 0 4px; font-size: 13px; color: var(--danger); }
 </style>
