@@ -1,0 +1,125 @@
+# 每次推送到 main：跑单元测试 → 构建网页 → 打包签名的 APK → 发布到 Releases，手机上下载覆盖安装即可。
+# 需要在仓库 Settings → Secrets and variables → Actions 里添加 4 个 secret（见 README“自动打包”一节）。
+# 没有 secret 时只检查能否编译，不发布（没签名的 APK 装不上）。
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'e2e/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本号随构建次数递增；+100 保证大于在电脑上直接安装的开发版（版本号 1）
+      - name: 计算版本号
+        run: |
+          echo "VERSION_CODE=$((100 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 单元测试
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee -a "$RUNNER_TEMP/ci.log"
+
+      - name: 构建网页并复制到安卓工程
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee -a "$RUNNER_TEMP/ci.log"
+          npx cap sync android 2>&1 | tee -a "$RUNNER_TEMP/ci.log"
+
+      - name: Gradle 改用官方下载地址（工程里默认是国内镜像）
+        run: sed -i 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-bin.zip#' android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: 准备签名文件
+        id: sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=没有签名::还没有添加 ANDROID_KEYSTORE_BASE64 等 secret，这次只检查能否编译，不发布 APK。"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 打包 APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon 2>&1 | tee -a "$RUNNER_TEMP/ci.log"
+
+      - name: 整理文件
+        id: apk
+        run: |
+          src=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
+            out="diary-${VERSION_NAME}.apk"
+          else
+            out="diary-${VERSION_NAME}-unsigned.apk"
+          fi
+          cp "$src" "$out"
+          echo "file=$out" >> "$GITHUB_OUTPUT"
+          ls -l "$out"
+
+      - name: 发布到 Releases
+        if: steps.sign.outputs.signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: 日记 ${{ env.VERSION_NAME }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: ${{ steps.apk.outputs.file }}
+          body: |
+            ${{ github.event.head_commit.message }}
+
+            ---
+            在手机上下载下面的 APK，点开后选择“更新”即可覆盖安装，日记不会丢失。
+            第一次安装时系统会询问是否允许安装未知来源的应用，选允许。
+
+      - name: 失败时把日志结尾作为注释显示
+        if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/ci.log" ]; then
+            grep -v '^\s*$' "$RUNNER_TEMP/ci.log" | tail -60 | cut -c1-200 > tail.txt || true
+            msg=$(sed -e 's/%/%25/g' -e 's/\r//g' tail.txt | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=构建失败（日志结尾）::${msg}"
+          fi

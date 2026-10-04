@@ -24,7 +24,41 @@ npm run dev
 
 打开终端里显示的地址（通常是 http://localhost:5173），按 F12 切到手机视图。浏览器里的日记存在该网站的本地存储里，只用于试用。
 
-## 打包成安卓 app
+## 自动打包（推荐）
+
+每次往 GitHub 的 main 分支推代码，GitHub Actions 会自动跑单元测试、打包签名的 APK，并发布到仓库的 **Releases** 页面。在手机上登录 GitHub，打开仓库的 Releases，下载最新的 `diary-1.0.N.apk`，点开选“更新”就能覆盖安装，日记不会丢。全程不需要电脑和 Android Studio。
+
+只改文档（`.md`）或端到端测试时不会触发打包。在仓库的 Actions 页面可以看到每次打包的进度；也可以在那里点 “Run workflow” 手动打包一次。
+
+### 一次性设置：签名
+
+仓库 Settings → Secrets and variables → Actions → New repository secret，添加 4 个：
+
+| 名称 | 内容 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | 签名文件的 base64 文本 |
+| `ANDROID_KEYSTORE_PASSWORD` | 签名文件密码 |
+| `ANDROID_KEY_ALIAS` | `diary` |
+| `ANDROID_KEY_PASSWORD` | 和签名文件密码相同 |
+
+没加这些时，打包只检查能否编译，不发布（没有签名的 APK 装不上）。
+
+**签名文件和密码务必另外备份**（比如存进密码管理器）。安卓只允许同一个签名的新版本覆盖旧版本；签名丢了就只能卸载重装，而卸载会删掉手机上的全部日记。
+
+### 在自己电脑上用同一个签名打包（可选）
+
+在 `android/` 下新建 `keystore.properties`（已在 .gitignore 里，不会提交）：
+
+```
+storeFile=/你的路径/diary-release.jks
+storePassword=签名文件密码
+keyAlias=diary
+keyPassword=签名文件密码
+```
+
+这样在 Android Studio 里打的 release 包和自动打包的签名一致，可以互相覆盖安装。注意：直接点“运行”装上的是调试版，签名不同，和自动打包的版本不能互相覆盖。
+
+## 打包成安卓 app（手动）
 
 1. 安装 [Android Studio](https://developer.android.com/studio)，第一次打开时按向导装好 Android SDK。
 2. 在本目录运行：

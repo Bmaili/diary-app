@@ -94,6 +94,7 @@ function tapVersion() {
 }
 
 const hours = [0, 1, 2, 3, 4, 5, 6]
+const appVersion = __APP_VERSION__
 
 const syncOn = computed(() => prefs.sync.oss.enabled || prefs.sync.github.enabled)
 const syncLine = computed(() => {
@@ -245,7 +246,7 @@ const syncLine = computed(() => {
       </div>
     </section>
 
-    <p class="version" @click="tapVersion">日记 1.0.0，共 {{ stats.total }} 篇</p>
+    <p class="version" @click="tapVersion">日记 {{ appVersion }}，共 {{ stats.total }} 篇</p>
   </div>
 </template>
 

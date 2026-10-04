@@ -1,5 +1,22 @@
 apply plugin: 'com.android.application'
 
+// 发布签名：GitHub Actions 里从环境变量读取；在自己电脑上打包时，可以在 android/ 下放一个 keystore.properties
+// （不进 git），内容见 README。两边必须用同一个签名文件，否则装不上新版本。
+def releaseSigning = [
+    file: System.getenv('ANDROID_KEYSTORE_FILE'),
+    storePassword: System.getenv('ANDROID_KEYSTORE_PASSWORD'),
+    alias: System.getenv('ANDROID_KEY_ALIAS'),
+    keyPassword: System.getenv('ANDROID_KEY_PASSWORD'),
+]
+def localProps = rootProject.file('keystore.properties')
+if (!releaseSigning.file && localProps.exists()) {
+    def p = new Properties()
+    localProps.withInputStream { p.load(it) }
+    releaseSigning = [file: rootProject.file(p.getProperty('storeFile')).path, storePassword: p.getProperty('storePassword'),
+               alias: p.getProperty('keyAlias'), keyPassword: p.getProperty('keyPassword')]
+}
+def hasSigning = releaseSigning.file && new File(releaseSigning.file).exists()
+
 android {
     namespace = "app.diary.local"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +24,9 @@ android {
         applicationId "app.diary.local"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // 每次自动打包递增，安卓只允许版本号不变或变大的覆盖安装
+        versionCode((System.getenv('VERSION_CODE') ?: '1') as Integer)
+        versionName(System.getenv('VERSION_NAME') ?: '1.0-dev')
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +34,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasSigning) {
+                storeFile file(releaseSigning.file)
+                storePassword releaseSigning.storePassword
+                keyAlias releaseSigning.alias
+                keyPassword releaseSigning.keyPassword
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasSigning) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

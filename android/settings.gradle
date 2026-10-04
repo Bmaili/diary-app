@@ -1,6 +1,7 @@
 // 国内网络：所有子工程（包括 Capacitor 插件）优先从阿里云镜像下载依赖，镜像没有的再去官方仓库。
 // 放在 settings.gradle 里，因为它会在每个工程的构建脚本执行之前生效；cap sync 不会改写这个文件。
-gradle.beforeProject { p ->
+// GitHub Actions 的服务器在国外，直接用官方仓库更快，不加镜像。
+if (!System.getenv('CI')) gradle.beforeProject { p ->
     def mirrors = { handler ->
         handler.maven { url 'https://maven.aliyun.com/repository/google' }
         handler.maven { url 'https://maven.aliyun.com/repository/public' }
