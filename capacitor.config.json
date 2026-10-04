@@ -1,0 +1,6 @@
+{
+  "appId": "app.diary.local",
+  "appName": "日记",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false }
+}
