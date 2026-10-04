@@ -11,6 +11,15 @@ export interface LlmConfig {
   baseUrl: string
   model: string
   apiKey: string
+  /** 用户在设置里写的补充说明（关于自己、称呼、偏好），附加在系统提示后面 */
+  instructions?: string
+}
+
+/** 把用户补充说明接在系统提示后面。格式要求写在前面并声明优先，避免用户说明打乱 JSON 输出。 */
+export function withInstructions(system: string, instructions?: string): string {
+  const extra = instructions?.trim()
+  if (!extra) return system
+  return `${system}\n\n以下是用户提供的背景和偏好，供你理解日记内容和调整表达。若与上面的输出格式要求冲突，以上面的要求为准：\n<user_notes>\n${extra.slice(0, 2000)}\n</user_notes>`
 }
 
 export interface ToolDef {
@@ -111,7 +120,7 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
 }
 
 async function chatOpenAI(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
-  const messages: unknown[] = [{ role: 'system', content: req.system }]
+  const messages: unknown[] = [{ role: 'system', content: withInstructions(req.system, cfg.instructions) }]
   for (const m of req.messages) {
     if (m.role === 'user') messages.push({ role: 'user', content: m.content })
     else if (m.role === 'assistant') {
@@ -157,7 +166,7 @@ async function chatAnthropic(cfg: LlmConfig, req: ChatRequest): Promise<ChatResu
       for (const c of m.toolCalls ?? []) push('assistant', { type: 'tool_use', id: c.id, name: c.name, input: c.args })
     } else push('user', { type: 'tool_result', tool_use_id: m.toolCallId, content: m.content })
   }
-  const body: Record<string, unknown> = { model: cfg.model, max_tokens: req.maxTokens ?? 4096, system: req.system, messages }
+  const body: Record<string, unknown> = { model: cfg.model, max_tokens: req.maxTokens ?? 4096, system: withInstructions(req.system, cfg.instructions), messages }
   if (req.tools?.length) body.tools = req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }))
   if (req.temperature != null) body.temperature = req.temperature
   const data = (await post(
@@ -182,7 +191,7 @@ export function chat(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
 
 /** “测试”按钮：带一个工具发请求，确认连得上、并且模型会调用工具（问答必须支持工具调用） */
 export async function testConfig(cfg: LlmConfig): Promise<{ toolCalling: boolean; reply: string }> {
-  const r = await chat(cfg, {
+  const r = await chat({ ...cfg, instructions: undefined }, {
     system: '你是连接测试助手。',
     messages: [{ role: 'user', content: '请调用 get_time 工具查询当前时间。' }],
     tools: [{ name: 'get_time', description: '返回当前时间', parameters: { type: 'object', properties: {}, required: [] } }],

@@ -30,6 +30,22 @@ export const prefs = reactive({
     use: { chat: '', extract: '', summary: '' },
     /** 已经确认过“会把日记发给该服务”的配置 id */
     consented: [] as string[],
+    /** 给 AI 的补充说明（问答、抽取、总结都会带上） */
+    notes: '',
+  },
+  reminder: {
+    enabled: false,
+    /** HH:mm */
+    time: '22:00',
+    /** 今天已经写过就不提醒 */
+    skipWritten: true,
+  },
+  lock: {
+    enabled: false,
+    /** 切到后台多少秒后再回来需要解锁；0 表示立即 */
+    delaySec: 60,
+    /** 在最近任务里隐藏内容并禁止截屏 */
+    hideInRecents: true,
   },
   /** 已显示过的一次性提示 */
   seen: [] as string[],

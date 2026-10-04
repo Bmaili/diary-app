@@ -13,6 +13,7 @@ import { shareFile } from '../../platform/exportShare'
 import Icon from '../components/Icon.vue'
 import { prefs } from '../../prefs'
 import { enabled, syncState, BACKENDS } from '../../syncService'
+import { expectExternal } from '../../lockService'
 
 const router = useRouter()
 const busy = ref('')
@@ -41,7 +42,12 @@ async function run(key: string, fn: () => Promise<string>) {
 const doExport = () =>
   run('export', async () => {
     const bytes = await exportDiaryZip(repo)
-    await shareFile(zipFileName(), bytes)
+    const done = expectExternal()
+    try {
+      await shareFile(zipFileName(), bytes)
+    } finally {
+      done()
+    }
     return `已打包 ${index.size} 篇日记（${(bytes.length / 1024).toFixed(0)} KB）`
   })
 
@@ -131,6 +137,24 @@ const syncLine = computed(() => {
         <div>
           <div>AI 服务</div>
           <div class="desc">{{ prefs.ai.profiles.length ? `已添加 ${prefs.ai.profiles.length} 个服务` : '还没有添加，问答、抽取和总结需要它' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+    </section>
+
+    <section>
+      <h2>习惯与隐私</h2>
+      <router-link to="/settings/reminder" class="item link">
+        <div>
+          <div>写日记提醒</div>
+          <div class="desc">{{ prefs.reminder.enabled ? `每天 ${prefs.reminder.time}${prefs.reminder.skipWritten ? '，写过就跳过' : ''}` : '未开启' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+      <router-link to="/settings/lock" class="item link">
+        <div>
+          <div>应用锁</div>
+          <div class="desc">{{ prefs.lock.enabled ? 'PIN 已启用' : '未开启' }}</div>
         </div>
         <Icon name="right" class="chev" />
       </router-link>

@@ -467,3 +467,94 @@ describe('阶段 4：AI', () => {
   })
 })
 
+
+describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
+  async function typePin(page: Page, pin: string, ok = false) {
+    for (const d of pin) await page.getByRole('button', { name: d, exact: true }).click()
+    if (ok) await page.getByRole('button', { name: '确定' }).click()
+  }
+  async function setVisibility(page: Page, state: 'hidden' | 'visible') {
+    await page.evaluate((s) => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => s })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }, state)
+  }
+
+  it('设置 PIN 后重开要解锁；输错会提示；离开后按设定时间重新上锁；关闭需要旧 PIN', async () => {
+    const { ctx, page, errors } = await newPage()
+    await writeToday(page, '上锁之前写的一句。')
+    await page.goto(BASE + '#/settings')
+    await page.getByRole('link', { name: /应用锁/ }).click()
+    await page.screenshot({ path: OUT + '50-lock-settings.png' })
+    await page.getByRole('switch', { name: '启用应用锁' }).click()
+    await page.getByText('设置新的 PIN').waitFor()
+    await typePin(page, '2580', true)
+    await page.getByText('再输一次').waitFor()
+    await page.screenshot({ path: OUT + '51-pin-setup.png' })
+    // 第二次输错：回到第一步
+    await typePin(page, '2581', true)
+    await page.getByText('两次输入不一样').waitFor()
+    await typePin(page, '2580', true)
+    await typePin(page, '2580', true)
+    await page.getByRole('switch', { name: '启用应用锁' }).and(page.locator('[aria-checked="true"]')).waitFor()
+    await page.getByLabel('离开多久后需要重新解锁').selectOption('0')
+
+    // 重开 app
+    await page.waitForTimeout(500)
+    await page.goto(BASE + '#/')
+    await page.reload()
+    await page.getByText('观测站已上锁').waitFor()
+    // 底下的内容不可交互
+    expect(await page.locator('.shell').getAttribute('inert')).not.toBeNull()
+    await typePin(page, '1111')
+    await page.getByText('PIN 不对').waitFor()
+    await page.screenshot({ path: OUT + '52-lock-screen.png' })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '52-lock-screen-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
+    await typePin(page, '2580')
+    await page.getByText('观测站已上锁').waitFor({ state: 'detached' })
+    await page.getByText('上锁之前写的一句。').waitFor()
+
+    // 切到后台再回来（延迟设为“立即”）
+    await setVisibility(page, 'hidden')
+    await setVisibility(page, 'visible')
+    await page.getByText('观测站已上锁').waitFor()
+    await typePin(page, '2580')
+    await page.getByText('观测站已上锁').waitFor({ state: 'detached' })
+
+    // 关闭：要先输旧 PIN
+    await page.goto(BASE + '#/settings/lock')
+    await page.getByRole('switch', { name: '启用应用锁' }).click()
+    await page.getByText('输入现在的 PIN').waitFor()
+    await typePin(page, '0000')
+    await page.getByText('PIN 不对').waitFor()
+    await typePin(page, '2580')
+    await page.getByRole('switch', { name: '启用应用锁' }).and(page.locator('[aria-checked="false"]')).waitFor()
+    await page.reload()
+    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    expect(await page.getByText('观测站已上锁').count()).toBe(0)
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+
+  it('提醒设置页显示带月相的通知预览；AI 补充说明会保存', async () => {
+    const { ctx, page, errors } = await newPage()
+    await page.goto(BASE + '#/settings')
+    await page.getByRole('link', { name: /写日记提醒/ }).click()
+    await page.getByText('写一句今天的日记').waitFor()
+    expect(await page.locator('.n-body').innerText()).toMatch(/^今晚/)
+    await page.getByText('提醒只在手机上有效').waitFor()
+    await page.screenshot({ path: OUT + '53-reminder.png' })
+
+    await page.goto(BASE + '#/settings/ai')
+    await page.getByPlaceholder(/小雨是我女朋友/).fill('阿杰是我大学室友。')
+    await page.waitForTimeout(600)
+    await page.screenshot({ path: OUT + '54-ai-notes.png', fullPage: true })
+    await page.reload()
+    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    expect(await page.getByPlaceholder(/小雨是我女朋友/).inputValue()).toBe('阿杰是我大学室友。')
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+})

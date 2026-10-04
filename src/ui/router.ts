@@ -15,6 +15,8 @@ export const router = createRouter({
     { path: '/settings/ai', component: () => import('./views/AiSettingsView.vue') },
     { path: '/settings/ai/:id', component: () => import('./views/AiProfileView.vue') },
     { path: '/ai/summary/:period', component: () => import('./views/SummaryView.vue') },
+    { path: '/settings/reminder', component: () => import('./views/ReminderSettingsView.vue') },
+    { path: '/settings/lock', component: () => import('./views/LockSettingsView.vue') },
     { path: '/settings/restore', component: () => import('./views/RestoreView.vue') },
     { path: '/entry/:date', component: () => import('./views/EditorView.vue') },
   ],

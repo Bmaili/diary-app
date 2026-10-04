@@ -5,6 +5,8 @@ import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { loadError, ready, start } from '../app'
 import Icon from './components/Icon.vue'
+import LockScreen from './components/LockScreen.vue'
+import { lock } from '../lockService'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +24,7 @@ onMounted(() => {
   if (Capacitor.isNativePlatform()) {
     // 安卓返回键：首页退出 app，其他页面返回上一页
     CapApp.addListener('backButton', () => {
-      if (route.path === '/') CapApp.exitApp()
+      if (lock.locked || route.path === '/') CapApp.exitApp()
       else if (tab.value) router.replace('/')
       else router.back()
     })
@@ -38,6 +40,7 @@ onMounted(() => {
     <p class="muted">正在读取日记…</p>
   </div>
   <template v-else>
+    <div class="shell" :inert="lock.locked || undefined">
     <router-view v-slot="{ Component }">
       <keep-alive :include="['HomeView', 'CalendarView', 'SearchView', 'AiView']">
         <component :is="Component" />
@@ -50,10 +53,13 @@ onMounted(() => {
         <span>{{ t.label }}</span>
       </router-link>
     </nav>
+    </div>
+    <LockScreen v-if="lock.locked" />
   </template>
 </template>
 
 <style scoped>
+.shell { display: contents; }
 .boot {
   min-height: 100vh;
   display: grid;

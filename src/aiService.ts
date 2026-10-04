@@ -24,7 +24,7 @@ export function profileFor(task: Task): LlmProfile | null {
 export async function configFor(task: Task): Promise<LlmConfig> {
   const p = profileFor(task)
   if (!p) throw new Error('还没有添加 AI 服务，请先到“设置 → AI 服务”里添加')
-  return { protocol: p.protocol, baseUrl: p.baseUrl, model: p.model, apiKey: await getSecret(`llm.${p.id}`) }
+  return { protocol: p.protocol, baseUrl: p.baseUrl, model: p.model, apiKey: await getSecret(`llm.${p.id}`), instructions: prefs.ai.notes }
 }
 
 /** 第一次把日记发给某个服务前，说明会发什么（规格第 8 节） */

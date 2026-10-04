@@ -53,9 +53,19 @@ const desc: Record<Task, string> = {
         </select>
       </label>
     </section>
+
+    <section>
+      <h2>给 AI 的补充说明</h2>
+      <div class="form">
+        <textarea v-model="prefs.ai.notes" class="field notes" rows="5" maxlength="2000"
+          placeholder="比如：&#10;小雨是我女朋友，“老地方”指公司楼下的兰州拉面。&#10;总结用第二人称，口气轻松一点。&#10;回答尽量简短。" />
+        <p class="hint">问答、抽取和总结都会带上这段话，帮 AI 认出日记里的称呼和简写。它会随请求发给 AI 服务，不会写进日记文件。</p>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
+.notes { min-height: 120px; padding: 10px 12px; resize: vertical; line-height: 1.6; }
 .sel { width: auto; max-width: 40vw; min-height: 38px; padding: 0 8px; }
 </style>

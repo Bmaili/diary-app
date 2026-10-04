@@ -308,3 +308,27 @@ describe('词表合并', () => {
     expect((await s.repo.readEntry('2026-10-02'))!.meta.locked).toEqual(['places'])
   })
 })
+
+describe('补充说明随请求发送', () => {
+  for (const protocol of ['openai', 'anthropic'] as const) {
+    it(`${protocol}：说明接在系统提示后面`, async () => {
+      let seen = ''
+      mock = await startLlmMock(({ system }) => {
+        seen = system
+        return { text: 'ok' }
+      })
+      await chat(cfg(protocol, { instructions: '老地方=兰州拉面' }), { system: '基础提示', messages: [{ role: 'user', content: 'hi' }] })
+      expect(seen.startsWith('基础提示')).toBe(true)
+      expect(seen).toContain('老地方=兰州拉面')
+    })
+  }
+  it('连接测试不带说明', async () => {
+    let seen = ''
+    mock = await startLlmMock(({ system }) => {
+      seen = system
+      return { toolCalls: [{ name: 'get_time', args: {} }] }
+    })
+    await testConfig(cfg('openai', { instructions: '不应出现' }))
+    expect(seen).not.toContain('不应出现')
+  })
+})

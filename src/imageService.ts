@@ -5,14 +5,22 @@
 import { store } from './app'
 import { ROOT } from './core/repo'
 import { toBase64 } from './core/bytes'
+import { expectExternal } from './lockService'
 
 export function pickImage(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
-    input.onchange = () => resolve(input.files?.[0] ?? null)
-    input.addEventListener('cancel', () => resolve(null))
+    const done = expectExternal()
+    input.onchange = () => {
+      done()
+      resolve(input.files?.[0] ?? null)
+    }
+    input.addEventListener('cancel', () => {
+      done()
+      resolve(null)
+    })
     input.click()
   })
 }
