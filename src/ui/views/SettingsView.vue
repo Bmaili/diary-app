@@ -4,13 +4,15 @@ import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import {
-  enqueue, index, indexVersion, reloadIndex, repo, setCutoffHour, setDevMode, settings, today,
+  diaryChanged, enqueue, index, indexVersion, reloadIndex, repo, setCutoffHour, setDevMode, settings, today,
 } from '../../app'
 import { exportDiaryZip, zipFileName } from '../../core/exportZip'
 import { generateTestEntries } from '../../core/testData'
 import { README_MD } from '../../core/readme'
 import { shareFile } from '../../platform/exportShare'
 import Icon from '../components/Icon.vue'
+import { prefs } from '../../prefs'
+import { enabled, syncState, BACKENDS } from '../../syncService'
 
 const router = useRouter()
 const busy = ref('')
@@ -69,6 +71,7 @@ const doClearTest = () =>
       for (const r of rows) await repo.deleteEntry(r.date)
     })
     await reloadIndex()
+    diaryChanged()
     return `已删除 ${rows.length} 篇测试日记`
   })
 
@@ -85,6 +88,15 @@ function tapVersion() {
 }
 
 const hours = [0, 1, 2, 3, 4, 5, 6]
+
+const syncOn = computed(() => prefs.sync.oss.enabled || prefs.sync.github.enabled)
+const syncLine = computed(() => {
+  const on = enabled()
+  if (!on.length) return '未开启'
+  const names = BACKENDS.filter((b) => on.includes(b.id)).map((b) => b.label).join('、')
+  const err = on.some((id) => syncState[id].status === 'error')
+  return `${names}${err ? '，上次同步失败' : ''}`
+})
 </script>
 
 <template>
@@ -94,10 +106,35 @@ const hours = [0, 1, 2, 3, 4, 5, 6]
       <h1>设置</h1>
     </header>
 
-    <div class="warn">
+    <p v-if="!syncOn" class="note warn">
       <strong>日记目前只存在这台手机上。</strong>
-      卸载 app 或清除 app 数据会删掉全部日记。云同步做好之前，请定期用下面的“导出为 zip”备份。
-    </div>
+      卸载 app 或清除 app 数据会删掉全部日记。建议在下面的“同步与备份”里开启 OSS 或 GitHub。
+    </p>
+
+    <section>
+      <h2>连接</h2>
+      <router-link to="/settings/sync" class="item link">
+        <div>
+          <div>同步与备份</div>
+          <div class="desc">{{ syncLine }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+      <router-link to="/settings/place" class="item link">
+        <div>
+          <div>位置与天气</div>
+          <div class="desc">{{ prefs.place.autoLocate ? '写日记时自动记录位置和天气' : '自动定位已关闭' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+      <router-link to="/settings/ai" class="item link">
+        <div>
+          <div>AI 服务</div>
+          <div class="desc">{{ prefs.ai.profiles.length ? `已添加 ${prefs.ai.profiles.length} 个服务` : '还没有添加，问答、抽取和总结需要它' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+    </section>
 
     <section>
       <h2>日记</h2>
@@ -154,8 +191,11 @@ const hours = [0, 1, 2, 3, 4, 5, 6]
     </section>
 
     <section>
-      <h2>同步、位置与 AI</h2>
-      <p class="desc pad">云同步（阿里云 OSS、GitHub）、定位与天气、AI 问答会在后续阶段加入。</p>
+      <h2>后台运行</h2>
+      <p class="desc pad">
+        OPPO、vivo、一加的系统会清理后台的 app。这个 app 在你打开它、离开编辑页时同步，所以不开自启动也能正常备份。
+        如果想让失败的同步在后台多重试几次，可以在系统设置的“应用管理 → 日记 → 耗电管理”里允许后台运行。
+      </p>
     </section>
 
     <section v-if="settings.devMode">
@@ -163,11 +203,11 @@ const hours = [0, 1, 2, 3, 4, 5, 6]
       <div class="item">
         <div>
           <div>生成测试日记</div>
-          <div class="desc">从今天往前逐日生成，带 test_data 标记，可一键清除。</div>
+          <div class="desc">从今天往前逐日生成，带 test_data 标记，可一键清除。开着同步时，测试日记也会被同步上去。</div>
           <div v-if="msg.gen" class="result">{{ msg.gen }}</div>
         </div>
         <div class="gen">
-          <input v-model.number="genCount" type="number" min="1" max="5000" class="field num" aria-label="篇数" />
+          <input v-model.number="genCount" type="number" min="1" max="5000" class="field num-in" aria-label="篇数" />
           <button class="text-btn" :disabled="!!busy" @click="doGenerate">{{ busy === 'gen' ? '生成中' : '生成' }}</button>
         </div>
       </div>
@@ -181,49 +221,19 @@ const hours = [0, 1, 2, 3, 4, 5, 6]
       </div>
     </section>
 
-    <p class="version" @click="tapVersion">日记 0.1.0（第一阶段），共 {{ stats.total }} 篇</p>
+    <p class="version" @click="tapVersion">日记 1.0.0，共 {{ stats.total }} 篇</p>
   </div>
 </template>
 
 <style scoped>
-.settings { min-height: 100vh; padding-bottom: calc(32px + var(--safe-bottom)); }
-.warn {
-  margin: 4px 16px 8px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--surface);
-  font-size: 14px;
-  line-height: 1.65;
-}
-.warn strong { display: block; }
-section { margin-top: 20px; }
-h2 { margin: 0 16px 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  min-height: 56px;
-  padding: 12px 16px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-  text-align: left;
-}
-.item.link:active { background: var(--surface); }
-.desc { font-size: 13px; color: var(--muted); line-height: 1.5; margin-top: 2px; }
-.pad { margin: 0 16px; }
-.result { margin-top: 6px; font-size: 13px; font-weight: 600; }
 .select { width: auto; min-height: 38px; padding: 0 8px; }
-.chev { width: 18px; height: 18px; color: var(--faint); flex: none; }
-.readme { margin: 0 16px; padding: 4px 0 12px; font-family: var(--sans); font-size: 14px; line-height: 1.7; }
+.readme { margin: 0 20px; padding: 4px 0 12px; font-size: 14px; line-height: 1.7; }
 .readme :deep(h1) { font-size: 16px; margin-top: 8px; }
 .readme :deep(h2) { font-size: 15px; margin: 1.2em 0 0.4em; color: var(--ink); }
 .broken ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
 .broken a { color: inherit; }
 .gen { display: flex; align-items: center; gap: 4px; }
-.num { width: 76px; min-height: 38px; padding: 0 8px; }
+.num-in { width: 76px; min-height: 38px; padding: 0 8px; }
 .danger { color: var(--danger); }
 .version { margin: 32px 16px 0; text-align: center; font-size: 12px; color: var(--faint); user-select: none; }
 </style>

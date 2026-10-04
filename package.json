@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "e2e": "node e2e/run.mjs",
+    "e2e:stages": "vitest run --config vitest.e2e.config.ts",
     "cap:sync": "npm run build && npx cap sync android"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "@capacitor/filesystem": "^8.1.4",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/network": "^8.0.1",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.3",
     "@fontsource/barlow-condensed": "^5.3.0",
@@ -32,6 +34,8 @@
     "@capacitor/cli": "^8.5.2",
     "@types/node": "^26.6.4",
     "@vitejs/plugin-vue": "^6.0.9",
+    "ali-oss": "^6.23.0",
+    "coordtransform": "^2.1.2",
     "playwright": "^1.56.0",
     "typescript": "~5.9",
     "vite": "^8.3.2",

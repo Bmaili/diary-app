@@ -3,7 +3,9 @@
  * 真机上落在 app 私有目录（Directory.Data，即 filesDir）；在浏览器里调试时由插件自带的 IndexedDB 实现兜底。
  */
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
+import { Capacitor } from '@capacitor/core'
 import type { FileInfo, FileStore } from '../core/types'
+import { fromBase64, fromUtf8, toBase64, utf8 } from '../core/bytes'
 
 const D = Directory.Data
 
@@ -18,6 +20,12 @@ export class CapacitorStore implements FileStore {
   }
 
   async readBase64(path: string): Promise<string | null> {
+    // 浏览器调试时插件的 IndexedDB 实现按写入时的原样返回内容：文本文件读出来是文本而不是 base64。
+    // 真机上原生实现总是返回 base64，这里让两者一致。
+    if (!Capacitor.isNativePlatform() && /\.(md|json|txt)$/i.test(path)) {
+      const t = await this.readText(path)
+      return t == null ? null : toBase64(utf8(t))
+    }
     try {
       const r = await Filesystem.readFile({ path, directory: D })
       if (typeof r.data === 'string') return r.data
@@ -38,6 +46,13 @@ export class CapacitorStore implements FileStore {
       await this.mkdirp(path.slice(0, path.lastIndexOf('/')))
       await Filesystem.writeFile({ path, data, directory: D, encoding: Encoding.UTF8, recursive: false })
     }
+  }
+
+  async writeBase64(path: string, data: string): Promise<void> {
+    // 与 readBase64 对称：浏览器里文本文件按文本存，免得读出来是 base64
+    if (!Capacitor.isNativePlatform() && /\.(md|json|txt)$/i.test(path)) return this.writeText(path, fromUtf8(fromBase64(data)))
+    await this.mkdirp(path.slice(0, path.lastIndexOf('/')))
+    await Filesystem.writeFile({ path, data, directory: D, recursive: true })
   }
 
   async rename(from: string, to: string): Promise<void> {

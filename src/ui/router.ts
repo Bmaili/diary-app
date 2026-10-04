@@ -9,6 +9,13 @@ export const router = createRouter({
     { path: '/search', component: () => import('./views/SearchView.vue'), meta: { tab: 'search' } },
     { path: '/ai', component: () => import('./views/AiView.vue'), meta: { tab: 'ai' } },
     { path: '/settings', component: () => import('./views/SettingsView.vue') },
+    { path: '/settings/sync', component: () => import('./views/SyncSettingsView.vue') },
+    { path: '/settings/sync/:id(oss|github)', component: () => import('./views/BackendConfigView.vue') },
+    { path: '/settings/place', component: () => import('./views/PlaceSettingsView.vue') },
+    { path: '/settings/ai', component: () => import('./views/AiSettingsView.vue') },
+    { path: '/settings/ai/:id', component: () => import('./views/AiProfileView.vue') },
+    { path: '/ai/summary/:period', component: () => import('./views/SummaryView.vue') },
+    { path: '/settings/restore', component: () => import('./views/RestoreView.vue') },
     { path: '/entry/:date', component: () => import('./views/EditorView.vue') },
   ],
   scrollBehavior(_to, _from, saved) {

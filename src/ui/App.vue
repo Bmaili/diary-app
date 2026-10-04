@@ -39,7 +39,7 @@ onMounted(() => {
   </div>
   <template v-else>
     <router-view v-slot="{ Component }">
-      <keep-alive :include="['HomeView', 'CalendarView', 'SearchView']">
+      <keep-alive :include="['HomeView', 'CalendarView', 'SearchView', 'AiView']">
         <component :is="Component" />
       </keep-alive>
     </router-view>

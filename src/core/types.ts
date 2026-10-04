@@ -58,6 +58,8 @@ export interface FileStore {
   /** 读二进制文件（图片等），返回 base64；不存在时 null */
   readBase64(path: string): Promise<string | null>
   writeText(path: string, data: string): Promise<void>
+  /** 写二进制文件（base64） */
+  writeBase64(path: string, data: string): Promise<void>
   /** 重命名；目标已存在时允许失败，由调用方处理。 */
   rename(from: string, to: string): Promise<void>
   remove(path: string): Promise<void>
@@ -84,6 +86,10 @@ export interface IndexRow {
   tags: string[]
   people: string[]
   places: string[]
+  /** AI 上次抽取的时间（ai.extracted_at） */
+  extractedAt?: string
+  /** 被锁定的字段 */
+  locked?: string[]
   /** 正文纯文本（去掉 Markdown 标记），用于搜索和摘要 */
   text: string
   /** 测试数据标记，便于一键清除 */

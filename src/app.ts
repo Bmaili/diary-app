@@ -5,8 +5,12 @@ import { DiaryRepo } from './core/repo'
 import { DiaryIndex } from './core/diaryIndex'
 import { CapacitorStore } from './platform/capStore'
 import { diaryDate } from './core/time'
+import { Capacitor } from '@capacitor/core'
+import { setHttpImpl } from './core/http'
+import { nativeHttpImpl } from './platform/nativeHttp'
+import { loadPrefs } from './prefs'
 
-const store = new CapacitorStore()
+export const store = new CapacitorStore()
 export const repo = new DiaryRepo(store)
 export const index = new DiaryIndex(repo, store)
 
@@ -28,16 +32,35 @@ export function start(): Promise<void> {
       const c = await Preferences.get({ key: 'cutoffHour' })
       if (c.value != null && !Number.isNaN(Number(c.value))) settings.cutoffHour = Number(c.value)
       settings.devMode = (await Preferences.get({ key: 'devMode' })).value === '1'
+      if (Capacitor.isNativePlatform()) setHttpImpl(nativeHttpImpl)
+      await loadPrefs()
       await repo.init()
       await index.load()
       indexVersion.value++
       ready.value = true
+      for (const fn of startHooks) fn()
     } catch (e) {
       loadError.value = (e as Error).message
       throw e
     }
   })()
   return started
+}
+
+const startHooks: (() => void)[] = []
+/** 启动完成后要做的事（例如检查待同步） */
+export function onStarted(fn: () => void) {
+  if (ready.value) fn()
+  else startHooks.push(fn)
+}
+
+/** 日记文件有变化（保存、删除、AI 写回、恢复）后调用，通知同步等模块 */
+const changeHooks: (() => void)[] = []
+export function onDiaryChanged(fn: () => void) {
+  changeHooks.push(fn)
+}
+export function diaryChanged() {
+  for (const fn of changeHooks) fn()
 }
 
 export async function setCutoffHour(h: number) {

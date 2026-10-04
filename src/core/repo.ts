@@ -94,11 +94,12 @@ export class DiaryRepo {
    * 保存一篇日记。正文为空时不写文件（规格 4.4 第 8 条），返回 false；
    * 删除已有文件需要调用方确认后显式调用 deleteEntry。
    */
-  async saveEntry(doc: EntryDoc, now = new Date()): Promise<boolean> {
+  async saveEntry(doc: EntryDoc, now = new Date(), opts: { touchUpdated?: boolean } = {}): Promise<boolean> {
     if (!hasContent(doc.body)) return false
     const stamp = isoLocal(now)
     doc.meta.created ??= stamp
-    doc.meta.updated = stamp
+    // AI 写回、词表合并不算“你改了日记”，不更新 updated（否则会被判定为抽取后又改过）
+    if (opts.touchUpdated !== false || !doc.meta.updated) doc.meta.updated = stamp
     await this.writeAtomic(entryPath(doc.meta.date), serializeEntry(doc))
     return true
   }

@@ -39,6 +39,11 @@ export class NodeStore implements FileStore {
     await fs.writeFile(this.abs(p), d, 'utf8')
   }
 
+  async writeBase64(p: string, d: string) {
+    await fs.mkdir(nodePath.dirname(this.abs(p)), { recursive: true })
+    await fs.writeFile(this.abs(p), Buffer.from(d, 'base64'))
+  }
+
   async rename(a: string, b: string) {
     if (this.renameRefusesOverwrite && (await this.stat(b))) throw new Error('destination exists')
     await fs.rename(this.abs(a), this.abs(b))

@@ -1,0 +1,56 @@
+/* 设置类页面共用的样式 */
+.settings { min-height: 100vh; padding-bottom: calc(40px + var(--safe-bottom)); }
+.settings section { margin-top: 18px; }
+.settings section > h2 { margin: 0 20px 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.settings .item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  padding: 12px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+.settings .item.link:active { background: var(--surface); }
+.settings .item > div:first-child { min-width: 0; flex: 1; }
+.settings .desc { font-size: 13px; color: var(--muted); line-height: 1.55; margin-top: 2px; }
+.settings .result { margin-top: 6px; font-size: 13px; font-weight: 600; }
+.settings .result.bad { color: var(--danger); }
+.settings .chev { width: 18px; height: 18px; color: var(--faint); flex: none; }
+.settings .pad { margin: 0 20px; }
+.settings .note {
+  margin: 4px 16px 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.settings .note.warn { border-color: var(--m1); }
+.settings .note strong { display: block; }
+.form { padding: 0 20px; }
+.form label { display: block; margin-top: 14px; }
+.form label > span { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.form .hint { margin-top: 4px; font-size: 12px; color: var(--faint); line-height: 1.5; }
+.form .row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.badge-num {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  text-align: center;
+}
+.state { font-size: 13px; font-weight: 600; }
+.state.ok { color: var(--m5); }
+.state.error { color: var(--danger); }
+.state.syncing, .state.pending { color: var(--m2); }

@@ -8,7 +8,7 @@ import { parseEntry, plainText } from './entryFile'
 import { DiaryRepo, entryPath, type EntryFile } from './repo'
 
 export const INDEX_CACHE = 'cache/index.json'
-const CACHE_VERSION = 2
+const CACHE_VERSION = 3
 
 export async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
@@ -41,6 +41,8 @@ export async function rowFromRaw(f: EntryFile, raw: string): Promise<IndexRow> {
       people: m.people ?? [],
       places: m.places ?? [],
       text: plainText(doc.body),
+      ...(m.ai?.extracted_at ? { extractedAt: String(m.ai.extracted_at) } : {}),
+      ...(m.locked?.length ? { locked: m.locked } : {}),
       ...(test ? { test: true } : {}),
     }
   } catch (e) {
@@ -208,6 +210,11 @@ export class DiaryIndex {
     return hits
   }
 
+  /** 还没抽取过、或抽取后又改过的日记（规格 7.3） */
+  needsExtraction(): IndexRow[] {
+    return this.all().filter((r) => !r.error && needsExtraction(r))
+  }
+
   testRows(): IndexRow[] {
     return this.all().filter((r) => r.test)
   }
@@ -215,6 +222,12 @@ export class DiaryIndex {
   brokenRows(): IndexRow[] {
     return this.all().filter((r) => r.error)
   }
+}
+
+export function needsExtraction(r: Pick<IndexRow, 'extractedAt' | 'updated'>): boolean {
+  if (!r.extractedAt) return true
+  if (!r.updated) return false
+  return Date.parse(r.updated) > Date.parse(r.extractedAt)
 }
 
 /** 命中片段：第一个命中词前后各约 40 字，并标出所有命中位置。 */

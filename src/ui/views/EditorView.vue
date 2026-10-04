@@ -7,6 +7,7 @@ import { App as CapApp } from '@capacitor/app'
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import { enqueue, index, indexVersion, refreshDate, repo, today } from '../../app'
+import { syncAfterEdit } from '../../syncService'
 import { bodyFor, openSession, type EditSession } from '../../core/session'
 import { hasContent, setListFieldManually } from '../../core/entryFile'
 import { isValidYmd, parseYmd, weekday } from '../../core/time'
@@ -17,6 +18,14 @@ import Icon from '../components/Icon.vue'
 import Sheet from '../components/Sheet.vue'
 import ListEditor from '../components/ListEditor.vue'
 import MoodSlider from '../components/MoodSlider.vue'
+import LocationSheet from '../components/LocationSheet.vue'
+import { autoFill, fetchWeather, getPosition } from '../../placeService'
+import { compress, pickImage, resolveImages, saveImage } from '../../imageService'
+import { prefs } from '../../prefs'
+import type { Location } from '../../core/types'
+import { ensureConsent, extractPreview, profileFor } from '../../aiService'
+import { applyExtraction, type Extraction } from '../../core/llm/extract'
+import { diaryChanged } from '../../app'
 
 const route = useRoute()
 const router = useRouter()
@@ -48,9 +57,16 @@ const subtitle = computed(() => {
   if (!isToday.value && !session.value?.existed) parts.push('补写')
   return parts.join('，')
 })
-const rendered = computed(() =>
-  DOMPurify.sanitize(marked.parse(bodyFor(session.value!, text.value), { async: false, gfm: true }) as string),
+const renderedRaw = computed(() =>
+  session.value ? DOMPurify.sanitize(marked.parse(bodyFor(session.value, text.value), { async: false, gfm: true }) as string) : '',
 )
+// 阅读视图：把相对路径的图片换成本地文件内容
+const rendered = ref('')
+watch([renderedRaw, mode], async ([html, m]) => {
+  if (m !== 'read') return
+  rendered.value = html
+  rendered.value = await resolveImages(html)
+})
 const statusText = computed(() => {
   if (readOnly.value) return '只读'
   switch (status.value) {
@@ -106,7 +122,7 @@ function flush(): Promise<void> {
 watch(text, schedule)
 
 function onHidden() {
-  if (document.visibilityState === 'hidden') void flush()
+  if (document.visibilityState === 'hidden') void flush().then(syncAfterEdit)
 }
 
 let pauseHandle: PluginListenerHandle | null = null
@@ -128,7 +144,137 @@ onMounted(async () => {
   await nextTick()
   autosize()
   if (!s.error && (!s.existed || s.appended)) focusEnd()
+  if (!s.error && isToday.value) void fillPlace()
 })
+
+// ---------- 位置与天气 ----------
+
+const placeNote = ref('')
+const skipKey = `nolocate:${date}`
+
+/** 当天第一次打开：自动记位置和天气（规格 5.3、5.4）。补写往日日记不自动获取。 */
+async function fillPlace() {
+  const m = meta.value
+  if (!m || (m.location && m.weather)) return
+  const r = await autoFill(m, { skipLocation: prefs.seen.includes(skipKey) })
+  if (!session.value || left) return
+  let changed = false
+  if (r.location && !m.location) {
+    m.location = r.location
+    changed = true
+  }
+  if (r.weather && !m.weather) {
+    m.weather = r.weather
+    changed = true
+  }
+  if (r.errors.length && !changed) placeNote.value = r.errors[0]
+  if (changed) {
+    metaDirty = true
+    schedule()
+  }
+}
+
+const locOpen = ref(false)
+function pickLocation(loc: Location | null) {
+  const m = meta.value
+  locOpen.value = false
+  if (!m) return
+  if (loc === null) {
+    delete m.location
+    if (!prefs.seen.includes(skipKey)) prefs.seen.push(skipKey)
+  } else {
+    m.location = loc
+    // 选了具体地点，就把它算作“这天去过的地方”（自动带入，不算手动修改，不锁定）
+    if (loc.name && !(m.places ?? []).includes(loc.name)) m.places = [...(m.places ?? []), loc.name]
+  }
+  metaDirty = true
+  void flush()
+}
+const locLabel = computed(() => {
+  const l = meta.value?.location
+  if (!l) return ''
+  if (l.name) return l.name
+  if (l.address) return l.address.replace(/^.+?(省|自治区)/, '').slice(0, 14)
+  return '已记坐标'
+})
+
+const weatherBusy = ref(false)
+async function refreshWeather() {
+  const m = meta.value
+  if (!m || !isToday.value || weatherBusy.value) return
+  weatherBusy.value = true
+  try {
+    const at = m.location?.lat != null ? { lat: m.location.lat, lng: m.location.lng! } : await getPosition().catch(() => prefs.place.defaultCity)
+    if (!at) throw new Error('没有位置，也没有设置默认城市')
+    m.weather = await fetchWeather(at.lat, at.lng)
+    metaDirty = true
+    void flush()
+  } catch (e) {
+    placeNote.value = (e as Error).message
+  } finally {
+    weatherBusy.value = false
+  }
+}
+
+// ---------- AI 标注（单篇抽取，规格 7.3：先显示结果，确认后才写入） ----------
+
+const canExtract = computed(() => !!profileFor('extract'))
+const ai = reactive({ open: false, busy: false, error: '', x: null as Extraction | null, model: '' })
+async function runExtract() {
+  if (ai.busy || !ensureConsent('extract')) return
+  await flush()
+  if (!session.value?.existed) {
+    placeNote.value = '先写点内容再让 AI 标注'
+    return
+  }
+  Object.assign(ai, { open: true, busy: true, error: '', x: null })
+  try {
+    const r = await extractPreview(date)
+    ai.x = r.x
+    ai.model = r.model
+  } catch (e) {
+    ai.error = (e as Error).message
+  } finally {
+    ai.busy = false
+  }
+}
+async function acceptExtract() {
+  const s = session.value
+  if (!s || !ai.x) return
+  applyExtraction(s.doc, ai.x, ai.model)
+  await enqueue(async () => {
+    await repo.saveEntry(s.doc, new Date(), { touchUpdated: false })
+    await refreshDate(date)
+  })
+  diaryChanged()
+  ai.open = false
+}
+const FIELD_NAMES = { places: '去过的地方', people: '提到的人', tags: '标签' } as const
+
+// ---------- 插图 ----------
+
+const imgBusy = ref(false)
+async function insertImage() {
+  if (readOnly.value || imgBusy.value) return
+  const file = await pickImage()
+  if (!file) return
+  imgBusy.value = true
+  try {
+    const md = await saveImage(date, await compress(file))
+    const el = textarea.value
+    const pos = el ? el.selectionStart : text.value.length
+    const before = text.value.slice(0, pos)
+    const after = text.value.slice(pos)
+    const pre = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : ''
+    text.value = `${before}${pre}${md}\n\n${after.replace(/^\n+/, '')}`
+    await nextTick()
+    autosize()
+  } catch (e) {
+    placeNote.value = `插图失败：${(e as Error).message}`
+  } finally {
+    imgBusy.value = false
+  }
+}
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onHidden)
@@ -149,10 +295,12 @@ onBeforeRouteLeave(async () => {
         await repo.deleteEntry(date)
         await refreshDate(date)
       })
+      syncAfterEdit()
     }
     return true
   }
   await flush()
+  syncAfterEdit()
   return true
 })
 
@@ -272,9 +420,21 @@ function goBack() {
         <button v-for="t in [...(meta.people ?? []), ...(meta.places ?? [])]" :key="'p' + t" class="chip"
           @click="openSheet('more')">{{ t }}</button>
         <button class="chip add" @click="openSheet('more')">{{ meta.people?.length || meta.places?.length ? '改人物和地点' : '+ 人物和地点' }}</button>
-        <span v-if="weatherText" class="chip">{{ weatherText }}</span>
-        <span v-if="meta.location?.name" class="chip">{{ meta.location.name }}</span>
+        <button v-if="canExtract" class="chip add" @click="runExtract"><Icon name="sparkle" class="ci" />AI 标注</button>
       </div>
+      <div v-if="!readOnly" class="chips" role="toolbar" aria-label="位置、天气和插图">
+        <button class="chip" :class="{ add: !locLabel }" @click="locOpen = true">
+          <Icon name="pin" class="ci" />{{ locLabel || '位置' }}
+        </button>
+        <button v-if="weatherText || isToday" class="chip" :class="{ add: !weatherText }" :disabled="!isToday"
+          :aria-label="isToday ? '重新获取天气' : '天气'" @click="refreshWeather">
+          {{ weatherBusy ? '获取中' : weatherText || '天气' }}
+        </button>
+        <button class="chip add" :disabled="imgBusy" @click="insertImage">
+          <Icon name="image" class="ci" />{{ imgBusy ? '处理中' : '插图' }}
+        </button>
+      </div>
+      <p v-if="placeNote" class="place-note">{{ placeNote }}</p>
 
       <main class="paper">
         <textarea v-show="mode === 'write'" ref="textarea" v-model="text" class="input prose" :readonly="readOnly"
@@ -284,6 +444,22 @@ function goBack() {
       </main>
     </template>
 
+    <Sheet :open="ai.open" title="AI 标注" @close="ai.open = false">
+      <p v-if="ai.busy" class="muted">正在读这篇日记……</p>
+      <p v-if="ai.error" class="ai-err">{{ ai.error }}</p>
+      <template v-if="ai.x && meta">
+        <div v-for="f in (['places', 'people', 'tags'] as const)" :key="f" class="ai-row">
+          <div class="ai-h">{{ FIELD_NAMES[f] }}<span v-if="meta.locked?.includes(f)" class="ai-lock">你改过，不会覆盖</span></div>
+          <div class="ai-vals" :class="{ dim: meta.locked?.includes(f) }">
+            <span v-for="v in ai.x[f]" :key="v" class="chip" :class="{ on: !(meta[f] ?? []).includes(v) }">{{ v }}</span>
+            <span v-if="!ai.x[f].length" class="muted">（无）</span>
+          </div>
+        </div>
+        <p class="muted small-note">深色的是新增的。确认后写入这篇日记的元数据。</p>
+        <button class="solid-btn" @click="acceptExtract">写入</button>
+      </template>
+    </Sheet>
+    <LocationSheet :open="locOpen" :current="meta?.location" :can-locate="isToday" @close="locOpen = false" @pick="pickLocation" />
     <Sheet :open="sheet === 'tags'" title="标签" @close="closeSheet">
       <ListEditor v-model="draft.tags" :suggestions="suggestions.tags" label="标签" placeholder="输入标签，如 读书" />
     </Sheet>
@@ -319,6 +495,17 @@ function goBack() {
 }
 .chips::-webkit-scrollbar { display: none; }
 .chips .chip { max-width: 70vw; overflow: hidden; text-overflow: ellipsis; }
+.chips + .chips { margin-top: -4px; }
+.ci { width: 16px; height: 16px; flex: none; }
+.chip:disabled { opacity: 1; }
+.ai-row { margin-bottom: 14px; }
+.ai-h { margin-bottom: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.ai-lock { margin-left: 8px; font-weight: 400; color: var(--faint); }
+.ai-vals { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-vals.dim { opacity: 0.45; }
+.ai-err { color: var(--danger); font-size: 14px; }
+.small-note { font-size: 12px; margin: 4px 0 12px; }
+.place-note { margin: -4px 20px 10px; font-size: 12px; color: var(--faint); }
 .paper { padding: 4px 20px calc(40px + var(--safe-bottom)); }
 .input {
   display: block;

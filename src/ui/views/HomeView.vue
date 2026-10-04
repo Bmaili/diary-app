@@ -9,6 +9,10 @@ import MoodFace from '../components/MoodFace.vue'
 import MoonIcon from '../components/MoonIcon.vue'
 import Constellation from '../components/Constellation.vue'
 import { daysBetween, moonPhase } from '../../core/astro'
+import { overall } from '../../syncService'
+import { profileFor } from '../../aiService'
+import { readSummary } from '../../core/summaries'
+import { store } from '../../app'
 import { addDays, parseYmd } from '../../core/time'
 
 defineOptions({ name: 'HomeView' })
@@ -26,6 +30,13 @@ const rows = computed(() => {
 const memories = computed(() => {
   void indexVersion.value
   return index.onThisDay(todayStr.value)
+})
+
+const sync = computed(() => overall())
+const syncIcon = computed(() => ({ off: 'cloud-off', syncing: 'cloud-up', error: 'cloud-err', pending: 'cloud-up', ok: 'cloud-ok' })[sync.value.kind])
+const syncLabel = computed(() => {
+  const s = sync.value
+  return { off: '未开启同步', syncing: '同步中', error: '同步失败', pending: `待同步 ${s.pending} 个文件`, ok: '已同步' }[s.kind]
 })
 
 const titleDate = computed(() => {
@@ -128,6 +139,29 @@ function refreshNow() {
 }
 onActivated(refreshNow)
 
+// 上个月有日记但还没有总结时提示生成；1 月还提示上一年的年度总结（规格 7.4）
+const prompts = ref<{ period: string; label: string }[]>([])
+async function checkPrompts() {
+  if (!profileFor('summary')) {
+    prompts.value = []
+    return
+  }
+  const t = todayStr.value
+  const y = Number(t.slice(0, 4))
+  const m = Number(t.slice(5, 7))
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
+  const out: { period: string; label: string }[] = []
+  if (index.month(Number(prev.slice(0, 4)), Number(prev.slice(5))).length && !(await readSummary(store, prev))) {
+    out.push({ period: prev, label: `生成 ${Number(prev.slice(5))} 月的总结` })
+  }
+  if (m === 1 && index.all().some((r) => r.date.startsWith(String(y - 1))) && !(await readSummary(store, String(y - 1)))) {
+    out.push({ period: String(y - 1), label: `生成 ${y - 1} 年的年度总结` })
+  }
+  prompts.value = out
+}
+watch([indexVersion, todayStr], () => void checkPrompts(), { immediate: true })
+onActivated(() => void checkPrompts())
+
 const memoryDateLabel = (d: string) => {
   const x = parseYmd(d)
   return `${x.getFullYear()} 年 ${x.getMonth() + 1} 月 ${x.getDate()} 日`
@@ -141,6 +175,10 @@ const memoryDateLabel = (d: string) => {
         <span class="num big">{{ titleDate.m }}.{{ String(titleDate.d).padStart(2, '0') }}</span>
         <span class="wk">星期{{ titleDate.wd }}</span>
       </h1>
+      <router-link to="/settings/sync" class="icon-btn sync" :class="sync.kind" :aria-label="syncLabel">
+        <Icon :name="syncIcon" />
+        <span v-if="sync.kind === 'pending' || (sync.kind === 'error' && sync.pending)" class="badge num">{{ sync.pending > 99 ? '99+' : sync.pending }}</span>
+      </router-link>
       <router-link to="/settings" class="icon-btn" aria-label="设置"><Icon name="settings" /></router-link>
     </header>
 
@@ -152,6 +190,14 @@ const memoryDateLabel = (d: string) => {
       </p>
       <Constellation v-if="rows.length" :days="ribbon" :today="todayStr" class="stars" />
       <p class="muted sub">{{ subline }}</p>
+    </section>
+
+    <section v-if="prompts.length" class="prompts">
+      <router-link v-for="p in prompts" :key="p.period" :to="{ path: `/ai/summary/${p.period}`, query: { generate: '1' } }" class="prompt">
+        <Icon name="sparkle" />
+        <span>{{ p.label }}</span>
+        <Icon name="right" class="chev" />
+      </router-link>
     </section>
 
     <section v-if="memories.length" class="memories" aria-label="那年今日">
@@ -190,6 +236,25 @@ const memoryDateLabel = (d: string) => {
 </template>
 
 <style scoped>
+.sync { position: relative; color: var(--muted); }
+.sync.error { color: var(--danger); }
+.sync.off { color: var(--m1); }
+.sync.syncing svg { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.sync .badge {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
 .date { display: flex; align-items: baseline; gap: 10px; margin-left: 12px !important; }
 .date .big { font-size: 34px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; }
 .date .wk { font-size: 15px; font-weight: 600; color: var(--muted); }
@@ -199,6 +264,22 @@ const memoryDateLabel = (d: string) => {
 .day-no { margin-left: auto; }
 .stars { margin: 2px 0 4px; }
 .sub { margin: 0; font-size: 14px; }
+.prompts { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px dashed var(--m3);
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
+}
+.prompt svg { width: 20px; height: 20px; color: var(--m3); flex: none; }
+.prompt span { flex: 1; }
+.prompt .chev { color: var(--faint); width: 16px; height: 16px; }
 .memories { padding: 4px 0 14px; }
 .mem-note { margin: 0 20px 8px; font-size: 12px; color: var(--faint); }
 .mem-track {
