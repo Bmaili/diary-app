@@ -98,7 +98,7 @@ const groups: { key: ListField; label: string }[] = [
         <span class="flabel">心情</span>
         <div class="opts">
           <button v-for="m in 5" :key="m" class="chip" :class="{ on: f.moods.includes(m) }" @click="toggle(f.moods, m)">
-            <span class="dot" :class="`m${m}`"></span>{{ ['很差', '不好', '一般', '不错', '很好'][m - 1] }}
+            <span class="dot" :class="`mood-${m}`"></span>{{ ['很差', '不好', '一般', '不错', '很好'][m - 1] }}
           </button>
         </div>
       </div>
@@ -122,7 +122,7 @@ const groups: { key: ListField; label: string }[] = [
           <div class="hit-head">
             <span class="hd">{{ h.row.date.replace(/-/g, '.') }}</span>
             <span class="muted">{{ weekday(h.row.date) }}</span>
-            <span v-if="h.row.mood" class="dot" :class="`m${h.row.mood}`"></span>
+            <span v-if="h.row.mood" class="dot" :class="`mood-${h.row.mood}`"></span>
             <span v-for="tag in h.row.tags" :key="tag" class="muted small">#{{ tag }}</span>
           </div>
           <p class="snip">
@@ -151,11 +151,11 @@ const groups: { key: ListField; label: string }[] = [
   background: var(--surface);
   border: 1px solid var(--line);
 }
-.box:focus-within { border-color: var(--blue); }
+.box:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); }
 .box .lead { width: 18px; height: 18px; color: var(--faint); flex: none; }
 .box input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 16px; }
 .filter-btn { position: relative; }
-.filter-btn.on { color: var(--blue); }
+.filter-btn.on { background: var(--surface); }
 .badge {
   position: absolute;
   top: 6px;
@@ -164,8 +164,8 @@ const groups: { key: ListField; label: string }[] = [
   height: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: var(--blue);
-  color: var(--surface);
+  background: var(--ink);
+  color: var(--bg);
   font-size: 11px;
   line-height: 16px;
 }
@@ -177,7 +177,7 @@ const groups: { key: ListField; label: string }[] = [
 .opts { display: flex; flex-wrap: wrap; gap: 6px; }
 .small { font-size: 13px; }
 .total { margin: 8px 16px; color: var(--muted); }
-.total strong { color: var(--blue); font-family: var(--serif); font-size: 18px; }
+.total strong { color: var(--ink); font-size: 18px; font-weight: 800; }
 .hint { margin: 24px 24px; line-height: 1.7; font-size: 14px; }
 .results { list-style: none; margin: 0; padding: 0; }
 .hit {
@@ -189,7 +189,7 @@ const groups: { key: ListField; label: string }[] = [
 }
 .hit:active { background: var(--surface); }
 .hit-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.hd { font-family: var(--serif); color: var(--blue); font-weight: 600; font-variant-numeric: tabular-nums; }
-.snip { margin: 4px 0 0; font-family: var(--serif); line-height: 1.7; }
+.hd { font-weight: 800; font-variant-numeric: tabular-nums; }
+.snip { margin: 4px 0 0; line-height: 1.7; }
 .more { display: block; margin: 12px auto; }
 </style>

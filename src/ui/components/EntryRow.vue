@@ -2,80 +2,81 @@
 import { computed } from 'vue'
 import type { IndexRow } from '../../core/types'
 import { weekday } from '../../core/time'
+import { moodLabel } from '../mood'
 
-const props = defineProps<{ row: IndexRow; showYear?: boolean }>()
-const day = computed(() => props.row.date.slice(8))
+const props = defineProps<{ row: IndexRow }>()
+const day = computed(() => String(Number(props.row.date.slice(8))))
 /** 列表摘要把段落连成一行，避免空行占掉三行里的位置 */
 const excerpt = computed(() => props.row.text.replace(/\s*\n+\s*/g, ' '))
-const meta = computed(() =>
-  [props.row.weather, props.row.locationName, ...props.row.tags.map((t) => `#${t}`)].filter(Boolean) as string[],
-)
+const extras = computed(() => [props.row.weather, props.row.locationName].filter(Boolean) as string[])
 </script>
 
 <template>
-  <router-link :to="`/entry/${row.date}`" class="row">
-    <div class="gutter">
-      <span v-if="showYear" class="year">{{ row.date.slice(0, 4) }}.{{ row.date.slice(5, 7) }}</span>
-      <span class="day">{{ day }}</span>
+  <router-link :to="`/entry/${row.date}`" class="row" :class="`mood-${row.mood ?? 0}`">
+    <div class="side">
+      <span class="blob" :title="moodLabel(row.mood)">{{ day }}</span>
       <span class="wd">{{ weekday(row.date) }}</span>
     </div>
     <div class="content">
-      <div v-if="row.mood || meta.length" class="meta">
-        <span v-if="row.mood" class="dot" :class="`m${row.mood}`" :title="`心情 ${row.mood}`"></span>
-        <span v-for="m in meta" :key="m">{{ m }}</span>
-      </div>
       <p v-if="row.error" class="broken">这个文件格式有误，app 不会改动它。打开可查看原文。</p>
       <p class="excerpt">{{ excerpt }}</p>
+      <div v-if="row.tags.length || extras.length" class="meta">
+        <span v-for="t in row.tags" :key="t" class="tag">#{{ t }}</span>
+        <span v-for="m in extras" :key="m">{{ m }}</span>
+      </div>
     </div>
   </router-link>
 </template>
 
 <style scoped>
 .row {
+  position: relative;
   display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 12px;
-  padding: 16px 16px 16px 12px;
+  grid-template-columns: 52px 1fr;
+  gap: 14px;
+  padding: 10px 16px 14px;
   color: inherit;
   text-decoration: none;
-  border-bottom: 1px solid var(--line);
 }
-.row:active { background: var(--surface); }
-.gutter {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  padding-top: 2px;
+/* 竖线把同一个月的日子串起来，像一串珠子 */
+.row::before {
+  content: '';
+  position: absolute;
+  left: 41px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
 }
-.year { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.day {
-  font-family: var(--serif);
-  font-size: 34px;
-  line-height: 1;
-  font-weight: 400;
-  color: var(--blue);
-  font-variant-numeric: lining-nums tabular-nums;
+.row:active .content { opacity: 0.6; }
+.side { position: relative; display: flex; flex-direction: column; align-items: center; }
+.blob {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 4px solid var(--bg);
+  box-sizing: content-box;
+  background: var(--mc);
+  color: var(--on-mood);
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
-.wd { margin-top: 6px; font-size: 12px; color: var(--muted); }
-.content { min-width: 0; }
-.meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  margin-bottom: 4px;
-  font-size: 13px;
-  color: var(--muted);
-}
+.mood-0 .blob { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 2px var(--line); }
+.wd { position: relative; margin-top: 2px; padding: 0 2px; font-size: 12px; color: var(--muted); background: var(--bg); }
+.content { min-width: 0; padding-top: 4px; }
 .excerpt {
   margin: 0;
-  font-family: var(--serif);
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.7;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.tag { color: var(--ink); font-weight: 600; }
 .broken { margin: 0 0 4px; font-size: 13px; color: var(--danger); }
 </style>

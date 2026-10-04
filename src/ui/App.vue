@@ -71,7 +71,7 @@ onMounted(() => {
   grid-template-columns: repeat(4, 1fr);
   height: calc(var(--nav-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
-  background: var(--paper);
+  background: var(--bg);
   border-top: 1px solid var(--line);
 }
 .nav-item {
@@ -85,6 +85,7 @@ onMounted(() => {
   font-size: 12px;
 }
 .nav-item svg { width: 22px; height: 22px; }
-.nav-item.active { color: var(--blue); }
+.nav-item.active { color: var(--ink); }
+.nav-item.active svg { stroke-width: 2.2; }
 .nav-item.active span { font-weight: 600; }
 </style>

@@ -192,11 +192,10 @@ const hours = [0, 1, 2, 3, 4, 5, 6]
   padding: 12px 14px;
   border-radius: 10px;
   background: var(--surface);
-  border-left: 3px solid var(--blue);
   font-size: 14px;
   line-height: 1.65;
 }
-.warn strong { display: block; color: var(--blue); }
+.warn strong { display: block; }
 section { margin-top: 20px; }
 h2 { margin: 0 16px 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .item {
@@ -215,14 +214,14 @@ h2 { margin: 0 16px 4px; font-size: 13px; font-weight: 600; color: var(--muted);
 .item.link:active { background: var(--surface); }
 .desc { font-size: 13px; color: var(--muted); line-height: 1.5; margin-top: 2px; }
 .pad { margin: 0 16px; }
-.result { margin-top: 6px; font-size: 13px; color: var(--blue); }
+.result { margin-top: 6px; font-size: 13px; font-weight: 600; }
 .select { width: auto; min-height: 38px; padding: 0 8px; }
 .chev { width: 18px; height: 18px; color: var(--faint); flex: none; }
 .readme { margin: 0 16px; padding: 4px 0 12px; font-family: var(--sans); font-size: 14px; line-height: 1.7; }
 .readme :deep(h1) { font-size: 16px; margin-top: 8px; }
 .readme :deep(h2) { font-size: 15px; margin: 1.2em 0 0.4em; color: var(--ink); }
 .broken ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
-.broken a { color: var(--blue); }
+.broken a { color: inherit; }
 .gen { display: flex; align-items: center; gap: 4px; }
 .num { width: 76px; min-height: 38px; padding: 0 8px; }
 .danger { color: var(--danger); }

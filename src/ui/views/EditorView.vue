@@ -14,6 +14,7 @@ import type { ListField } from '../../core/types'
 import Icon from '../components/Icon.vue'
 import Sheet from '../components/Sheet.vue'
 import ListEditor from '../components/ListEditor.vue'
+import MoodSlider from '../components/MoodSlider.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,13 +32,6 @@ let metaDirty = false
 let timer: ReturnType<typeof setTimeout> | null = null
 let left = false
 
-const MOODS = [
-  { v: 1, face: '😞', label: '很差' },
-  { v: 2, face: '🙁', label: '不好' },
-  { v: 3, face: '😐', label: '一般' },
-  { v: 4, face: '🙂', label: '不错' },
-  { v: 5, face: '😄', label: '很好' },
-]
 
 const meta = computed(() => session.value?.doc.meta)
 const readOnly = computed(() => !!session.value?.error)
@@ -194,16 +188,18 @@ function toggleMode() {
 
 // ---------- 元数据 ----------
 
-const moodOpen = ref(false)
-function setMood(v: number) {
-  const m = meta.value
-  if (!m) return
-  if (m.mood === v) delete m.mood
-  else m.mood = v
-  metaDirty = true
-  moodOpen.value = false
-  void flush()
-}
+/** 心情：拖动条松手或点文字后立即保存 */
+const mood = computed({
+  get: () => meta.value?.mood,
+  set: (v: number | undefined) => {
+    const m = meta.value
+    if (!m || m.mood === v) return
+    if (v == null) delete m.mood
+    else m.mood = v
+    metaDirty = true
+    void flush()
+  },
+})
 
 const sheet = ref<'' | 'tags' | 'more'>('')
 const draft = reactive<Record<ListField, string[]>>({ tags: [], people: [], places: [] })
@@ -233,7 +229,6 @@ const suggestions = computed(() => {
   }
 })
 
-const moodItem = computed(() => MOODS.find((x) => x.v === meta.value?.mood))
 const weatherText = computed(() => {
   const w = meta.value?.weather
   if (!w) return ''
@@ -267,30 +262,16 @@ function goBack() {
       </p>
       <p v-if="status === 'error'" class="banner">保存失败：{{ saveError }}。内容还在编辑框里，请稍后再试。</p>
 
-      <div v-if="!readOnly" class="chips" role="toolbar" aria-label="日记信息">
-        <button class="chip" :class="{ on: !!moodItem, placeholder: !moodItem }" :aria-expanded="moodOpen"
-          @click="moodOpen = !moodOpen">
-          <template v-if="moodItem">{{ moodItem.face }} {{ moodItem.label }}</template>
-          <template v-else>心情</template>
-        </button>
-        <button class="chip" :class="{ on: !!meta.tags?.length, placeholder: !meta.tags?.length }"
-          @click="openSheet('tags')">
-          {{ meta.tags?.length ? meta.tags.map((t) => '#' + t).join(' ') : '标签' }}
-        </button>
-        <button class="chip" :class="{ on: !!(meta.people?.length || meta.places?.length), placeholder: !(meta.people?.length || meta.places?.length) }"
-          @click="openSheet('more')">
-          {{ [...(meta.people ?? []), ...(meta.places ?? [])].join('、') || '人物和地点' }}
-        </button>
+      <MoodSlider v-if="!readOnly" v-model="mood" :title="isToday ? '今天的心情' : '这天的心情'" />
+
+      <div v-if="!readOnly" class="chips" role="toolbar" aria-label="标签、人物和地点">
+        <button v-for="t in meta.tags ?? []" :key="'t' + t" class="chip on" @click="openSheet('tags')">#{{ t }}</button>
+        <button class="chip add" @click="openSheet('tags')">{{ meta.tags?.length ? '改标签' : '+ 标签' }}</button>
+        <button v-for="t in [...(meta.people ?? []), ...(meta.places ?? [])]" :key="'p' + t" class="chip"
+          @click="openSheet('more')">{{ t }}</button>
+        <button class="chip add" @click="openSheet('more')">{{ meta.people?.length || meta.places?.length ? '改人物和地点' : '+ 人物和地点' }}</button>
         <span v-if="weatherText" class="chip">{{ weatherText }}</span>
         <span v-if="meta.location?.name" class="chip">{{ meta.location.name }}</span>
-      </div>
-
-      <div v-if="moodOpen" class="moods" role="group" aria-label="选择心情">
-        <button v-for="m in MOODS" :key="m.v" class="mood" :class="{ on: meta.mood === m.v }"
-          :aria-pressed="meta.mood === m.v" @click="setMood(m.v)">
-          <span class="face">{{ m.face }}</span>
-          <span>{{ m.label }}</span>
-        </button>
       </div>
 
       <main class="paper">
@@ -314,43 +295,28 @@ function goBack() {
 </template>
 
 <style scoped>
-.editor { min-height: 100vh; background: var(--paper); }
+.editor { min-height: 100vh; background: var(--bg); }
 .titles { flex: 1; display: flex; flex-direction: column; margin-left: 4px; min-width: 0; }
-.titles h1 { margin: 0; font-family: var(--serif); font-size: 19px; font-weight: 600; line-height: 1.25; }
+.titles h1 { margin: 0; font-size: 20px; font-weight: 800; line-height: 1.25; }
 .sub { font-size: 12px; color: var(--muted); }
 .status { font-size: 12px; color: var(--faint); white-space: nowrap; }
 .banner {
   margin: 4px 16px 8px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--surface);
-  border-left: 3px solid var(--danger);
+  color: var(--danger);
   font-size: 14px;
 }
 .chips {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 4px 16px 10px;
+  padding: 0 16px 12px;
   scrollbar-width: none;
 }
 .chips::-webkit-scrollbar { display: none; }
 .chips .chip { max-width: 70vw; overflow: hidden; text-overflow: ellipsis; }
-.moods { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 0 16px 12px; }
-.mood {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  font-size: 12px;
-  color: var(--muted);
-}
-.mood .face { font-size: 24px; line-height: 1.2; }
-.mood.on { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); }
 .paper { padding: 4px 20px calc(40px + var(--safe-bottom)); }
 .input {
   display: block;

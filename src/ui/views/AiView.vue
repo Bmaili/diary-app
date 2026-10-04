@@ -5,7 +5,7 @@ import { index, indexVersion } from '../../app'
 const stats = computed(() => {
   void indexVersion.value
   const all = index.all()
-  return { count: all.length, first: all.at(-1)?.date, last: all[0]?.date }
+  return { count: all.length, first: all[all.length - 1]?.date, last: all[0]?.date }
 })
 </script>
 
@@ -26,6 +26,6 @@ const stats = computed(() => {
 
 <style scoped>
 .wrap { padding: 16px 24px; max-width: 34em; }
-.lead { font-family: var(--serif); font-size: 18px; line-height: 1.7; margin: 8px 0 12px; }
+.lead { font-size: 18px; font-weight: 700; line-height: 1.6; margin: 8px 0 12px; }
 .small { font-size: 13px; }
 </style>

@@ -33,11 +33,11 @@ const emit = defineEmits<{ close: [] }>()
   max-height: 80vh;
   overflow-y: auto;
   padding: 8px 16px calc(20px + var(--safe-bottom));
-  border-radius: 16px 16px 0 0;
-  background: var(--paper);
+  border-radius: 24px 24px 0 0;
+  background: var(--bg);
 }
 .head { display: flex; align-items: center; justify-content: space-between; min-height: 48px; }
-.head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.head h2 { margin: 0; font-size: 18px; font-weight: 800; }
 .sheet-enter-active, .sheet-leave-active { transition: opacity 0.18s ease; }
 .sheet-enter-active .sheet, .sheet-leave-active .sheet { transition: transform 0.22s ease; }
 .sheet-enter-from, .sheet-leave-to { opacity: 0; }
