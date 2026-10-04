@@ -9,6 +9,7 @@ import { Capacitor } from '@capacitor/core'
 import { setHttpImpl } from './core/http'
 import { nativeHttpImpl } from './platform/nativeHttp'
 import { loadPrefs } from './prefs'
+import { purgeTrash, trashEntry } from './core/trash'
 
 export const store = new CapacitorStore()
 export const repo = new DiaryRepo(store)
@@ -38,6 +39,7 @@ export function start(): Promise<void> {
       await index.load()
       indexVersion.value++
       ready.value = true
+      void purgeTrash(store).catch(() => {})
       for (const fn of startHooks) fn()
     } catch (e) {
       loadError.value = (e as Error).message
@@ -83,6 +85,15 @@ export function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const next = queue.then(fn, fn)
   queue = next.catch(() => {})
   return next
+}
+
+/** 删除一篇日记：移到“最近删除”，并通知同步（云端副本在下次同步时删除） */
+export async function deleteEntryToTrash(date: string): Promise<void> {
+  await enqueue(async () => {
+    await trashEntry(repo, date)
+    await refreshDate(date)
+  })
+  diaryChanged()
 }
 
 export async function refreshDate(date: string) {

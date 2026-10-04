@@ -2,8 +2,7 @@
 /** 一份总结（规格 7.4、4.6）：查看、生成、手动编辑（编辑后自动锁定）、解锁后重新生成。 */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { renderMarkdown } from '../markdown'
 import { diaryChanged, index, repo, store } from '../../app'
 import { summarize, summarizing } from '../../aiService'
 import { isoLocal } from '../../core/time'
@@ -31,7 +30,7 @@ onMounted(async () => {
   if (route.query.generate === '1' && !doc.value) void gen()
 })
 
-const html = computed(() => (doc.value ? DOMPurify.sanitize(marked.parse(doc.value.body, { async: false }) as string) : ''))
+const html = computed(() => (doc.value ? renderMarkdown(doc.value.body) : ''))
 const busy = computed(() => summarizing.period === period)
 const locked = computed(() => !!doc.value?.meta.locked)
 

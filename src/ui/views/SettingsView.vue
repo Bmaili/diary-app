@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import {
-  diaryChanged, enqueue, index, indexVersion, reloadIndex, repo, setCutoffHour, setDevMode, settings, today,
+  diaryChanged, enqueue, index, indexVersion, reloadIndex, repo, setCutoffHour, setDevMode, settings, store, today,
 } from '../../app'
+import { listTrash } from '../../core/trash'
 import { exportDiaryZip, zipFileName } from '../../core/exportZip'
 import { generateTestEntries } from '../../core/testData'
 import { README_MD } from '../../core/readme'
@@ -20,6 +21,9 @@ const busy = ref('')
 const msg = ref<Record<string, string>>({})
 const showReadme = ref(false)
 const readmeHtml = computed(() => DOMPurify.sanitize(marked.parse(README_MD, { async: false }) as string))
+
+const trashCount = ref(0)
+onMounted(async () => (trashCount.value = (await listTrash(store)).length))
 
 const stats = computed(() => {
   void indexVersion.value
@@ -193,6 +197,13 @@ const syncLine = computed(() => {
         </div>
         <button class="text-btn" :disabled="!!busy" @click="doRebuild">{{ busy === 'rebuild' ? '重建中' : '重建' }}</button>
       </div>
+      <router-link to="/settings/trash" class="item link">
+        <div>
+          <div>最近删除</div>
+          <div class="desc">{{ trashCount ? `${trashCount} 篇，保留 30 天后彻底删除` : '删掉的日记会在这里保留 30 天' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
       <button class="item link" :aria-expanded="showReadme" @click="showReadme = !showReadme">
         <div>
           <div>数据格式说明</div>

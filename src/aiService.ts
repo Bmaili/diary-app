@@ -3,7 +3,7 @@ import { reactive } from 'vue'
 import { diaryChanged, enqueue, index, refreshDate, repo, store, today } from './app'
 import { prefs, type LlmProfile } from './prefs'
 import { getSecret } from './platform/secrets'
-import type { LlmConfig } from './core/llm/client'
+import { parseExtraBody, type LlmConfig, type Usage } from './core/llm/client'
 import { DiaryTools } from './core/llm/tools'
 import { ask, systemPrompt, type Step } from './core/llm/agent'
 import { extractEntry, applyExtraction, runBatch, vocabulary, type BatchState, type Extraction } from './core/llm/extract'
@@ -24,7 +24,31 @@ export function profileFor(task: Task): LlmProfile | null {
 export async function configFor(task: Task): Promise<LlmConfig> {
   const p = profileFor(task)
   if (!p) throw new Error('还没有添加 AI 服务，请先到“设置 → AI 服务”里添加')
-  return { protocol: p.protocol, baseUrl: p.baseUrl, model: p.model, apiKey: await getSecret(`llm.${p.id}`), instructions: prefs.ai.notes }
+  return { ...profileConfig(p, await getSecret(`llm.${p.id}`)), instructions: notesFor(task) }
+}
+
+/** 设置里的数字：输入框清空或乱填时用默认值 */
+export function int(v: unknown, min: number, max: number, def: number): number {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : def
+}
+
+/** 共用的补充说明加上这项功能自己的 */
+export function notesFor(task: Task): string {
+  return [prefs.ai.notes, prefs.ai.taskNotes[task]].map((s) => s?.trim()).filter(Boolean).join('\n\n')
+}
+
+/** 服务配置（含高级设置）转成请求用的配置。额外参数写错时报错，免得悄悄被忽略。 */
+export function profileConfig(p: LlmProfile, apiKey: string): LlmConfig {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined)
+  return {
+    protocol: p.protocol, baseUrl: p.baseUrl, model: p.model, apiKey,
+    contextTokens: num(p.contextTokens),
+    maxOutput: num(p.maxOutput),
+    temperature: typeof p.temperature === 'number' && Number.isFinite(p.temperature) ? p.temperature : undefined,
+    timeoutMs: num(p.timeoutSec) ? p.timeoutSec! * 1000 : undefined,
+    extraBody: parseExtraBody(p.extraBody),
+  }
 }
 
 /** 第一次把日记发给某个服务前，说明会发什么（规格第 8 节） */
@@ -54,6 +78,10 @@ export interface ChatTurn {
   dates: string[]
   error?: string
   at: number
+  /** 调了几次模型、用了多少 token（旧记录没有） */
+  usage?: Usage & { calls: number }
+  /** 为了不超出上下文省略过内容 */
+  compacted?: boolean
 }
 
 export interface Conversation {
@@ -120,8 +148,10 @@ export async function askQuestion(q: string): Promise<void> {
       history: conv.turns.filter((t) => !t.error).map((t) => ({ q: t.q, a: t.a })),
       system: systemPrompt(today(), all[all.length - 1]?.date ?? null, all[0]?.date ?? null, all.length),
       onStep: (s) => asking.steps.push(s),
+      historyTurns: int(prefs.ai.chat.historyTurns, 0, 20, 6),
+      maxRounds: int(prefs.ai.chat.maxRounds, 2, 20, 10),
     })
-    Object.assign(turn, { a: r.answer, steps: r.steps, dates: r.dates })
+    Object.assign(turn, { a: r.answer, steps: r.steps, dates: r.dates, usage: r.usage, ...(r.compacted ? { compacted: true } : {}) })
   } catch (e) {
     turn.error = (e as Error).message
     turn.steps = [...asking.steps]
@@ -162,6 +192,7 @@ export async function startBatch() {
   const dates = index.needsExtraction().map((r) => r.date)
   await runBatch({
     cfg, repo, index, dates, state: batch,
+    concurrency: int(prefs.ai.extract.concurrency, 1, 4, 2),
     onSaved: (d) => refreshDate(d),
   })
   diaryChanged()

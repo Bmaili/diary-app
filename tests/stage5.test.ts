@@ -94,6 +94,7 @@ describe('AI 补充说明', () => {
     expect(s.startsWith('只输出 JSON')).toBe(true)
     expect(s).toContain('<user_notes>\n小雨是我女朋友\n</user_notes>')
     expect(s).toContain('以上面的要求为准')
-    expect(withInstructions('S', 'x'.repeat(5000)).length).toBeLessThan(2300)
+    // 共用说明最多 2000 字，加上分功能说明最多 1500 字，合计截到 4000
+    expect(withInstructions('S', 'x'.repeat(5000)).length).toBeLessThan(4300)
   })
 })

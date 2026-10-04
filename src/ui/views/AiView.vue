@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { renderMarkdown } from '../markdown'
 import { index, indexVersion, store } from '../../app'
 import { prefs } from '../../prefs'
 import {
   asking, askQuestion, batch, chats, current, deleteConversation, ensureConsent, loadChats, merge, newConversation,
-  pauseBatch, profileFor, startBatch,
+  pauseBatch, profileFor, startBatch, type ChatTurn,
 } from '../../aiService'
 import { summaryStatus, type SummaryStatus } from '../../core/summaries'
 import type { ListField } from '../../core/types'
@@ -41,11 +40,20 @@ const showHistory = ref(false)
 const SUGGEST = ['过去一年我去过几次健身房？', '我最近一个月心情怎么样？', '这一年我和谁见面最多？', '帮我回顾一下上个月']
 
 function render(md: string): string {
-  const html = DOMPurify.sanitize(marked.parse(md, { async: false, gfm: true }) as string)
+  const html = renderMarkdown(md)
   // 把日期变成可点开对应日记的链接
   return html.replace(/(^|[^\w/#-])(\d{4}-\d{2}-\d{2})(?![\w-])/g, (_, pre: string, d: string) =>
     index.get(d) ? `${pre}<a href="#/entry/${d}" class="dl">${d}</a>` : `${pre}${d}`,
   )
+}
+
+const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+function usageText(t: ChatTurn): string {
+  const u = t.usage
+  const parts: string[] = []
+  if (u?.input) parts.push(`调用模型 ${u.calls} 次，输入 ${k(u.input)}，输出 ${k(u.output)} tokens`)
+  if (t.compacted) parts.push('内容太多，省略了部分较早的查询结果')
+  return parts.join('；')
 }
 
 async function send(text = q.value) {
@@ -188,6 +196,7 @@ function toggleSel(v: string) {
         <p v-if="t.error" class="err">没有回答成功：{{ t.error }}</p>
         <!-- eslint-disable-next-line vue/no-v-html -->
         <div v-else class="prose a" v-html="render(t.a)" />
+        <p v-if="usageText(t)" class="usage">{{ usageText(t) }}</p>
       </article>
       <article v-if="asking.busy" class="turn">
         <p class="q">{{ asking.question }}</p>
@@ -319,6 +328,7 @@ function toggleSel(v: string) {
 .a { font-size: 16px; }
 .a :deep(a.dl) { font-family: var(--num); font-size: 1.05em; font-weight: 600; text-decoration: none; padding: 0 3px; border-radius: 4px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
 .err { color: var(--danger); font-size: 14px; }
+.usage { margin: 6px 0 0; font-size: 12px; color: var(--faint); }
 .composer {
   position: fixed;
   left: 0;

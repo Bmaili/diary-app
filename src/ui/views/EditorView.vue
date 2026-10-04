@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { renderMarkdown } from '../markdown'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
-import { enqueue, index, indexVersion, refreshDate, repo, today } from '../../app'
+import { deleteEntryToTrash, enqueue, index, indexVersion, refreshDate, repo, today } from '../../app'
 import { syncAfterEdit } from '../../syncService'
 import { bodyFor, openSession, type EditSession } from '../../core/session'
 import { hasContent, setListFieldManually } from '../../core/entryFile'
@@ -45,6 +44,8 @@ let savedBody = ''
 let metaDirty = false
 let timer: ReturnType<typeof setTimeout> | null = null
 let left = false
+/** 已经删除：之后不再写盘 */
+let deleted = false
 
 
 const meta = computed(() => session.value?.doc.meta)
@@ -61,7 +62,7 @@ const subtitle = computed(() => {
   return parts.join('，')
 })
 const renderedRaw = computed(() =>
-  session.value ? DOMPurify.sanitize(marked.parse(bodyFor(session.value, text.value), { async: false, gfm: true }) as string) : '',
+  session.value ? renderMarkdown(bodyFor(session.value, text.value)) : '',
 )
 // 阅读视图：把相对路径的图片换成本地文件内容
 const rendered = ref('')
@@ -111,7 +112,7 @@ function flush(): Promise<void> {
     timer = null
   }
   const s = session.value
-  if (!s || s.error) return Promise.resolve()
+  if (!s || s.error || deleted) return Promise.resolve()
   const body = bodyFor(s, text.value)
   return enqueue(async () => {
     if (body === savedBody && !metaDirty) return
@@ -305,15 +306,12 @@ onBeforeUnmount(() => {
 onBeforeRouteLeave(async () => {
   left = true
   const s = session.value
-  if (!s || s.error) return true
+  if (!s || s.error || deleted) return true
   if (timer) clearTimeout(timer)
   const body = bodyFor(s, text.value)
   if (!hasContent(body) && s.existed) {
-    if (window.confirm('正文已清空。要删除这一天的日记吗？')) {
-      await enqueue(async () => {
-        await repo.deleteEntry(date)
-        await refreshDate(date)
-      })
+    if (window.confirm('正文已清空。要删除这一天的日记吗？\n\n删除后可以在“设置 → 最近删除”里找回，保留 30 天。')) {
+      await deleteEntryToTrash(date)
       syncAfterEdit()
     }
     return true
@@ -471,6 +469,24 @@ const weatherText = computed(() => {
   return [w.text, w.temp_c != null ? `${w.temp_c}°C` : ''].filter(Boolean).join(' ')
 })
 
+/** 删除这一天：移到“最近删除”，云端副本在下次同步时删除 */
+async function removeEntry() {
+  const s = session.value
+  if (!s?.existed) return
+  const ok = window.confirm(
+    `删除${title.value}的日记？\n\n日记和这天插的图片会移到“设置 → 最近删除”，保留 30 天，可以恢复。` +
+      '开了同步的话，云端的副本会在下次同步时删除。',
+  )
+  if (!ok) return
+  // 先把最后一秒的输入存下来，回收站里的才是完整版本
+  if (hasContent(bodyFor(s, text.value))) await flush()
+  left = true
+  deleted = true
+  await deleteEntryToTrash(date)
+  syncAfterEdit()
+  goBack()
+}
+
 function goBack() {
   if (window.history.state?.back) router.back()
   else router.replace('/')
@@ -486,6 +502,9 @@ function goBack() {
         <span class="sub">{{ subtitle }}</span>
       </div>
       <span class="status" aria-live="polite">{{ statusText }}</span>
+      <button v-if="session?.existed" class="icon-btn" aria-label="删除这篇日记" @click="removeEntry">
+        <Icon name="trash" />
+      </button>
       <button class="icon-btn" :aria-label="mode === 'write' ? '阅读视图' : '编辑'" :disabled="!session"
         @click="toggleMode">
         <Icon :name="mode === 'write' ? 'read' : 'pen'" />

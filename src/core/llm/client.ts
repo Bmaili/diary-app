@@ -13,13 +13,40 @@ export interface LlmConfig {
   apiKey: string
   /** 用户在设置里写的补充说明（关于自己、称呼、偏好），附加在系统提示后面 */
   instructions?: string
+  /** 以下是服务的高级设置，留空时按各功能的默认值 */
+  /** 模型的上下文长度（tokens），问答据此控制每次发送的内容量 */
+  contextTokens?: number
+  /** 最大输出 tokens，设置后覆盖各功能的默认值（推理模型的思考也算在里面，需要调大） */
+  maxOutput?: number
+  /** 温度，设置后覆盖各功能的默认值（有的推理模型只接受固定温度） */
+  temperature?: number
+  timeoutMs?: number
+  /** 合并进请求体的额外参数，例如 {"enable_thinking": false} */
+  extraBody?: Record<string, unknown>
+}
+
+export const DEFAULT_CONTEXT_TOKENS = 64000
+
+/** 解析“额外参数”输入框：空串为 undefined，不是 JSON 对象时抛错 */
+export function parseExtraBody(text: string | undefined): Record<string, unknown> | undefined {
+  const t = text?.trim()
+  if (!t) return undefined
+  let v: unknown
+  try {
+    v = JSON.parse(t)
+  } catch {
+    throw new Error('额外参数不是合法的 JSON')
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('额外参数要是一个 JSON 对象，例如 {"enable_thinking": false}')
+  for (const k of ['model', 'messages', 'system', 'tools']) if (k in (v as object)) throw new Error(`额外参数里不能有 ${k}`)
+  return v as Record<string, unknown>
 }
 
 /** 把用户补充说明接在系统提示后面。格式要求写在前面并声明优先，避免用户说明打乱 JSON 输出。 */
 export function withInstructions(system: string, instructions?: string): string {
   const extra = instructions?.trim()
   if (!extra) return system
-  return `${system}\n\n以下是用户提供的背景和偏好，供你理解日记内容和调整表达。若与上面的输出格式要求冲突，以上面的要求为准：\n<user_notes>\n${extra.slice(0, 2000)}\n</user_notes>`
+  return `${system}\n\n以下是用户提供的背景和偏好，供你理解日记内容和调整表达。若与上面的输出格式要求冲突，以上面的要求为准：\n<user_notes>\n${extra.slice(0, 4000)}\n</user_notes>`
 }
 
 export interface ToolDef {
@@ -50,10 +77,17 @@ export interface ChatRequest {
   timeoutMs?: number
 }
 
+export interface Usage {
+  input: number
+  output: number
+}
+
 export interface ChatResult {
   text: string
   toolCalls: ToolCall[]
   stop: string
+  /** 服务返回的 token 用量；有的服务不返回 */
+  usage?: Usage
 }
 
 export class LlmError extends Error {
@@ -89,6 +123,9 @@ function errorMessage(status: number, body: string): string {
     403: '没有权限使用这个模型',
     404: '接口地址或模型名不对',
     429: '请求太频繁或额度用完了，稍后再试',
+  }
+  if ((status === 400 || status === 413) && /context|too long|maximum.*token|token.*(limit|exceed)|input length|超出.*(长度|上下文)/i.test(detail)) {
+    return `发送的内容超出了模型的上下文长度。请在 AI 服务的高级设置里把“上下文长度”调小一些，或者把问题的时间范围缩小（${detail}）`
   }
   return `${hint[status] ?? `服务返回 ${status}`}${detail ? `（${detail}）` : ''}`
 }
@@ -138,10 +175,14 @@ async function chatOpenAI(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult>
     body.tools = req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }))
     body.tool_choice = 'auto'
   }
-  if (req.maxTokens) body.max_tokens = req.maxTokens
-  if (req.temperature != null) body.temperature = req.temperature
-  const data = (await post(openaiUrl(cfg.baseUrl), { Authorization: `Bearer ${cfg.apiKey}` }, body, req.timeoutMs ?? 120000)) as {
+  const maxTokens = cfg.maxOutput || req.maxTokens
+  if (maxTokens) body.max_tokens = maxTokens
+  const temperature = cfg.temperature ?? req.temperature
+  if (temperature != null) body.temperature = temperature
+  Object.assign(body, cfg.extraBody)
+  const data = (await post(openaiUrl(cfg.baseUrl), { Authorization: `Bearer ${cfg.apiKey}` }, body, timeoutOf(cfg, req))) as {
     choices?: { message?: { content?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }; finish_reason?: string }[]
+    usage?: { prompt_tokens?: number; completion_tokens?: number }
   }
   const choice = data.choices?.[0]
   if (!choice?.message) throw new LlmError('服务没有返回回答')
@@ -149,7 +190,11 @@ async function chatOpenAI(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult>
     const p = parseArgs(c.function?.arguments)
     return { id: c.id || `call_${i}`, name: c.function?.name ?? '', args: p.args, ...(p.bad ? { badArgs: p.bad } : {}) }
   })
-  return { text: choice.message.content ?? '', toolCalls, stop: choice.finish_reason ?? '' }
+  const u = data.usage
+  return {
+    text: choice.message.content ?? '', toolCalls, stop: choice.finish_reason ?? '',
+    ...(u?.prompt_tokens != null ? { usage: { input: u.prompt_tokens, output: u.completion_tokens ?? 0 } } : {}),
+  }
 }
 
 async function chatAnthropic(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
@@ -166,21 +211,37 @@ async function chatAnthropic(cfg: LlmConfig, req: ChatRequest): Promise<ChatResu
       for (const c of m.toolCalls ?? []) push('assistant', { type: 'tool_use', id: c.id, name: c.name, input: c.args })
     } else push('user', { type: 'tool_result', tool_use_id: m.toolCallId, content: m.content })
   }
-  const body: Record<string, unknown> = { model: cfg.model, max_tokens: req.maxTokens ?? 4096, system: withInstructions(req.system, cfg.instructions), messages }
+  const body: Record<string, unknown> = {
+    model: cfg.model, max_tokens: cfg.maxOutput || req.maxTokens || 4096, system: withInstructions(req.system, cfg.instructions), messages,
+  }
   if (req.tools?.length) body.tools = req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }))
-  if (req.temperature != null) body.temperature = req.temperature
+  const temperature = cfg.temperature ?? req.temperature
+  if (temperature != null) body.temperature = temperature
+  Object.assign(body, cfg.extraBody)
   const data = (await post(
     anthropicUrl(cfg.baseUrl),
     { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
     body,
-    req.timeoutMs ?? 120000,
-  )) as { content?: { type: string; text?: string; id?: string; name?: string; input?: unknown }[]; stop_reason?: string }
+    timeoutOf(cfg, req),
+  )) as {
+    content?: { type: string; text?: string; id?: string; name?: string; input?: unknown }[]
+    stop_reason?: string
+    usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+  }
   const blocks = data.content ?? []
+  const u = data.usage
   return {
     text: blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join(''),
     toolCalls: blocks.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id!, name: b.name!, args: parseArgs(b.input).args })),
     stop: data.stop_reason ?? '',
+    ...(u?.input_tokens != null
+      ? { usage: { input: u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens ?? 0 } }
+      : {}),
   }
+}
+
+function timeoutOf(cfg: LlmConfig, req: ChatRequest): number {
+  return cfg.timeoutMs || req.timeoutMs || 120000
 }
 
 export function chat(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {

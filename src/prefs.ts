@@ -10,6 +10,13 @@ export interface LlmProfile {
   protocol: 'openai' | 'anthropic'
   baseUrl: string
   model: string
+  /** 高级设置，都可以不填 */
+  contextTokens?: number
+  maxOutput?: number
+  temperature?: number
+  timeoutSec?: number
+  /** 合并进请求体的 JSON，原样保存用户输入 */
+  extraBody?: string
 }
 
 export const prefs = reactive({
@@ -32,6 +39,12 @@ export const prefs = reactive({
     consented: [] as string[],
     /** 给 AI 的补充说明（问答、抽取、总结都会带上） */
     notes: '',
+    /** 只给某一项功能的补充说明，接在共用说明后面 */
+    taskNotes: { chat: '', extract: '', summary: '' },
+    /** 问答：带上最近几轮对话、最多调用几轮工具 */
+    chat: { historyTurns: 6, maxRounds: 10 },
+    /** 批量抽取同时处理几篇 */
+    extract: { concurrency: 2 },
   },
   reminder: {
     enabled: false,

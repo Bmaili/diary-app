@@ -6,7 +6,7 @@ import { ymd } from '../../core/time'
 import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
 import MoonIcon from '../components/MoonIcon.vue'
-import { MOOD_LABELS, SPECTRAL } from '../mood'
+import { MOOD_LABELS } from '../mood'
 import { moonOnDate } from '../../core/astro'
 
 defineOptions({ name: 'CalendarView' })
@@ -110,10 +110,10 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
     </div>
 
     <div class="legend" aria-label="心情颜色">
-      <span v-for="(w, i) in MOOD_LABELS" :key="w" :class="`mood-${i + 1}`"><i class="dot"></i>{{ w }}<b class="num">{{ SPECTRAL[i] }}</b></span>
+      <span v-for="(w, i) in MOOD_LABELS" :key="w" :class="`mood-${i + 1}`"><i class="dot"></i>{{ w }}</span>
       <span class="mood-0"><i class="dot"></i>没记心情</span>
     </div>
-    <p class="hint muted">心情颜色取自恒星光谱：越热越蓝，“一般”和太阳一样是 G 型。每天下面是当晚的月相。点没写的日子可以补写，左右滑动换月份。</p>
+    <p class="hint muted">每天下面是当晚的月相。点没写的日子可以补写，左右滑动换月份。</p>
   </div>
 </template>
 
@@ -155,6 +155,5 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
 .cell:active:not(:disabled) .d { transform: scale(0.9); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 22px 20px 0; font-size: 12px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
-.legend b { font-size: 13px; font-weight: 600; color: var(--faint); }
 .hint { margin: 10px 20px; font-size: 13px; line-height: 1.6; }
 </style>

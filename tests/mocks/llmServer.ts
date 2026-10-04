@@ -20,6 +20,8 @@ export interface LlmMock {
   script: Script
   /** 让接下来的 n 次请求失败 */
   failNext: number
+  /** 失败时的状态码和错误信息，默认 500 boom */
+  failWith?: { status: number; message: string }
   close: () => Promise<void>
 }
 
@@ -40,7 +42,7 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
     const json = (status: number, data: unknown) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(data))
     if (mock.failNext > 0) {
       mock.failNext--
-      return json(500, { error: { message: 'boom' } })
+      return json(mock.failWith?.status ?? 500, { error: { message: mock.failWith?.message ?? 'boom' } })
     }
     const anthropic = req.url!.endsWith('/v1/messages')
     const auth = anthropic ? req.headers['x-api-key'] : String(req.headers.authorization ?? '').replace(/^Bearer /, '')
@@ -76,6 +78,7 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
       json(200, {
         content: [...(out.text ? [{ type: 'text', text: out.text }] : []), ...calls.map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args }))],
         stop_reason: calls.length ? 'tool_use' : 'end_turn',
+        usage: { input_tokens: 100, output_tokens: 10 },
       })
     } else {
       json(200, {
@@ -87,6 +90,7 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
           },
           finish_reason: calls.length ? 'tool_calls' : 'stop',
         }],
+        usage: { prompt_tokens: 100, completion_tokens: 10 },
       })
     }
   })
