@@ -14,7 +14,7 @@ const extras = computed(() => [props.row.weather, props.row.locationName].filter
 <template>
   <router-link :to="`/entry/${row.date}`" class="row" :class="`mood-${row.mood ?? 0}`">
     <div class="side">
-      <span class="blob" :title="moodLabel(row.mood)">{{ day }}</span>
+      <span class="blob num" :title="moodLabel(row.mood)">{{ day }}</span>
       <span class="wd">{{ weekday(row.date) }}</span>
     </div>
     <div class="content">
@@ -43,6 +43,7 @@ const extras = computed(() => [props.row.weather, props.row.locationName].filter
   content: '';
   position: absolute;
   left: 41px;
+  opacity: 0.7;
   top: 0;
   bottom: 0;
   width: 2px;
@@ -53,19 +54,17 @@ const extras = computed(() => [props.row.weather, props.row.locationName].filter
 .blob {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
-  border: 4px solid var(--bg);
-  box-sizing: content-box;
   background: var(--mc);
   color: var(--on-mood);
-  font-size: 19px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  font-size: 23px;
+  font-weight: 600;
+  box-shadow: var(--glow);
 }
 .mood-0 .blob { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 2px var(--line); }
-.wd { position: relative; margin-top: 2px; padding: 0 2px; font-size: 12px; color: var(--muted); background: var(--bg); }
+.wd { position: relative; margin-top: 6px; padding: 1px 2px; font-size: 12px; line-height: 1.2; color: var(--muted); background: var(--bg); }
 .content { min-width: 0; padding-top: 4px; }
 .excerpt {
   margin: 0;

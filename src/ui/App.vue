@@ -11,10 +11,10 @@ const router = useRouter()
 const tab = computed(() => route.meta.tab as string | undefined)
 
 const tabs = [
-  { key: 'home', path: '/', label: '日记', icon: 'home' },
-  { key: 'calendar', path: '/calendar', label: '日历', icon: 'calendar' },
-  { key: 'search', path: '/search', label: '搜索', icon: 'search' },
-  { key: 'ai', path: '/ai', label: 'AI', icon: 'ai' },
+  { key: 'home', path: '/', label: '日记', icon: 'book' },
+  { key: 'calendar', path: '/calendar', label: '日历', icon: 'moon' },
+  { key: 'search', path: '/search', label: '搜索', icon: 'telescope' },
+  { key: 'ai', path: '/ai', label: 'AI', icon: 'orbit' },
 ]
 
 onMounted(() => {
@@ -71,7 +71,9 @@ onMounted(() => {
   grid-template-columns: repeat(4, 1fr);
   height: calc(var(--nav-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--stars, none);
+  background-attachment: fixed;
   border-top: 1px solid var(--line);
 }
 .nav-item {
@@ -85,7 +87,17 @@ onMounted(() => {
   font-size: 12px;
 }
 .nav-item svg { width: 22px; height: 22px; }
+.nav-item svg { transition: transform 0.2s; }
 .nav-item.active { color: var(--ink); }
-.nav-item.active svg { stroke-width: 2.2; }
-.nav-item.active span { font-weight: 600; }
+.nav-item.active svg { stroke-width: 2; transform: translateY(-1px); }
+.nav-item.active span { font-weight: 700; }
+.nav-item.active::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--m3);
+  box-shadow: 0 0 6px var(--m3);
+}
 </style>

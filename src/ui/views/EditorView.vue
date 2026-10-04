@@ -10,6 +10,8 @@ import { enqueue, index, indexVersion, refreshDate, repo, today } from '../../ap
 import { bodyFor, openSession, type EditSession } from '../../core/session'
 import { hasContent, setListFieldManually } from '../../core/entryFile'
 import { isValidYmd, parseYmd, weekday } from '../../core/time'
+import { moonOnDate } from '../../core/astro'
+import MoonIcon from '../components/MoonIcon.vue'
 import type { ListField } from '../../core/types'
 import Icon from '../components/Icon.vue'
 import Sheet from '../components/Sheet.vue'
@@ -42,7 +44,7 @@ const title = computed(() => {
 })
 const subtitle = computed(() => {
   const y = date.slice(0, 4)
-  const parts = [`${y} 年`, weekday(date)]
+  const parts = [`${y} 年`, weekday(date), moonOnDate(date).name]
   if (!isToday.value && !session.value?.existed) parts.push('补写')
   return parts.join('，')
 })
@@ -246,7 +248,7 @@ function goBack() {
     <header class="topbar">
       <button class="icon-btn" aria-label="返回" @click="goBack"><Icon name="back" /></button>
       <div class="titles">
-        <h1>{{ title }}</h1>
+        <h1><MoonIcon :phase="moonOnDate(date).phase" :size="16" class="moon" />{{ title }}</h1>
         <span class="sub">{{ subtitle }}</span>
       </div>
       <span class="status" aria-live="polite">{{ statusText }}</span>
@@ -297,7 +299,7 @@ function goBack() {
 <style scoped>
 .editor { min-height: 100vh; background: var(--bg); }
 .titles { flex: 1; display: flex; flex-direction: column; margin-left: 4px; min-width: 0; }
-.titles h1 { margin: 0; font-size: 20px; font-weight: 800; line-height: 1.25; }
+.titles h1 { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--num); font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: 0.02em; }
 .sub { font-size: 12px; color: var(--muted); }
 .status { font-size: 12px; color: var(--faint); white-space: nowrap; }
 .banner {

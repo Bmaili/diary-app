@@ -5,7 +5,9 @@ import { index, indexVersion, today } from '../../app'
 import { ymd } from '../../core/time'
 import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
-import { MOOD_LABELS } from '../mood'
+import MoonIcon from '../components/MoonIcon.vue'
+import { MOOD_LABELS, SPECTRAL } from '../mood'
+import { moonOnDate } from '../../core/astro'
 
 defineOptions({ name: 'CalendarView' })
 
@@ -30,8 +32,12 @@ const cells = computed(() => {
   const first = new Date(year.value, month.value - 1, 1)
   const lead = (first.getDay() + 6) % 7
   const days = new Date(year.value, month.value, 0).getDate()
-  const out: ({ date: string; day: number } | null)[] = Array(lead).fill(null)
-  for (let d = 1; d <= days; d++) out.push({ date: ymd(new Date(year.value, month.value - 1, d)), day: d })
+  const out: ({ date: string; day: number; phase: number; moon: string } | null)[] = Array(lead).fill(null)
+  for (let d = 1; d <= days; d++) {
+    const date = ymd(new Date(year.value, month.value - 1, d))
+    const m = moonOnDate(date)
+    out.push({ date, day: d, phase: m.phase, moon: m.name })
+  }
   while (out.length % 7) out.push(null)
   return out
 })
@@ -74,7 +80,7 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
 <template>
   <div class="page">
     <header class="topbar">
-      <h1>{{ month }} 月<small>{{ year }}</small></h1>
+      <h1><span class="num">{{ month }}</span>月<small class="num">{{ year }}</small></h1>
       <button v-if="!isCurrent" class="text-btn" @click="goToday">回到本月</button>
       <button class="icon-btn" aria-label="上个月" @click="shift(-1)"><Icon name="left" /></button>
       <button class="icon-btn" aria-label="下个月" @click="shift(1)"><Icon name="right" /></button>
@@ -97,47 +103,58 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
           :disabled="c.date > t"
           :aria-label="`${c.day} 日，${rows.has(c.date) ? (moodOf(c.date) ? '心情' + MOOD_LABELS[moodOf(c.date) - 1] : '有日记') : '没写'}`"
           @click="open(c.date)">
-          {{ c.day }}
+          <span class="d num">{{ c.day }}</span>
+          <MoonIcon :phase="c.phase" :size="11" class="m" :title="c.moon" />
         </button>
       </template>
     </div>
 
     <div class="legend" aria-label="心情颜色">
-      <span v-for="(w, i) in MOOD_LABELS" :key="w" :class="`mood-${i + 1}`"><i class="dot"></i>{{ w }}</span>
+      <span v-for="(w, i) in MOOD_LABELS" :key="w" :class="`mood-${i + 1}`"><i class="dot"></i>{{ w }}<b class="num">{{ SPECTRAL[i] }}</b></span>
       <span class="mood-0"><i class="dot"></i>没记心情</span>
     </div>
-    <p class="hint muted">点没写的日子可以补写，左右滑动换月份。</p>
+    <p class="hint muted">心情颜色取自恒星光谱：越热越蓝，“一般”和太阳一样是 G 型。每天下面是当晚的月相。点没写的日子可以补写，左右滑动换月份。</p>
   </div>
 </template>
 
 <style scoped>
-.topbar h1 { display: flex; align-items: baseline; gap: 8px; font-size: 28px; margin-left: 12px; }
-.topbar h1 small { font-size: 14px; font-weight: 600; color: var(--muted); }
+.topbar h1 { display: flex; align-items: baseline; gap: 4px; margin-left: 12px; font-size: 17px; color: var(--muted); }
+.topbar h1 .num { font-size: 34px; font-weight: 600; color: var(--ink); line-height: 1; }
+.topbar h1 small { margin-left: 6px; font-size: 18px; font-weight: 500; color: var(--faint); }
 .summary { display: flex; align-items: center; gap: 12px; margin: 0 20px 16px; }
 .summary p { margin: 0; font-size: 15px; }
 .summary strong { font-weight: 800; }
-.grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; padding: 0 14px; }
+.grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px 6px; padding: 0 14px; }
 .wh { text-align: center; font-size: 12px; color: var(--faint); padding-bottom: 4px; }
 .cell {
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0 6px;
   border: 0;
-  border-radius: 50%;
   background: transparent;
   color: var(--faint);
-  font-size: 15px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 .cell.blank { pointer-events: none; }
-.cell.has { background: var(--mc); color: var(--on-mood); font-weight: 800; }
-.cell.has.mood-0 { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 2px var(--m0); }
-.cell.today { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); color: var(--ink); }
-.cell.today.has.mood-0 { box-shadow: inset 0 0 0 2px var(--m0), 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
-.cell.future { opacity: 0.35; }
-.cell:active:not(:disabled) { transform: scale(0.92); }
+.d {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 19px;
+  font-weight: 500;
+}
+.cell.has .d { background: var(--mc); color: var(--on-mood); font-weight: 600; box-shadow: var(--glow); }
+.cell.has.mood-0 .d { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 2px var(--m0); }
+.cell.today .d { outline: 2px solid var(--ink); outline-offset: 2px; }
+.cell.today { color: var(--ink); }
+.cell .m { opacity: 0.85; }
+.cell.future { opacity: 0.4; }
+.cell:active:not(:disabled) .d { transform: scale(0.9); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 22px 20px 0; font-size: 12px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
-.hint { margin: 10px 20px; font-size: 13px; }
+.legend b { font-size: 13px; font-weight: 600; color: var(--faint); }
+.hint { margin: 10px 20px; font-size: 13px; line-height: 1.6; }
 </style>

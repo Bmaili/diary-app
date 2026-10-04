@@ -1,12 +1,15 @@
-/** 心情档位的文字与颜色。颜色与 style.css 中的 --m1…--m5 一致，供需要连续插值的地方使用。 */
+/** 心情档位的文字与颜色（恒星光谱色）。颜色与 style.css 中的 --m1…--m5 一致，供需要连续插值的地方使用。 */
 export const MOOD_LABELS = ['很差', '不好', '一般', '不错', '很好'] as const
+
+/** 心情对应的恒星光谱型：越热越蓝，“一般”是和太阳一样的 G 型 */
+export const SPECTRAL = ['M', 'K', 'G', 'F', 'B'] as const
 
 export function moodLabel(v?: number | null): string {
   return v ? MOOD_LABELS[v - 1] : '没记'
 }
 
-const LIGHT = ['#6f87c9', '#5cb0b0', '#a8c96a', '#f1c548', '#f5984a']
-const DARK = ['#7d93d1', '#64b8b6', '#a9c76f', '#e9c252', '#f0995a']
+const LIGHT = ['#e0603f', '#ef9440', '#e8c04a', '#93bdea', '#5b8def']
+const DARK = ['#ff7a59', '#ffa65e', '#ffd96a', '#cfe0ff', '#86abff']
 
 function isDark(): boolean {
   return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches

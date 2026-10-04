@@ -75,7 +75,7 @@ const groups: { key: ListField; label: string }[] = [
     <header class="topbar search-bar">
       <label class="box">
         <Icon name="search" class="lead" />
-        <input v-model="q" type="search" placeholder="搜索正文、标签、人物、地点" enterkeyhint="search"
+        <input v-model="q" type="search" placeholder="在所有日记里搜索" enterkeyhint="search"
           aria-label="搜索关键词" />
       </label>
       <button class="icon-btn filter-btn" :class="{ on: showFilters || filterCount }" aria-label="筛选"
@@ -114,7 +114,7 @@ const groups: { key: ListField; label: string }[] = [
     </section>
 
     <p v-if="active" class="total">共 <strong>{{ hits.length }}</strong> 篇</p>
-    <p v-else class="hint muted">输入关键词，或打开筛选按日期、心情、标签查找。多个词用空格隔开，会找同时包含它们的日记。</p>
+    <div v-else class="idle"><Icon name="telescope" class="scope" /><p class="hint muted">输入关键词，或打开筛选按日期、心情、标签查找。多个词用空格隔开，会找同时包含它们的日记。</p></div>
 
     <ul class="results">
       <li v-for="h in hits.slice(0, limit)" :key="h.row.date">
@@ -178,7 +178,9 @@ const groups: { key: ListField; label: string }[] = [
 .small { font-size: 13px; }
 .total { margin: 8px 16px; color: var(--muted); }
 .total strong { color: var(--ink); font-size: 18px; font-weight: 800; }
-.hint { margin: 24px 24px; line-height: 1.7; font-size: 14px; }
+.idle { display: flex; flex-direction: column; align-items: center; padding: 40px 32px 0; }
+.scope { width: 56px; height: 56px; color: var(--faint); stroke-width: 1.2; }
+.hint { margin: 16px 0; line-height: 1.7; font-size: 14px; text-align: center; }
 .results { list-style: none; margin: 0; padding: 0; }
 .hit {
   display: block;
@@ -189,7 +191,7 @@ const groups: { key: ListField; label: string }[] = [
 }
 .hit:active { background: var(--surface); }
 .hit-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.hd { font-weight: 800; font-variant-numeric: tabular-nums; }
+.hd { font-family: var(--num); font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
 .snip { margin: 4px 0 0; line-height: 1.7; }
 .more { display: block; margin: 12px auto; }
 </style>

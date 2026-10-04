@@ -6,8 +6,10 @@ import type { IndexRow } from '../../core/types'
 import EntryRow from '../components/EntryRow.vue'
 import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
+import MoonIcon from '../components/MoonIcon.vue'
+import Constellation from '../components/Constellation.vue'
+import { daysBetween, moonPhase } from '../../core/astro'
 import { addDays, parseYmd } from '../../core/time'
-import { moodLabel } from '../mood'
 
 defineOptions({ name: 'HomeView' })
 
@@ -26,13 +28,19 @@ const memories = computed(() => {
   return index.onThisDay(todayStr.value)
 })
 
-const greeting = computed(() => {
-  const h = hour.value
-  if (h < 5) return '夜深了'
-  if (h < 11) return '早上好'
-  if (h < 14) return '中午好'
-  if (h < 18) return '下午好'
-  return '晚上好'
+const titleDate = computed(() => {
+  const d = parseYmd(todayStr.value)
+  return { m: d.getMonth() + 1, d: d.getDate(), wd: '日一二三四五六'[d.getDay()] }
+})
+const moon = computed(() => {
+  void hour.value
+  return moonPhase(new Date())
+})
+/** 从第一篇日记算起，今天是第几天 */
+const dayNo = computed(() => {
+  const all = rows.value
+  if (!all.length) return 0
+  return daysBetween(all[all.length - 1].date, todayStr.value) + 1
 })
 
 const stats = computed(() => {
@@ -50,7 +58,7 @@ const stats = computed(() => {
 })
 const subline = computed(() => {
   const s = stats.value
-  if (!rows.value.length) return '从今天开始写第一篇吧。'
+  if (!rows.value.length) return '写下第一篇，第一颗星就亮了。'
   const parts: string[] = []
   if (s.streak >= 2) parts.push(`已经连续写了 ${s.streak} 天`)
   parts.push(`这个月写了 ${s.monthCount} 篇`)
@@ -129,20 +137,25 @@ const memoryDateLabel = (d: string) => {
 <template>
   <div class="page">
     <header class="topbar">
-      <h1 class="greet">{{ greeting }}</h1>
+      <h1 class="date">
+        <span class="num big">{{ titleDate.m }}.{{ String(titleDate.d).padStart(2, '0') }}</span>
+        <span class="wk">星期{{ titleDate.wd }}</span>
+      </h1>
       <router-link to="/settings" class="icon-btn" aria-label="设置"><Icon name="settings" /></router-link>
     </header>
 
     <section class="hello">
-      <p class="muted">{{ subline }}</p>
-      <div v-if="rows.length" class="ribbon" role="img" :aria-label="`最近 30 天写了 ${ribbon.filter((d) => d.has).length} 天`">
-        <span v-for="d in ribbon" :key="d.date" class="cell" :class="[`mood-${d.mood}`, { has: d.has, today: d.date === todayStr }]"
-          :title="`${d.date} ${d.has ? moodLabel(d.mood) : '没写'}`"></span>
-      </div>
-      <div v-if="rows.length" class="ribbon-legend"><span>30 天前</span><span>今天</span></div>
+      <p class="sky-line">
+        <MoonIcon :phase="moon.phase" :size="18" />
+        <span>今晚{{ moon.name }}，照亮 <span class="num">{{ Math.round(moon.illumination * 100) }}%</span></span>
+        <span v-if="dayNo" class="day-no">记录的第 <span class="num">{{ dayNo }}</span> 天</span>
+      </p>
+      <Constellation v-if="rows.length" :days="ribbon" :today="todayStr" class="stars" />
+      <p class="muted sub">{{ subline }}</p>
     </section>
 
     <section v-if="memories.length" class="memories" aria-label="那年今日">
+      <p class="mem-note">你此刻看到的，是从过去发出的光。</p>
       <div class="mem-track">
         <router-link v-for="m in memories" :key="m.date" :to="`/entry/${m.date}`" class="mem" :class="`mood-${m.mood ?? 0}`">
           <div class="mem-head">
@@ -158,13 +171,13 @@ const memoryDateLabel = (d: string) => {
     </section>
 
     <div v-if="!rows.length" class="empty">
-      <MoodFace :value="4" :size="72" />
+      <MoonIcon :phase="moon.phase" :size="72" />
       <p>还没有日记。</p>
       <p class="muted">点右下角的“写今天”，写一句话就行。</p>
     </div>
 
     <section v-for="g in groups" :key="g.key" class="group">
-      <h2 class="month">{{ g.month }}<small v-if="g.year !== thisYear">{{ g.year }}</small></h2>
+      <h2 class="month"><span class="num">{{ g.month.replace(' 月', '') }}</span>月<small v-if="g.year !== thisYear" class="num">{{ g.year }}</small></h2>
       <EntryRow v-for="r in g.rows" :key="r.date" :row="r" />
     </section>
     <div ref="sentinel" class="sentinel"></div>
@@ -177,17 +190,17 @@ const memoryDateLabel = (d: string) => {
 </template>
 
 <style scoped>
-.greet { font-size: 28px !important; letter-spacing: -0.02em; margin-left: 12px !important; }
-.hello { padding: 0 20px 18px; }
-.hello p { margin: 0 0 14px; font-size: 15px; }
-.ribbon { display: grid; grid-template-columns: repeat(30, 1fr); gap: 3px; height: 30px; }
-.ribbon .cell { border-radius: 4px; background: var(--line); }
-.ribbon .cell.has { background: var(--mc); }
-.ribbon .cell.has.mood-0 { background: var(--m0); }
-.ribbon .cell.today { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--ink); }
-.ribbon-legend { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--faint); }
-
-.memories { padding: 0 0 14px; }
+.date { display: flex; align-items: baseline; gap: 10px; margin-left: 12px !important; }
+.date .big { font-size: 34px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; }
+.date .wk { font-size: 15px; font-weight: 600; color: var(--muted); }
+.hello { padding: 0 20px 14px; }
+.sky-line { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; color: var(--muted); }
+.sky-line .num { font-size: 16px; color: var(--ink); }
+.day-no { margin-left: auto; }
+.stars { margin: 2px 0 4px; }
+.sub { margin: 0; font-size: 14px; }
+.memories { padding: 4px 0 14px; }
+.mem-note { margin: 0 20px 8px; font-size: 12px; color: var(--faint); }
 .mem-track {
   display: flex;
   gap: 10px;
@@ -203,6 +216,7 @@ const memoryDateLabel = (d: string) => {
   scroll-snap-align: center;
   padding: 14px 16px 16px;
   border-radius: 22px;
+  border: 1px solid var(--line);
   background: var(--surface);
   color: inherit;
   text-decoration: none;
@@ -237,12 +251,16 @@ const memoryDateLabel = (d: string) => {
   align-items: baseline;
   gap: 8px;
   margin: 0;
-  padding: 8px 20px 6px;
-  background: var(--bg);
-  font-size: 20px;
-  font-weight: 800;
+  padding: 10px 20px 6px;
+  background-color: var(--bg);
+  background-image: var(--stars, none);
+  background-attachment: fixed;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
 }
-.month small { font-size: 13px; font-weight: 600; color: var(--muted); }
+.month .num { font-size: 26px; font-weight: 600; color: var(--ink); }
+.month small { font-size: 16px; font-weight: 500; color: var(--faint); margin-left: 4px; }
 .empty { display: flex; flex-direction: column; align-items: center; padding: 40px 32px; text-align: center; }
 .empty p { margin: 4px 0; }
 .empty p:first-of-type { margin-top: 16px; font-weight: 700; }
@@ -259,7 +277,7 @@ const memoryDateLabel = (d: string) => {
   padding: 0 24px 0 20px;
   border-radius: 28px;
   font-size: 16px;
-  box-shadow: 0 10px 24px -10px rgba(32, 34, 43, 0.6);
+  box-shadow: 0 10px 24px -10px rgba(18, 24, 52, 0.6);
 }
 .fab svg { width: 20px; height: 20px; }
 </style>

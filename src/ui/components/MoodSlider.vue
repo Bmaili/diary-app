@@ -83,7 +83,7 @@ function key(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="mood" :class="{ unset: shown == null, dragging }" :style="{ '--glow': glow }">
+  <div class="mood" :class="{ unset: shown == null, dragging }" :style="{ '--tint': glow }">
     <div class="head">
       <span class="title">{{ title }}</span>
       <span class="label" aria-hidden="true">{{ snapped ? MOOD_LABELS[snapped - 1] : '拖一下，或点下面的字' }}</span>
@@ -115,6 +115,7 @@ function key(e: KeyboardEvent) {
   margin: 4px 16px 12px;
   padding: 14px 16px 6px;
   border-radius: 24px;
+  border: 1px solid var(--line);
   background: var(--surface);
   overflow: hidden;
 }
@@ -123,7 +124,7 @@ function key(e: KeyboardEvent) {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 90% at 50% 0%, var(--glow), transparent 70%);
+  background: radial-gradient(120% 90% at 50% 0%, var(--tint), transparent 70%);
   opacity: 0.28;
   pointer-events: none;
   transition: opacity 0.2s;
@@ -179,7 +180,7 @@ function key(e: KeyboardEvent) {
   padding: 3px;
   border-radius: 50%;
   background: var(--surface);
-  box-shadow: 0 4px 14px -4px rgba(32, 34, 43, 0.35);
+  box-shadow: 0 4px 14px -4px rgba(18, 24, 52, 0.4), 0 0 18px -4px var(--tint);
   transition: left 0.22s cubic-bezier(0.3, 1.4, 0.5, 1), transform 0.15s;
 }
 .dragging .thumb { transition: transform 0.15s; transform: translate(-50%, -50%) scale(1.12); }

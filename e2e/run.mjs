@@ -275,6 +275,34 @@ try {
   const dark = await browser.newContext({ ...device, colorScheme: 'dark' })
   const dp = await dark.newPage()
   await dp.goto(BASE)
+  await dp.getByText('还没有日记').waitFor()
+  // 写 45 天的样例（中间断几天），看深色模式下的首页和日历
+  await dp.evaluate(() => {
+    const lines = ['下班路上看到很圆的月亮。', '读完了《三体》第二部，面壁者那段太精彩。', '加班调了一晚上 bug，原来是时区问题。',
+      '周末宅家打游戏，顺便把显示器支架装好了。', '试了新出的模型，写代码的能力又进步了。', '和阿杰去楼下面馆，聊了聊跳槽的事。']
+    const jobs = []
+    const now = new Date()
+    for (let i = 1; i <= 45; i++) {
+      if ([5, 6, 13, 21, 22, 23, 30].includes(i)) continue
+      const d = new Date(now); d.setDate(d.getDate() - i); if (now.getHours() < 4) d.setDate(d.getDate() - 1)
+      const ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+      const mood = i % 9 === 0 ? '' : `mood: ${1 + ((i * 7) % 5)}\n`
+      const tags = i % 3 === 0 ? 'tags: [读书]\n' : i % 4 === 0 ? 'tags: [工作, AI]\n' : ''
+      jobs.push(window.__diary.repo.store.writeText(`diary/entries/${ds.slice(0, 4)}/${ds}.md`,
+        `---\ndate: ${ds}\n${mood}${tags}---\n\n${lines[i % lines.length]}${lines[(i + 2) % lines.length]}\n`))
+    }
+    return Promise.all(jobs)
+  })
+  await dp.reload()
+  await dp.getByRole('button', { name: '写今天' }).waitFor()
+  await dp.screenshot({ path: OUT + '13-dark-home.png' })
+  await dp.getByRole('link', { name: '日历' }).click()
+  await dp.getByText(/这个月/).first().waitFor()
+  await dp.screenshot({ path: OUT + '14-dark-calendar.png' })
+  await dp.getByRole('link', { name: 'AI' }).click()
+  await dp.waitForTimeout(300)
+  await dp.screenshot({ path: OUT + '15-dark-ai.png' })
+  await dp.getByRole('link', { name: '日记' }).click()
   await dp.getByRole('button', { name: '写今天' }).click()
   await dp.getByLabel('日记正文').pressSequentially('深色模式下的样子。')
   await dp.screenshot({ path: OUT + '12-dark-editor.png' })
