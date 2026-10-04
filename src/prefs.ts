@@ -16,8 +16,8 @@ export const prefs = reactive({
   sync: {
     autoSync: true,
     wifiOnly: false,
-    oss: { enabled: false, endpoint: '', bucket: '', prefix: 'diary/', accessKeyId: '' },
-    github: { enabled: false, owner: '', repo: '', branch: 'main', apiBase: 'https://api.github.com', prefix: '' },
+    oss: { enabled: false, endpoint: '', bucket: '', prefix: 'diary/', accessKeyId: '', encrypt: false },
+    github: { enabled: false, owner: '', repo: '', branch: 'main', apiBase: 'https://api.github.com', prefix: '', encrypt: false },
   },
   place: {
     autoLocate: true,

@@ -167,6 +167,15 @@ export class OssStore implements RemoteStore {
     })
   }
 
+  async get(path: string): Promise<Uint8Array | null> {
+    try {
+      return (await this.request('GET', this.prefix + path, { bytes: true })).bytes()
+    } catch (e) {
+      if (e instanceof RemoteError && e.status === 404) return null
+      throw e
+    }
+  }
+
   async downloadAll(onFile: (path: string, bytes: Uint8Array) => Promise<void>, onProgress?: (d: number, t: number) => void) {
     const files = await this.list()
     let done = 0

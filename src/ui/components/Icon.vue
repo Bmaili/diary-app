@@ -31,6 +31,13 @@ const paths: Record<string, string> = {
   filter: 'M4 6h16M7 12h10M10 18h4',
   trash: 'M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13',
   plus: 'M12 5v14M5 12h14',
+  bold: 'M7 4.5h6a3.5 3.5 0 0 1 0 7H7zM7 11.5h7a4 4 0 0 1 0 8H7z',
+  ol: 'M10 6.5h10M10 12h10M10 17.5h10M4 5.5l1.5-1v4M3.8 13.2a1.3 1.3 0 1 1 2.2 1L3.8 16.5h2.5M3.8 19.5h2.4',
+  todo: 'M4 5h5v5H4zM4 14h5v5H4zM5.2 16.5l1.2 1.2 2-2.4M12 7.5h8M12 16.5h8',
+  quote: 'M5 17c2.5-1 3.5-3 3.5-6.5V8H5v4h3.5M13 17c2.5-1 3.5-3 3.5-6.5V8H13v4h3.5',
+  clock: 'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 8v4.5l3 1.8',
+  undo: 'M9 7L5 11l4 4M5 11h9a5 5 0 0 1 0 10h-2',
+  keyboard: 'M3.5 7h17v10h-17zM7 10.5h.01M10.5 10.5h.01M14 10.5h.01M17.5 10.5h.01M8 14h8',
 }
 </script>
 

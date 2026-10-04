@@ -26,6 +26,9 @@ import type { Location } from '../../core/types'
 import { ensureConsent, extractPreview, profileFor } from '../../aiService'
 import { applyExtraction, type Extraction } from '../../core/llm/extract'
 import { diaryChanged } from '../../app'
+import EditorToolbar, { type ToolAction } from '../components/EditorToolbar.vue'
+import { continueList, insertAt, toggleLines, toggleTask, toggleWrap, type Edit } from '../../core/mdEdit'
+import { hhmm } from '../../core/time'
 
 const route = useRoute()
 const router = useRouter()
@@ -62,11 +65,24 @@ const renderedRaw = computed(() =>
 )
 // 阅读视图：把相对路径的图片换成本地文件内容
 const rendered = ref('')
-watch([renderedRaw, mode], async ([html, m]) => {
+watch([renderedRaw, mode], async ([raw, m]) => {
   if (m !== 'read') return
+  // 待办方框默认是禁用的；可编辑时让它能点
+  const html = readOnly.value ? raw : raw.replace(/<input ((?:checked="" )?)disabled="" type="checkbox">/g, '<input $1type="checkbox" class="task">')
   rendered.value = html
   rendered.value = await resolveImages(html)
 })
+
+/** 阅读视图里勾选待办：改写正文对应的 [ ] / [x] */
+function onReadingChange(e: Event) {
+  const el = e.target as HTMLInputElement
+  if (readOnly.value || el.type !== 'checkbox') return
+  const boxes = Array.from((e.currentTarget as HTMLElement).querySelectorAll('input[type="checkbox"]'))
+  const next = toggleTask(text.value, boxes.indexOf(el), el.checked)
+  if (next == null) return
+  text.value = next
+  void flush()
+}
 const statusText = computed(() => {
   if (readOnly.value) return '只读'
   switch (status.value) {
@@ -138,6 +154,8 @@ onMounted(async () => {
   text.value = s.initialText
   document.addEventListener('visibilitychange', onHidden)
   window.addEventListener('pagehide', onHidden)
+  // 光标滚动进视野时，留出按钮条的高度
+  document.documentElement.style.scrollPaddingBottom = '72px'
   if (Capacitor.isNativePlatform()) {
     pauseHandle = await CapApp.addListener('pause', () => void flush())
   }
@@ -277,6 +295,7 @@ async function insertImage() {
 }
 
 onBeforeUnmount(() => {
+  document.documentElement.style.scrollPaddingBottom = ''
   document.removeEventListener('visibilitychange', onHidden)
   window.removeEventListener('pagehide', onHidden)
   pauseHandle?.remove()
@@ -321,6 +340,73 @@ function focusEnd() {
   el.setSelectionRange(n, n)
   if (Capacitor.getPlatform() === 'android') Keyboard.show().catch(() => {})
   el.scrollIntoView({ block: 'end' })
+}
+
+// ---------- 快捷按钮与列表续行 ----------
+
+const focused = ref(false)
+function onFocus() {
+  focused.value = true
+}
+function onBlur() {
+  // 点按钮条时编辑框不会失焦；真正离开编辑框（收起键盘、点了别处）才隐藏按钮条
+  setTimeout(() => (focused.value = document.activeElement === textarea.value), 150)
+}
+
+/** 用 execCommand 改文字：会触发 input 事件（v-model 同步），并进入系统的撤销记录 */
+function applyEdit(e: Edit) {
+  const el = textarea.value
+  if (!el || readOnly.value) return
+  el.focus()
+  el.setSelectionRange(e.from, e.to)
+  let ok = false
+  try {
+    ok = e.insert ? document.execCommand('insertText', false, e.insert) : e.from === e.to || document.execCommand('delete')
+  } catch {
+    ok = false
+  }
+  if (!ok) {
+    el.setRangeText(e.insert, e.from, e.to, 'end')
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  el.setSelectionRange(e.selStart, e.selEnd)
+  autosize()
+}
+
+function state() {
+  const el = textarea.value!
+  return { text: el.value, start: el.selectionStart, end: el.selectionEnd }
+}
+
+function onTool(a: ToolAction) {
+  const el = textarea.value
+  if (!el || readOnly.value) return
+  switch (a) {
+    case 'bold': return applyEdit(toggleWrap(state()))
+    case 'bullet':
+    case 'number':
+    case 'todo':
+    case 'quote': return applyEdit(toggleLines(state(), a))
+    case 'time': return applyEdit(insertAt(state(), `${hhmm(new Date())} `))
+    case 'image': return void insertImage()
+    case 'undo':
+      el.focus()
+      document.execCommand('undo')
+      autosize()
+  }
+}
+
+/**
+ * 回车续行。用 beforeinput 而不是 keydown：安卓输入法的回车往往没有可靠的 keydown，
+ * 输入法组字（拼音候选）过程中不处理。
+ */
+function onBeforeInput(ev: InputEvent) {
+  const isEnter = ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph' || (ev.inputType === 'insertText' && ev.data === '\n')
+  if (!isEnter || ev.isComposing || readOnly.value) return
+  const e = continueList(state())
+  if (!e) return
+  ev.preventDefault()
+  applyEdit(e)
 }
 
 function toggleMode() {
@@ -436,12 +522,14 @@ function goBack() {
       </div>
       <p v-if="placeNote" class="place-note">{{ placeNote }}</p>
 
-      <main class="paper">
+      <main class="paper" :class="{ 'with-tools': mode === 'write' && focused }">
         <textarea v-show="mode === 'write'" ref="textarea" v-model="text" class="input prose" :readonly="readOnly"
-          :placeholder="isToday ? '今天过得怎么样？' : '这一天发生了什么？'" aria-label="日记正文" @input="autosize" />
+          :placeholder="isToday ? '今天过得怎么样？' : '这一天发生了什么？'" aria-label="日记正文" @input="autosize"
+          @focus="onFocus" @blur="onBlur" @beforeinput="onBeforeInput" />
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <article v-if="mode === 'read'" class="prose reading" v-html="rendered" />
+        <article v-if="mode === 'read'" class="prose reading" @change="onReadingChange" v-html="rendered" />
       </main>
+      <EditorToolbar v-if="mode === 'write' && !readOnly && focused" :img-busy="imgBusy" @action="onTool" />
     </template>
 
     <Sheet :open="ai.open" title="AI 标注" @close="ai.open = false">
@@ -507,6 +595,9 @@ function goBack() {
 .small-note { font-size: 12px; margin: 4px 0 12px; }
 .place-note { margin: -4px 20px 10px; font-size: 12px; color: var(--faint); }
 .paper { padding: 4px 20px calc(40px + var(--safe-bottom)); }
+.paper.with-tools { padding-bottom: calc(96px + var(--safe-bottom)); }
+.reading :deep(li:has(> .task)) { list-style: none; margin-left: -1.2em; }
+.reading :deep(.task) { width: 18px; height: 18px; margin: 0 6px 0 0; vertical-align: -3px; accent-color: var(--m5); }
 .input {
   display: block;
   width: 100%;

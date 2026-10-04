@@ -3,7 +3,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
-import { BACKENDS, preview, restore, restoreState, type BackendId } from '../../syncService'
+import { BACKENDS, canDecrypt, preview, restore, restoreState, type BackendId } from '../../syncService'
 import type { RestorePreview } from '../../core/sync/restore'
 import Icon from '../components/Icon.vue'
 
@@ -17,6 +17,9 @@ const from = ref<BackendId | ''>((route.query.from as BackendId) || '')
 const pv = ref<RestorePreview | null>(null)
 const pvError = ref('')
 const loading = ref(false)
+/** 云端加密且本机没有对应密钥时，需要输密码 */
+const needPass = ref(false)
+const pass = ref('')
 
 async function choose(id: BackendId) {
   from.value = id
@@ -25,6 +28,7 @@ async function choose(id: BackendId) {
   loading.value = true
   try {
     pv.value = await preview(id)
+    needPass.value = pv.value.encrypted && !(await canDecrypt(pv.value))
   } catch (e) {
     pvError.value = (e as Error).message
   } finally {
@@ -35,7 +39,7 @@ if (from.value) void choose(from.value)
 
 async function go() {
   if (!from.value) return
-  const r = await restore(from.value)
+  const r = await restore(from.value, needPass.value ? pass.value : undefined)
   if (r && !prefs.sync[from.value].enabled) prefs.sync[from.value].enabled = true
 }
 </script>
@@ -73,8 +77,12 @@ async function go() {
             云端有 <strong class="num big">{{ pv.entries }}</strong> 篇日记<template v-if="pv.latest">，最新一篇是
               <strong class="num">{{ pv.latest }}</strong></template>，共 {{ pv.files }} 个文件。
           </p>
-          <button v-if="!restoreState.result" class="solid-btn" :disabled="restoreState.running" @click="go">
-            {{ restoreState.running ? `下载中 ${restoreState.done}/${restoreState.total || '…'}` : '开始恢复' }}
+          <template v-if="pv.encrypted">
+            <p class="desc">云端是加密的。{{ needPass ? '输入当时设置的同步加密密码才能恢复。' : '这台手机上已有对应的密钥。' }}</p>
+            <input v-if="needPass" v-model="pass" class="field pass" type="password" autocomplete="off" aria-label="同步加密密码" placeholder="同步加密密码" />
+          </template>
+          <button v-if="!restoreState.result" class="solid-btn" :disabled="restoreState.running || (needPass && !pass)" @click="go">
+            {{ restoreState.running ? (restoreState.total ? `下载中 ${restoreState.done}/${restoreState.total}` : needPass ? '正在解开密钥…' : '连接中…') : '开始恢复' }}
           </button>
         </template>
       </div>
@@ -101,6 +109,7 @@ async function go() {
 
 <style scoped>
 .big { font-size: 26px; }
+.pass { margin: 4px 0 12px; }
 .skipped { columns: 3; margin: 8px 0; padding-left: 18px; font-size: 15px; }
 .pad p { line-height: 1.7; }
 </style>

@@ -129,6 +129,15 @@ export class GitHubStore implements RemoteStore {
     for (const d of deletes) await onDone(d, 'delete')
   }
 
+  async get(path: string): Promise<Uint8Array | null> {
+    const h = await this.head()
+    if (!h) return null
+    const e = (await this.tree(h.tree)).find((x) => x.path === this.prefix + path)
+    if (!e) return null
+    const b = await this.api<{ content: string }>('GET', `${this.repoPath}/git/blobs/${e.sha}`)
+    return fromBase64(b.data.content)
+  }
+
   /** 恢复：优先整包下载（一个请求）；失败时逐个下载 blob */
   async downloadAll(onFile: (path: string, bytes: Uint8Array) => Promise<void>, onProgress?: (d: number, t: number) => void) {
     const h = await this.head()

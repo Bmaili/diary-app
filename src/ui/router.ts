@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: '/ai', component: () => import('./views/AiView.vue'), meta: { tab: 'ai' } },
     { path: '/settings', component: () => import('./views/SettingsView.vue') },
     { path: '/settings/sync', component: () => import('./views/SyncSettingsView.vue') },
+    { path: '/settings/sync/encryption', component: () => import('./views/EncryptionView.vue') },
     { path: '/settings/sync/:id(oss|github)', component: () => import('./views/BackendConfigView.vue') },
     { path: '/settings/place', component: () => import('./views/PlaceSettingsView.vue') },
     { path: '/settings/ai', component: () => import('./views/AiSettingsView.vue') },

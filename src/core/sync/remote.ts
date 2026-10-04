@@ -28,6 +28,8 @@ export interface RemoteStore {
    * 上传与删除。OSS 逐个文件进行，每完成一个就回调；GitHub 打成一个 commit，全部成功后统一回调。
    */
   apply(uploads: Upload[], deletes: string[], onDone: (path: string, kind: 'upload' | 'delete') => Promise<void>): Promise<void>
+  /** 下载一个文件，不存在时返回 null */
+  get(path: string): Promise<Uint8Array | null>
   /** 下载全部文件（恢复用），逐个回调 */
   downloadAll(onFile: (path: string, bytes: Uint8Array) => Promise<void>, onProgress?: (done: number, total: number) => void): Promise<number>
   /** 写入并删除一个临时文件，验证配置 */

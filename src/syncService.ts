@@ -10,12 +10,14 @@ import { Capacitor } from '@capacitor/core'
 import { Network } from '@capacitor/network'
 import { diaryChanged, onDiaryChanged, onStarted, reloadIndex, repo, store } from './app'
 import { prefs } from './prefs'
-import { getSecret } from './platform/secrets'
-import { SyncEngine } from './core/sync/engine'
+import { getSecret, setSecret } from './platform/secrets'
+import { SyncEngine, type CheckResult, type SyncOpts } from './core/sync/engine'
+import { SyncCrypto, createKeys, wrapIdentity, type KeyBundle } from './core/sync/crypto'
+import { fromBase64, toBase64 } from './core/bytes'
 import { OssStore } from './core/sync/oss'
 import { GitHubStore } from './core/sync/github'
 import type { RemoteStore } from './core/sync/remote'
-import { previewRemote, restoreFrom, type RestorePreview, type RestoreResult } from './core/sync/restore'
+import { previewRemote, restoreFrom, unlockRemote, type RestorePreview, type RestoreResult } from './core/sync/restore'
 
 export type BackendId = 'oss' | 'github'
 export const BACKENDS: { id: BackendId; label: string }[] = [
@@ -30,9 +32,13 @@ interface BackendState {
   error: string
   progress: { done: number; total: number } | null
   nextRetry: number | null
+  check: { running: boolean; at: number | null; result: CheckResult | null; error: string }
 }
 
-const blank = (): BackendState => ({ status: 'off', pending: 0, lastOk: null, error: '', progress: null, nextRetry: null })
+const blank = (): BackendState => ({
+  status: 'off', pending: 0, lastOk: null, error: '', progress: null, nextRetry: null,
+  check: { running: false, at: null, result: null, error: '' },
+})
 export const syncState = reactive<Record<BackendId, BackendState>>({ oss: blank(), github: blank() })
 
 export const engine = new SyncEngine(repo, store)
@@ -50,7 +56,62 @@ export async function buildRemote(id: BackendId): Promise<RemoteStore> {
   return new GitHubStore({ ...c, token: await getSecret('github.token') })
 }
 
+// ---------- 加密密钥 ----------
+// 身份密钥（AGE-SECRET-KEY-…）存在加密存储里；公钥和“用密码包起来的身份密钥”存在 sync/keys.json（本身由密码保护）。
+
+const KEYS_FILE = 'sync/keys.json'
+const IDENTITY_SECRET = 'sync.identity'
+let keysCache: KeyBundle | null | undefined
+
+export async function loadKeys(): Promise<KeyBundle | null> {
+  if (keysCache !== undefined) return keysCache
+  try {
+    const meta = JSON.parse((await store.readText(KEYS_FILE)) ?? 'null') as { recipient: string; wrapped: string } | null
+    const identity = await getSecret(IDENTITY_SECRET)
+    keysCache = meta && identity ? { identity, recipient: meta.recipient, wrapped: fromBase64(meta.wrapped) } : null
+  } catch {
+    keysCache = null
+  }
+  return keysCache
+}
+
+export async function saveKeys(k: KeyBundle): Promise<void> {
+  await setSecret(IDENTITY_SECRET, k.identity)
+  await store.mkdirp('sync')
+  await store.writeText(KEYS_FILE, JSON.stringify({ recipient: k.recipient, wrapped: toBase64(k.wrapped) }))
+  keysCache = k
+  encState.hasKeys = true
+}
+
+export const encState = reactive({ hasKeys: false })
+
+/** 第一次设置加密密码：生成密钥 */
+export async function setupEncryption(passphrase: string): Promise<void> {
+  await saveKeys(await createKeys(passphrase))
+}
+
+/** 改密码：只重新包装身份密钥，日记不用重新加密；下次同步只传 _encryption/identity.age */
+export async function changePassphrase(passphrase: string): Promise<void> {
+  const k = await loadKeys()
+  if (!k) throw new Error('还没有设置加密')
+  await saveKeys({ ...k, wrapped: await wrapIdentity(k.identity, passphrase) })
+  await refreshPending()
+}
+
+/** 本机密钥丢了（或换了手机）但云端是加密的：用密码从云端找回 */
+export async function recoverKeys(id: BackendId, passphrase: string): Promise<void> {
+  await saveKeys(await unlockRemote(await buildRemote(id), passphrase))
+}
+
+async function optsFor(id: BackendId): Promise<SyncOpts> {
+  if (!prefs.sync[id].encrypt) return { crypto: null }
+  const k = await loadKeys()
+  if (!k) throw new Error('找不到加密密钥。请到“同步与备份 → 加密密码”里输入密码找回')
+  return { crypto: new SyncCrypto(k) }
+}
+
 export async function refreshPending() {
+  encState.hasKeys = !!(await loadKeys())
   for (const b of BACKENDS) {
     const s = syncState[b.id]
     if (!prefs.sync[b.id].enabled) {
@@ -58,7 +119,13 @@ export async function refreshPending() {
       continue
     }
     if (s.status === 'off') s.status = 'idle'
-    s.pending = await engine.pending(b.id)
+    try {
+      s.pending = await engine.pending(b.id, await optsFor(b.id))
+    } catch {
+      /* 缺密钥，同步时会报错说明 */
+    }
+    const st = await engine.readState(b.id)
+    if (!s.check.running) Object.assign(s.check, { at: st.lastCheck ?? null, result: st.lastCheckResult ?? null })
   }
 }
 
@@ -96,7 +163,7 @@ async function runOne(id: BackendId): Promise<void> {
   s.progress = null
   try {
     const remote = await buildRemote(id)
-    await engine.sync(remote, (done, total) => (s.progress = { done, total }))
+    await engine.sync(remote, (done, total) => (s.progress = { done, total }), await optsFor(id))
     s.status = 'ok'
     s.lastOk = Date.now()
     attempts[id] = 0
@@ -109,7 +176,7 @@ async function runOne(id: BackendId): Promise<void> {
     timers[id] = setTimeout(() => void syncNow(false, [id]), delay)
   } finally {
     s.progress = null
-    s.pending = await engine.pending(id).catch(() => s.pending)
+    s.pending = await optsFor(id).then((o) => engine.pending(id, o)).catch(() => s.pending)
   }
 }
 
@@ -142,16 +209,18 @@ export function syncAfterEdit() {
 export function initSync() {
   // 端到端测试用的调试入口
   const w = window as unknown as { __diary?: Record<string, unknown> }
-  if (w.__diary) Object.assign(w.__diary, { engine, syncState })
+  if (w.__diary) Object.assign(w.__diary, { engine, syncState, loadKeys })
   onDiaryChanged(onChange)
   onStarted(async () => {
     await refreshPending()
     if (enabled().some((id) => syncState[id].pending > 0)) void syncNow(false)
+    void weeklyCheck()
   })
   if (Capacitor.isNativePlatform()) {
     CapApp.addListener('resume', async () => {
       await refreshPending()
       if (enabled().some((id) => syncState[id].pending > 0)) void syncNow(false)
+      void weeklyCheck()
     })
   }
 }
@@ -168,11 +237,36 @@ export async function manifestEmpty(id: BackendId): Promise<boolean> {
 
 export const restoreState = reactive({ running: false, done: 0, total: 0, error: '', result: null as RestoreResult | null })
 
-export async function restore(id: BackendId): Promise<RestoreResult | null> {
+/** 云端加密时，本机已有同一把密钥就不用再输密码 */
+export async function canDecrypt(pv: RestorePreview): Promise<boolean> {
+  const k = await loadKeys()
+  return !!k && !!pv.recipient && k.recipient === pv.recipient
+}
+
+/**
+ * @param passphrase 云端加密且本机没有对应密钥时需要
+ */
+export async function restore(id: BackendId, passphrase?: string): Promise<RestoreResult | null> {
   if (restoreState.running) return null
   Object.assign(restoreState, { running: true, done: 0, total: 0, error: '', result: null })
   try {
-    const result = await restoreFrom(await buildRemote(id), store, engine, (done, total) => Object.assign(restoreState, { done, total }))
+    const remote = await buildRemote(id)
+    const pv = await previewRemote(remote)
+    let crypto: SyncCrypto | null = null
+    if (pv.encrypted) {
+      let keys = await loadKeys()
+      if (!keys || keys.recipient !== pv.recipient) {
+        if (!passphrase) throw new Error('云端是加密的，请输入同步加密密码')
+        keys = await unlockRemote(remote, passphrase)
+      }
+      crypto = new SyncCrypto(keys)
+    }
+    const result = await restoreFrom(remote, store, engine, (done, total) => Object.assign(restoreState, { done, total }), crypto)
+    if (crypto) {
+      // 采用云端的密钥；另一个后端若用的是旧密钥加密，下次同步会自动按新密钥重传
+      if ((await loadKeys())?.recipient !== crypto.keys.recipient) await saveKeys(crypto.keys)
+      prefs.sync[id].encrypt = true
+    }
     restoreState.result = result
     await repo.init()
     await reloadIndex(true)
@@ -183,6 +277,39 @@ export async function restore(id: BackendId): Promise<RestoreResult | null> {
     return null
   } finally {
     restoreState.running = false
+  }
+}
+
+// ---------- 核对云端 ----------
+
+const WEEK = 7 * 24 * 3600 * 1000
+
+/** 核对一个后端；有缺失就接着同步。manual=false 时遵守“自动同步”和“仅 Wi‑Fi” */
+export async function checkNow(id: BackendId, manual = true): Promise<CheckResult | null> {
+  const s = syncState[id]
+  if (!prefs.sync[id].enabled || s.check.running) return null
+  if (!manual && (!prefs.sync.autoSync || !(await onWifiOrManual(false)))) return null
+  s.check.running = true
+  s.check.error = ''
+  try {
+    const result = await engine.reconcile(await buildRemote(id), await optsFor(id))
+    Object.assign(s.check, { at: Date.now(), result })
+    s.pending = await engine.pending(id, await optsFor(id))
+    if (s.pending) void syncNow(manual, [id])
+    return result
+  } catch (e) {
+    s.check.error = (e as Error).message
+    return null
+  } finally {
+    s.check.running = false
+  }
+}
+
+/** 打开 app、回到前台时：超过一周没核对的后端自动核对一次 */
+async function weeklyCheck() {
+  for (const id of enabled()) {
+    const st = await engine.readState(id)
+    if (!st.lastCheck || Date.now() - st.lastCheck > WEEK) void checkNow(id, false)
   }
 }
 
