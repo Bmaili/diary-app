@@ -29,6 +29,15 @@ npm run dev
 
 每次改了代码，重新运行 `npm run cap:sync` 再点运行即可。
 
+### 国内网络
+
+工程已改为从国内镜像下载构建工具：Gradle 本体走腾讯云镜像（`android/gradle/wrapper/gradle-wrapper.properties`），依赖库优先走阿里云 Maven 镜像（`android/settings.gradle` 开头），镜像没有的才去官方仓库。
+
+如果仍然下载失败：
+
+- Android Studio 第一次打开时还会下载 Android SDK 组件，这部分走 Google 的服务器，国内一般能连上但可能较慢；如果你有代理，可在 Settings → Appearance & Behavior → System Settings → HTTP Proxy 里填上。
+- Gradle 本体也可以手动下载：用浏览器下载 `https://mirrors.cloud.tencent.com/gradle/gradle-8.14.3-bin.zip`，放到 `用户目录/.gradle/wrapper/dists/gradle-8.14.3-bin/<一串随机字符>/` 下（先让它失败一次，这个文件夹就会自动创建），再点 Try Again。
+
 ### 正式使用前务必做的事
 
 - **签名文件要备份。** 想长期使用，请在 Android Studio 里用 Build → Generate Signed App Bundle / APK 生成一个签名文件（keystore），并把它和密码另外保存好。签名文件丢了就无法覆盖安装新版本，只能卸载重装，而**卸载会删除手机上的全部日记**。
