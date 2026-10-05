@@ -8,15 +8,14 @@ import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
 import PlumBranch from '../components/PlumBranch.vue'
 import Seal from '../components/Seal.vue'
-import { daysBetween } from '../../core/astro'
-import { lunarDay } from '../../core/lunar'
+import { lunar as lunarDay } from '../../holidayService'
 import { almanac, daily, loadDaily, nextPoem } from '../../dailyService'
 import { prefs } from '../../prefs'
 import { overall } from '../../syncService'
 import { profileFor } from '../../aiService'
 import { readSummary } from '../../core/summaries'
 import { store } from '../../app'
-import { addDays, parseYmd } from '../../core/time'
+import { addDays, daysBetween, parseYmd } from '../../core/time'
 
 defineOptions({ name: 'HomeView' })
 
@@ -250,7 +249,7 @@ const memoryDateLabel = (d: string) => {
     </section>
 
     <div v-if="!rows.length" class="empty">
-      <Seal text="日记" :size="64" />
+      <Seal text="浮生" :size="64" />
       <p>还没有日记。</p>
       <p class="muted">点右下角的“写今天”，写一句话就行。</p>
     </div>

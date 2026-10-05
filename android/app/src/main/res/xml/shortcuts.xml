@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 长按桌面图标出现的快捷方式。打开的链接由网页里的 launchService 处理 -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="write_today"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_write"
+        android:shortcutShortLabel="@string/shortcut_write_short"
+        android:shortcutLongLabel="@string/shortcut_write_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.diary.local"
+            android:targetClass="app.diary.local.MainActivity"
+            android:data="app.diary.local://write/today" />
+    </shortcut>
+</shortcuts>

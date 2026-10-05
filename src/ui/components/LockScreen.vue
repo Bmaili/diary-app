@@ -53,7 +53,7 @@ async function submit(pin: string) {
 <template>
   <div class="lock sky-bg" role="dialog" aria-modal="true" aria-label="应用已上锁">
     <div class="top">
-      <Seal text="日记" :size="52" />
+      <Seal text="浮生" :size="52" />
       <h1>日记已上锁</h1>
       <p class="sub">{{ wait ? `请等待 ${wait} 秒再试` : msg || '输入 PIN 继续' }}</p>
     </div>

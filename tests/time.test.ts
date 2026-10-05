@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diaryDate, isoLocal, weekday } from '../src/core/time'
+import { daysBetween, diaryDate, isoLocal, weekday } from '../src/core/time'
 
 describe('日记日期（规格 4.4 第 4 条）', () => {
   it('凌晨 1 点写的日记归入前一天', () => {
@@ -22,5 +22,10 @@ describe('日记日期（规格 4.4 第 4 条）', () => {
   })
   it('星期', () => {
     expect(weekday('2026-10-04')).toBe('周日')
+  })
+  it('相差天数（跨月、闰年）', () => {
+    expect(daysBetween('2026-09-30', '2026-10-04')).toBe(4)
+    expect(daysBetween('2024-02-28', '2024-03-01')).toBe(2)
+    expect(daysBetween('2026-10-04', '2026-10-01')).toBe(-3)
   })
 })

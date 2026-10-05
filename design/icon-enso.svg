@@ -1,0 +1,10 @@
+<!-- 浮生记的图标源图（432×432，安卓自适应图标整层，安全区是中间直径 288 的圆）。印章字体：霞鹜文楷 Bold。各密度 PNG 由它渲染。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 432"><defs><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .42 0 0 0 0 .34 0 0 0 0 .22 0 0 0 .10 0"/></filter></defs>
+    <rect width="432" height="432" fill="#f2ebdd"/><rect width="432" height="432" filter="url(#n)"/>
+    <path d="M 292 132 C 330 172 326 252 284 290 C 242 328 160 326 126 278 C 92 230 110 150 172 124 C 206 110 248 112 276 124" fill="none" stroke="#2b2724" stroke-width="24" stroke-linecap="round" opacity=".9"/>
+    <path d="M 292 132 C 300 140 306 150 310 160" fill="none" stroke="#2b2724" stroke-width="10" stroke-linecap="round" opacity=".6"/>
+    <g transform="rotate(-6 262 262)">
+    <rect x="234" y="234" width="56" height="56" rx="4.48" fill="#b5382c"/>
+    <rect x="237.36" y="237.36" width="49.28" height="49.28" rx="2.688" fill="none" stroke="#f6efe3" stroke-width="1.4000000000000001" opacity=".85"/>
+    <g fill="#f6efe3" font-family="LXGW WenKai" font-weight="700"><text x="262" y="274.936" font-size="36.96" text-anchor="middle">记</text></g>
+  </g></svg>

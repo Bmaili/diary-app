@@ -40,17 +40,19 @@ export const prefs = reactive({
   },
   ai: {
     profiles: [] as LlmProfile[],
-    use: { chat: '', extract: '', summary: '' },
+    use: { chat: '', extract: '', summary: '', caption: '' },
     /** 已经确认过“会把日记发给该服务”的配置 id */
     consented: [] as string[],
     /** 给 AI 的补充说明（问答、抽取、总结都会带上） */
     notes: '',
     /** 只给某一项功能的补充说明，接在共用说明后面 */
-    taskNotes: { chat: '', extract: '', summary: '' },
+    taskNotes: { chat: '', extract: '', summary: '', caption: '' },
     /** 问答：带上最近几轮对话、最多调用几轮工具 */
     chat: { historyTurns: 10, maxRounds: 10 },
     /** 批量抽取同时处理几篇 */
     extract: { concurrency: 2 },
+    /** 插图后自动让 AI 看图写一句说明（会把这张图发给 AI 服务），默认关 */
+    caption: { auto: false },
   },
   reminder: {
     enabled: false,
@@ -71,6 +73,10 @@ export const prefs = reactive({
   daily: {
     /** 首页的每日诗词：local 内置诗词库，online 今日诗词接口，off 不显示 */
     mode: 'local' as 'local' | 'online' | 'off',
+  },
+  calendar: {
+    /** 法定节假日联网更新（holiday-cn）；关掉只用内置数据 */
+    holidayOnline: true,
   },
   ui: {
     /** 动态效果（页面切换、列表入场、日历跟手滑动等）；系统开了“减少动画”时也会关掉 */

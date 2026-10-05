@@ -6,13 +6,15 @@ import { getSecret } from './platform/secrets'
 import { AbortedError, parseExtraBody, type LlmConfig, type Usage } from './core/llm/client'
 import { DiaryTools } from './core/llm/tools'
 import { ask, systemPrompt, type Step } from './core/llm/agent'
-import { extractEntry, applyExtraction, runBatch, vocabulary, type BatchState, type Extraction } from './core/llm/extract'
+import { extractEntry, runBatch, vocabulary, type BatchState, type Extraction } from './core/llm/extract'
 import { generateMonthly, generateYearly } from './core/llm/summarize'
+import { captionImage } from './core/llm/caption'
+import { imageForAi } from './imageService'
 import { mergeValues } from './core/vocab'
 import type { ListField } from './core/types'
 
-export type Task = 'chat' | 'extract' | 'summary'
-export const TASK_LABEL: Record<Task, string> = { chat: '问答', extract: '抽取', summary: '总结' }
+export type Task = 'chat' | 'extract' | 'summary' | 'caption'
+export const TASK_LABEL: Record<Task, string> = { chat: '问答', extract: '抽取', summary: '总结', caption: '图片说明' }
 
 export const tools = new DiaryTools(index, repo, store)
 
@@ -63,7 +65,8 @@ export function ensureConsent(task: Task): boolean {
   } catch { /* 保持原样 */ }
   const ok = window.confirm(
     `第一次使用「${p.name}」（${host}）。\n\n` +
-      '问答时会发送你的问题以及工具查到的相关日记片段；抽取会发送单篇日记全文；总结会发送整月的日记。\n' +
+      '问答时会发送你的问题以及工具查到的相关日记片段；抽取会发送单篇日记全文；总结会发送整月的日记；' +
+      '图片说明会发送那张图片（缩小后）和这篇日记的开头。\n' +
       '这些内容会经过该服务商的服务器。确定继续吗？',
   )
   if (ok) prefs.ai.consented.push(p.id)
@@ -182,6 +185,14 @@ export async function askQuestion(q: string): Promise<void> {
   }
 }
 
+// ---------- 图片说明 ----------
+
+/** 让 AI 看图写一句说明。src 是正文里的图片路径；excerpt 是这篇日记正文（取开头作参考） */
+export async function captionPreview(date: string, src: string, excerpt: string): Promise<string> {
+  const cfg = await configFor('caption')
+  return captionImage(cfg, await imageForAi(src), { date, excerpt })
+}
+
 // ---------- 抽取 ----------
 
 /** 单篇抽取：只返回结果，由编辑页展示后确认写入 */
@@ -190,17 +201,6 @@ export async function extractPreview(date: string): Promise<{ x: Extraction; mod
   const doc = await repo.readEntry(date)
   if (!doc) throw new Error('这一天还没有保存的日记')
   return { x: await extractEntry(cfg, doc, vocabulary(index)), model: cfg.model }
-}
-
-export async function applyPreview(date: string, x: Extraction, model: string): Promise<void> {
-  await enqueue(async () => {
-    const doc = await repo.readEntry(date)
-    if (!doc) return
-    applyExtraction(doc, x, model)
-    await repo.saveEntry(doc, new Date(), { touchUpdated: false })
-    await refreshDate(date)
-  })
-  diaryChanged()
 }
 
 export const batch = reactive<BatchState>({ running: false, paused: false, done: 0, total: 0, failed: [] })

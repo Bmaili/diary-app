@@ -6,7 +6,7 @@ import { ymd } from '../../core/time'
 import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
 import { MOOD_LABELS } from '../mood'
-import { lunarDay } from '../../core/lunar'
+import { lunar as lunarDay } from '../../holidayService'
 
 defineOptions({ name: 'CalendarView' })
 

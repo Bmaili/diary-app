@@ -53,3 +53,10 @@ export function addDays(s: string, n: number): string {
   d.setDate(d.getDate() + n)
   return ymd(d)
 }
+
+/** 两个 YYYY-MM-DD 之间差几天（b 减 a），不受夏令时影响 */
+export function daysBetween(a: string, b: string): number {
+  const pa = a.split('-').map(Number)
+  const pb = b.split('-').map(Number)
+  return Math.round((Date.UTC(pb[0], pb[1] - 1, pb[2]) - Date.UTC(pa[0], pa[1] - 1, pa[2])) / 86400000)
+}

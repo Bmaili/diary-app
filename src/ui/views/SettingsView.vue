@@ -16,6 +16,7 @@ import Switch from '../components/Switch.vue'
 import { prefs } from '../../prefs'
 import { enabled, syncState, BACKENDS } from '../../syncService'
 import { expectExternal } from '../../lockService'
+import { holidaySourceChanged, holidayStatus, refreshHolidays } from '../../holidayService'
 
 const router = useRouter()
 const busy = ref('')
@@ -105,6 +106,19 @@ const DAILY_DESC = {
   off: '首页不显示诗词。',
 } as const
 const appVersion = __APP_VERSION__
+const holidayDesc = computed(() => {
+  const h = holidayStatus.value
+  if (!prefs.calendar.holidayOnline) return '只用应用内置的放假安排（到 2026 年）。'
+  if (h.busy) return '正在更新…'
+  if (h.error) return `更新失败：${h.error}。先用${h.years.length ? '上次取到的' : '内置的'}数据。`
+  if (!h.checkedAt) return '国务院公布新一年的放假安排后自动更新（数据来自开源项目 holiday-cn）。'
+  const d = new Date(h.checkedAt)
+  return `已有 ${h.years.join('、')} 年的安排，${d.getMonth() + 1} 月 ${d.getDate()} 日检查过。每隔几天自动检查一次。`
+})
+function toggleHoliday(v: boolean) {
+  prefs.calendar.holidayOnline = v
+  holidaySourceChanged()
+}
 
 const syncOn = computed(() => prefs.sync.oss.enabled || prefs.sync.github.enabled)
 const syncLine = computed(() => {
@@ -196,6 +210,13 @@ const syncLine = computed(() => {
       </label>
       <div class="item">
         <div>
+          <div>节假日联网更新</div>
+          <div class="desc">{{ holidayDesc }}<button v-if="prefs.calendar.holidayOnline && !holidayStatus.busy" class="link" @click="refreshHolidays(true)">现在更新</button></div>
+        </div>
+        <Switch :model-value="prefs.calendar.holidayOnline" label="节假日联网更新" @update:model-value="toggleHoliday" />
+      </div>
+      <div class="item">
+        <div>
           <div>动态效果</div>
           <div class="desc">页面切换、列表浮现、日历跟手滑动、梅枝开花、飘落的花瓣。手机系统开了“减少动画”时会自动关掉。</div>
         </div>
@@ -281,7 +302,7 @@ const syncLine = computed(() => {
       </div>
     </section>
 
-    <p class="version" @click="tapVersion">日记 {{ appVersion }}，共 {{ stats.total }} 篇</p>
+    <p class="version" @click="tapVersion">浮生记 {{ appVersion }}，共 {{ stats.total }} 篇</p>
   </div>
 </template>
 

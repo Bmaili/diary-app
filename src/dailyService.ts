@@ -8,7 +8,7 @@ import { reactive } from 'vue'
 import { Preferences } from '@capacitor/preferences'
 import { http } from './core/http'
 import { poemFor } from './core/poems'
-import { lunarDay } from './core/lunar'
+import { lunar as lunarDay } from './holidayService'
 import { prefs } from './prefs'
 
 export interface DailyView {

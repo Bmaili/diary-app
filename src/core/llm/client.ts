@@ -67,8 +67,14 @@ export interface ToolCall {
   badArgs?: string
 }
 
+/** 随消息发送的图片（base64，不带 data: 前缀），用于看图写描述 */
+export interface ImagePart {
+  mime: string
+  data: string
+}
+
 export type ChatMsg =
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; images?: ImagePart[] }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[] }
   | { role: 'tool'; toolCallId: string; name: string; content: string }
 
@@ -173,8 +179,14 @@ interface Prepared {
 function prepareOpenAI(cfg: LlmConfig, req: ChatRequest): Prepared {
   const messages: unknown[] = [{ role: 'system', content: withInstructions(req.system, cfg.instructions) }]
   for (const m of req.messages) {
-    if (m.role === 'user') messages.push({ role: 'user', content: m.content })
-    else if (m.role === 'assistant') {
+    if (m.role === 'user') {
+      messages.push({
+        role: 'user',
+        content: m.images?.length
+          ? [...m.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}` } })), { type: 'text', text: m.content }]
+          : m.content,
+      })
+    } else if (m.role === 'assistant') {
       messages.push({
         role: 'assistant',
         content: m.content || (m.toolCalls?.length ? null : ''),
@@ -224,8 +236,10 @@ function prepareAnthropic(cfg: LlmConfig, req: ChatRequest): Prepared {
     else messages.push({ role, content: [block] })
   }
   for (const m of req.messages) {
-    if (m.role === 'user') push('user', { type: 'text', text: m.content })
-    else if (m.role === 'assistant') {
+    if (m.role === 'user') {
+      for (const i of m.images ?? []) push('user', { type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })
+      push('user', { type: 'text', text: m.content })
+    } else if (m.role === 'assistant') {
       if (m.content) push('assistant', { type: 'text', text: m.content })
       for (const c of m.toolCalls ?? []) push('assistant', { type: 'tool_use', id: c.id, name: c.name, input: c.args })
     } else push('user', { type: 'tool_result', tool_use_id: m.toolCallId, content: m.content })

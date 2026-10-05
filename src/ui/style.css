@@ -225,6 +225,10 @@ button { cursor: pointer; }
 .prose table { border-collapse: collapse; margin-bottom: 0.9em; font-size: 14px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
 .prose img { max-width: 100%; border-radius: 10px; }
+/* 图片说明：楷体小字，居中在图片下面 */
+.prose .figure { display: block; margin: 4px 0; }
+.prose .figure img { display: block; margin: 0 auto; }
+.prose .img-cap { display: block; margin-top: 6px; font-family: var(--kai); font-size: 14px; line-height: 1.5; color: var(--muted); text-align: center; }
 .prose a { color: inherit; text-decoration-thickness: 2px; text-decoration-color: var(--accent); }
 
 /* ================= 动效（2026-10-04 加入） =================

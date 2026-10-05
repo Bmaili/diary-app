@@ -1,6 +1,6 @@
 # 给 Claude 的项目说明
 
-这是用户自用的安卓日记 app，全部代码由 AI 编写。用户是工作三年的软件工程师、AI 爱好者，喜欢天文和前沿科技，自称有点懒。和用户交流用中文。
+这是用户自用的安卓日记 app“浮生记”（2026-10-05 前叫“日记”；包名 `app.diary.local` 不变），全部代码由 AI 编写。用户是工作三年的软件工程师、AI 爱好者，喜欢天文和前沿科技，自称有点懒。和用户交流用中文。
 
 ## 和用户协作的方式
 
@@ -32,8 +32,8 @@
 ## 命令
 
 ```bash
-npm test                     # 单元测试（约 165 项），提交前必须全过
-npm run build                # vue-tsc 类型检查 + vite 构建
+npm test                     # 单元测试（约 177 项），提交前必须全过
+npm run build                # vue-tsc 类型检查（开了 noUnusedLocals/Parameters）+ vite 构建
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e          # 第 1 阶段端到端（需先 build）
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e:stages   # 其余端到端，截图在 e2e/out/
 npm run cap:sync             # 构建并同步到 android/
@@ -67,14 +67,17 @@ src/core/            与平台无关、有单元测试的逻辑
                      tools.ts agent.ts（工具调用问答，计数在代码里做；按上下文长度压缩发送量）
                      extract.ts summarize.ts
   mdEdit.ts          编辑快捷按钮与列表续行
-  pin.ts reminder.ts astro.ts（只剩日期差，月相已不用）lunar.ts（农历节气）poems.ts（内置诗词）summaries.ts vocab.ts trash.ts（最近删除）
+  pin.ts reminder.ts lunar.ts（农历节气）holidays.ts（法定节假日：内置 + 联网覆盖）poems.ts（内置诗词）
+                     summaries.ts vocab.ts trash.ts（最近删除）imageCaption.ts（图片说明 = Markdown 替代文字）launch.ts
+  llm/caption.ts     看图写图片说明（ChatMsg 的 user 消息可带 images）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare
-src/*Service.ts      应用层：sync、place、image、ai、lock、reminder
+src/*Service.ts      应用层：sync、place、image、ai、lock、reminder、daily、holiday（holiday-cn 联网，界面读农历用它的 `lunar()` 才会随数据刷新）、launch（桌面快捷方式）
 src/app.ts           全局：store/repo/index、串行写入队列 enqueue、onStarted/onDiaryChanged 钩子
 src/prefs.ts         不含密钥的设置（响应式，自动保存）
 src/ui/              views/ 各页面，components/，style.css（主题）settings.css
+                     editor/ 编辑页拆出的组合式函数：useEntrySession（打开/自动保存/离开/删除）usePlaceWeather useTextarea useImages useAiExtract
 tests/               单元测试；tests/mocks/ 下是 OSS、GitHub、LLM 的本地模拟服务器
 e2e/                 端到端测试
 android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用阿里云镜像）
@@ -85,7 +88,7 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
 - 浅色是米白宣纸（`--paper` 纸纹），墨色文字；深色是砚台夜墨，月白文字。朱砂红 `--accent` 只用于印章（`Seal.vue`）、今天、强调。
 - 心情用中国传统色，冷暗到暖亮：玄青、黛蓝、天青、竹青、杏黄（`--m1`…`--m5`；不要用红色表示好心情，用户觉得红是生气；深色心情上用浅字，见 `.mood-N` 的 `--onm` 和 `mood.ts` 的 `inkOn`）。成功 / 开关用竹青 `--m4`。
 - 字体用手机自带宋体（`--serif`），诗句用楷体（`--kai`），数字用衬线体（`--num`）。用户选择不内置字体（不想安装包变大）。
-- 首页最近 30 天画成一枝梅花（`PlumBranch.vue`），写一天开一朵；日历每天显示农历（`core/lunar.ts`，lunar-javascript），节气和节日朱红；首页有每日诗词（`core/poems.ts` 内置库 + 可选今日诗词接口，`dailyService.ts`）。日历标中国大陆法定假日“休 / 班”（lunar-javascript 的 HolidayUtil，数据到 2026 年；**每年 11 月国务院公布次年安排后升级 lunar-javascript**）。
+- 首页最近 30 天画成一枝梅花（`PlumBranch.vue`），写一天开一朵；日历每天显示农历（`core/lunar.ts`，lunar-javascript），节气和节日朱红；首页有每日诗词（`core/poems.ts` 内置库 + 可选今日诗词接口，`dailyService.ts`）。日历标中国大陆法定假日“休 / 班”：内置 lunar-javascript 的 HolidayUtil（到 2026 年），联网用 holiday-cn 覆盖（`holidayService.ts`，jsDelivr → GitHub raw，空文件视为未公布），新一年的安排会自动出现；升级 lunar-javascript 只是让离线兜底更新。
 - 不要再引入星空、星座、月相、宇宙类意象。
 - 性能：不要用 `background-attachment: fixed`；不要给列表的每一条挂常驻动画（滚动驱动动画会让每条成为独立图层，2026-10-05 实测 207 个图层，滚动卡顿），进场动画用 `v-reveal`（`ui/reveal.ts`）只跑一次；会横向位移的元素外面套 `overflow: hidden`。
 - 新界面沿用 `style.css` 里的颜色变量和组件（Switch、Sheet、Icon 等），不要引入新的视觉风格。
@@ -94,6 +97,8 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
 ## 已实现的功能
 
 - 本地写作：心情拖动条、标签、人物和地点、日历、那年今日、搜索、导出 zip。
+- 应用名“浮生记”，图标“圆相”（宣纸底、水墨圆相、朱印“记”；源图 `design/icon-enso.svg`，各密度 PNG 在 `android/app/src/main/res/mipmap-*`，自适应图标前景 + 纸纹背景位图）。长按图标“写今天”（`res/xml/shortcuts.xml`，链接 `app.diary.local://write/today`）。
+- 图片说明：插图后弹框写一句，阅读视图点图片可改；可选 AI 看图写（“图片说明”功能，要视觉模型，`prefs.ai.caption.auto` 默认关）。
 - 同步：阿里云 OSS、GitHub 私有仓库，可以都开、只开一个或都不开；自动同步（停笔 N 分钟后传，默认 2，切到后台时有待传就传；端到端测试里设 `__diary.prefs.sync.quietMin = 0`）；从云端恢复。
 - 高德、和风、OSS、GitHub 配置处有可展开的教程（`HelpTip.vue`）。定位先 GPS、超时退回网络定位。
 - 核对云端：每周自动加手动，云端缺失或改动的文件会补传。
@@ -115,9 +120,11 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
   - 只拖了心情、没写正文的日子，要不要也保存（现状不保存）。
 - **需要用户在真机上验证**：
   - 输入法下回车能否续行、按钮条是否贴住键盘；拍照插图；动效在真机上是否流畅；指纹解锁；流式回答和停止；
+  - 新图标和名字、长按图标“写今天”（冷启动和后台两种）、AI 看图写说明（真实视觉模型）；
   - 提醒能否按时弹出、应用锁、定位和附近地点；
   - 真实 OSS / GitHub / AI 服务能否跑通；从加密云端恢复。
 - **没做**：
   - 桌面小组件、把日记放到公共目录（SAF）——需要较多原生代码；
   - 清理没有被引用的图片（编辑时删掉图片引用后留下的；删除整篇时会带走这天的图片）；
   - 可选：打包时同时把 APK 上传到 OSS，方便国内下载。
+  - 给已有图片批量让 AI 写说明（现在只能一张张点）。

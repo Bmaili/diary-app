@@ -7,6 +7,7 @@ import { loadError, ready, start } from '../app'
 import Icon from './components/Icon.vue'
 import LockScreen from './components/LockScreen.vue'
 import { lock } from '../lockService'
+import { initLaunch } from '../launchService'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,7 +34,9 @@ const tabs = [
 ]
 
 onMounted(() => {
-  start().catch(() => {})
+  start()
+    .then(() => initLaunch(router))
+    .catch(() => {})
   if (Capacitor.isNativePlatform()) {
     // 安卓返回键：首页退出 app，其他页面返回上一页
     CapApp.addListener('backButton', () => {

@@ -4,7 +4,8 @@
  */
 import { store } from './app'
 import { ROOT } from './core/repo'
-import { toBase64 } from './core/bytes'
+import { fromBase64, toBase64 } from './core/bytes'
+import type { ImagePart } from './core/llm/client'
 import { expectExternal } from './lockService'
 import { Capacitor } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
@@ -77,6 +78,28 @@ export async function saveImage(date: string, bytes: Uint8Array): Promise<string
 
 const cache = new Map<string, string>()
 
+/** 正文里的相对路径 → 仓库里的路径 */
+function repoPath(src: string): string {
+  return decodeURI(`${ROOT}/${src.replace(/^\.\.\/\.\.\//, '')}`)
+}
+
+/** 发给 AI 看的图：长边缩到 1024，省流量也省 token */
+export async function imageForAi(src: string): Promise<ImagePart> {
+  const b64 = await store.readBase64(repoPath(src))
+  if (!b64) throw new Error('找不到这张图片')
+  const small = await compress(new Blob([fromBase64(b64) as BlobPart], { type: 'image/jpeg' }), 1024, 0.8)
+  return { mime: 'image/jpeg', data: toBase64(small) }
+}
+
+/** 一张图的 data URL（说明框里显示用） */
+export async function imageUrl(src: string): Promise<string> {
+  if (!cache.has(src)) {
+    const b64 = await store.readBase64(repoPath(src))
+    if (b64) cache.set(src, `data:image/jpeg;base64,${b64}`)
+  }
+  return cache.get(src) ?? ''
+}
+
 /** 阅读视图里把相对路径的图片换成 data URL */
 export async function resolveImages(html: string): Promise<string> {
   const srcs = new Set<string>()
@@ -86,11 +109,11 @@ export async function resolveImages(html: string): Promise<string> {
   })
   for (const s of srcs) {
     if (cache.has(s)) continue
-    const path = `${ROOT}/${s.replace(/^\.\.\/\.\.\//, '')}`
-    const b64 = await store.readBase64(decodeURI(path))
+    const b64 = await store.readBase64(repoPath(s))
     if (b64) cache.set(s, `data:image/jpeg;base64,${b64}`)
   }
+  // data-src 记下原来的路径，点图片改说明时用
   return html.replace(/(<img[^>]+src=")(\.\.\/\.\.\/attachments\/[^"]+)(")/g, (m, a: string, s: string, b: string) =>
-    cache.has(s) ? a + cache.get(s) + b : m,
+    cache.has(s) ? `${a}${cache.get(s)}${b} data-src="${s}"` : m,
   )
 }

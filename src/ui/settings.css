@@ -54,3 +54,14 @@
 .state.ok { color: var(--m4); }
 .state.error { color: var(--danger); }
 .state.syncing, .state.pending { color: var(--muted); }
+/* 说明文字里的小链接按钮 */
+.settings .desc .link {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

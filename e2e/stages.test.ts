@@ -55,6 +55,17 @@ const AMAP = {
   },
 }
 
+/** 测试用的 2027 年放假安排（不是真实数据） */
+const HOLIDAYS_2027 = {
+  year: 2027,
+  days: [
+    { name: '元旦', date: '2027-01-01', isOffDay: true },
+    { name: '元旦', date: '2027-01-02', isOffDay: true },
+    { name: '元旦', date: '2027-01-03', isOffDay: true },
+    { name: '春节', date: '2027-01-31', isOffDay: false },
+  ],
+}
+
 async function wire(ctx: BrowserContext) {
   await ctx.route(/^https:\/\/my-diary\.oss-cn-hangzhou\.aliyuncs\.com\//, (r) =>
     forward(r, r.request().url().replace('https://my-diary.oss-cn-hangzhou.aliyuncs.com/', `http://127.0.0.1:${oss.port}/my-diary/`)))
@@ -64,6 +75,11 @@ async function wire(ctx: BrowserContext) {
     const u = new URL(r.request().url())
     const body = u.pathname.includes('regeo') ? AMAP.regeo : AMAP.around
     return r.fulfill({ status: 200, headers: { ...CORS, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  })
+  // 节假日数据（holiday-cn）：只给 2027 年的一份测试数据，其他年份当作还没公布
+  await ctx.route(/holiday-cn/, (r) => {
+    if (!r.request().url().includes('2027.json')) return r.fulfill({ status: 404, headers: CORS, body: 'Not Found' })
+    return r.fulfill({ status: 200, headers: { ...CORS, 'Content-Type': 'application/json' }, body: JSON.stringify(HOLIDAYS_2027) })
   })
   await ctx.route(/^https:\/\/api\.open-meteo\.com\//, (r) =>
     r.fulfill({ status: 200, headers: { ...CORS, 'Content-Type': 'application/json' }, body: JSON.stringify({ current: { temperature_2m: 27.4, weather_code: 1 } }) }))
@@ -340,6 +356,15 @@ describe('阶段 3：位置、天气与插图', () => {
     const text = await page.getByLabel('日记正文').inputValue()
     const m = /!\[\]\(\.\.\/\.\.\/attachments\/(\d{4})\/(\d{4}-\d{2}-\d{2})_1\.jpg\)/.exec(text)
     expect(m).not.toBeNull()
+    // 插图后弹出图片说明框（没配 AI 服务时没有“AI 看图”按钮）
+    const cap = page.getByRole('dialog', { name: '图片说明' })
+    await cap.waitFor()
+    await cap.locator('img').waitFor()
+    expect(await cap.getByRole('button', { name: /AI/ }).count()).toBe(0)
+    await cap.getByLabel('图片说明').fill('院子里的向日葵')
+    await page.screenshot({ path: OUT + '36-caption.png' })
+    await cap.getByRole('button', { name: '完成' }).click()
+    await page.waitForFunction(() => (document.querySelector('textarea.input') as HTMLTextAreaElement).value.includes('![院子里的向日葵](../../attachments/'))
     const size = await page.evaluate(async (p) => {
       const b64 = await (window as unknown as { __diary: { repo: { store: { readBase64(p: string): Promise<string> } } } }).__diary.repo.store.readBase64(p)
       const img = new Image()
@@ -351,7 +376,17 @@ describe('阶段 3：位置、天气与插图', () => {
     expect(size.h).toBe(1365)
     await page.getByRole('button', { name: '阅读视图' }).click()
     await page.waitForFunction(() => document.querySelector('article.reading img')?.getAttribute('src')?.startsWith('data:image/jpeg'))
+    expect(await page.locator('article.reading .img-cap').textContent()).toBe('院子里的向日葵')
     await page.screenshot({ path: OUT + '33-reading-image.png' })
+    // 阅读视图里点图片改说明，存进文件
+    await page.locator('article.reading img').click()
+    await cap.getByLabel('图片说明').fill('向日葵和夕阳')
+    await cap.getByRole('button', { name: '完成' }).click()
+    await page.waitForFunction(() => document.querySelector('article.reading .img-cap')?.textContent === '向日葵和夕阳')
+    await page.waitForFunction(async () => {
+      const d = (window as unknown as { __diary: { repo: { readEntryRaw(d: string): Promise<string | null> }; index: { all(): { date: string }[] } } }).__diary
+      return (await d.repo.readEntryRaw(d.index.all()[0].date))?.includes('![向日葵和夕阳](')
+    })
     await ctx.close()
   })
 })
@@ -751,8 +786,16 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     await page.getByText('每天下面是农历').waitFor()
     expect(await page.getByText('恒星光谱').count()).toBe(0)
     await page.screenshot({ path: OUT + '72-calendar.png' })
-    // 法定节假日：2026 年 10 月有国庆放假和 10 日调休上班
-    await page.evaluate(() => (window as unknown as { __diary: unknown }).__diary)
+    // 法定节假日联网更新：取到了 2027 年（测试数据），翻到 2027 年 1 月能看到“休 / 班”
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: '下个月' }).click()
+    await page.getByText('2027').first().waitFor()
+    expect(await until(async () => (await page.locator('.rest').count()) === 4)).toBe(true)
+    await page.screenshot({ path: OUT + '72-calendar-2027.png' })
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: '上个月' }).click()
+    await page.goto(BASE + '#/settings')
+    await page.getByText(/已有 2027 年的安排/).waitFor()
+    await page.goto(BASE + '#/calendar')
+    await page.getByText('每天下面是农历').waitFor()
     await page.emulateMedia({ colorScheme: 'dark' })
     await page.screenshot({ path: OUT + '72-calendar-dark.png' })
     await page.emulateMedia({ colorScheme: 'light' })

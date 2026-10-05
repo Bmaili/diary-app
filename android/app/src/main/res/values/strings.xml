@@ -1,7 +1,9 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">日记</string>
-    <string name="title_activity_main">日记</string>
+    <string name="app_name">浮生记</string>
+    <string name="title_activity_main">浮生记</string>
     <string name="package_name">app.diary.local</string>
     <string name="custom_url_scheme">app.diary.local</string>
+    <string name="shortcut_write_short">写今天</string>
+    <string name="shortcut_write_long">写今天的日记</string>
 </resources>

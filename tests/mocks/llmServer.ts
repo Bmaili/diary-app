@@ -74,7 +74,8 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
         else
           turns.push({
             role: m.role,
-            text: m.content ?? '',
+            // 带图片时 content 是数组（文字块 + 图片块）
+            text: Array.isArray(m.content) ? m.content.filter((b: { type: string }) => b.type === 'text').map((b: { text: string }) => b.text).join('') : (m.content ?? ''),
             toolCalls: m.tool_calls?.map((c: { id: string; function: { name: string; arguments: string } }) => ({ id: c.id, name: c.function.name, args: JSON.parse(c.function.arguments) })),
           })
       }

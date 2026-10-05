@@ -81,17 +81,6 @@ export async function writeSummary(repo: DiaryRepo, s: SummaryDoc): Promise<void
   await repo.writeAtomic(summaryPath(s.meta.period), serializeSummary(s))
 }
 
-export async function listSummaries(store: FileStore): Promise<string[]> {
-  const out: string[] = []
-  for (const kind of ['monthly', 'yearly']) {
-    for (const f of await store.list(`${ROOT}/summaries/${kind}`)) {
-      const m = /^(\d{4}(?:-\d{2})?)\.md$/.exec(f.name)
-      if (m) out.push(m[1])
-    }
-  }
-  return out.sort()
-}
-
 /** 某月日记的内容摘要：按日期排序后各篇文件哈希的哈希 */
 export async function monthSourceHash(index: DiaryIndex, ym: string): Promise<{ hash: string; count: number }> {
   // 不让 AI 读的日记不算：切换这个设置后，总结会显示“源内容已变”

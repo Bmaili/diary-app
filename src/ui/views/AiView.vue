@@ -34,7 +34,6 @@ onMounted(() => void loadChats())
 const conv = computed(() => current())
 const q = ref('')
 const input = ref<HTMLTextAreaElement | null>(null)
-const log = ref<HTMLElement | null>(null)
 const showHistory = ref(false)
 
 const SUGGEST = ['过去一年我去过几次健身房？', '我最近一个月心情怎么样？', '这一年我和谁见面最多？', '帮我回顾一下上个月']
@@ -186,7 +185,7 @@ function toggleSel(v: string) {
     </div>
 
     <!-- 问答 -->
-    <section v-else-if="tab === 'ask'" ref="log" class="chat">
+    <section v-else-if="tab === 'ask'" class="chat">
       <div v-if="!conv && !asking.busy" class="hello">
         <p class="muted">用 {{ profileFor('chat')?.name }} 回答，查的是你手机上全部 {{ stats.count }} 篇日记。可以这样问：</p>
         <button v-for="s in SUGGEST" :key="s" class="chip sug" @click="send(s)">{{ s }}</button>

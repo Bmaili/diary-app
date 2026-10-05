@@ -1,56 +1,55 @@
 <script setup lang="ts">
+/**
+ * 编辑页。逻辑分在 ui/editor/ 下：
+ * useEntrySession（打开、自动保存、离开、删除）、usePlaceWeather、useTextarea（编辑框与快捷按钮）、
+ * useImages（插图与图片说明）、useAiExtract（AI 标注）。
+ */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '../markdown'
-import { App as CapApp } from '@capacitor/app'
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
-import { Keyboard } from '@capacitor/keyboard'
-import { deleteEntryToTrash, enqueue, index, indexVersion, refreshDate, repo, today } from '../../app'
-import { syncAfterEdit, syncOnHide } from '../../syncService'
-import { bodyFor, openSession, type EditSession } from '../../core/session'
-import { hasContent, setListFieldManually } from '../../core/entryFile'
+import { index, indexVersion, today } from '../../app'
+import { bodyFor } from '../../core/session'
+import { setListFieldManually } from '../../core/entryFile'
 import { isValidYmd, parseYmd, weekday } from '../../core/time'
-import { lunarDay } from '../../core/lunar'
+import { lunar as lunarDay } from '../../holidayService'
+import { resolveImages } from '../../imageService'
 import type { ListField } from '../../core/types'
+import { toggleTask } from '../../core/mdEdit'
 import Icon from '../components/Icon.vue'
 import Sheet from '../components/Sheet.vue'
 import ListEditor from '../components/ListEditor.vue'
 import MoodSlider from '../components/MoodSlider.vue'
 import LocationSheet from '../components/LocationSheet.vue'
 import WeatherSheet from '../components/WeatherSheet.vue'
-import { autoFill, fetchWeather, getPosition } from '../../placeService'
-import { cleanCameraTemp, compress, pickImage, resolveImages, saveImage } from '../../imageService'
-import { prefs } from '../../prefs'
-import type { Location, Weather } from '../../core/types'
-import { ensureConsent, extractPreview, profileFor } from '../../aiService'
-import { applyExtraction, type Extraction } from '../../core/llm/extract'
-import { diaryChanged } from '../../app'
-import EditorToolbar, { type ToolAction } from '../components/EditorToolbar.vue'
-import { continueList, insertAt, toggleLines, toggleTask, toggleWrap, type Edit } from '../../core/mdEdit'
-import { hhmm } from '../../core/time'
+import ExtractSheet from '../components/ExtractSheet.vue'
+import ImageSourceSheet from '../components/ImageSourceSheet.vue'
+import CaptionSheet from '../components/CaptionSheet.vue'
+import EditorToolbar from '../components/EditorToolbar.vue'
+import { useEntrySession } from '../editor/useEntrySession'
+import { usePlaceWeather } from '../editor/usePlaceWeather'
+import { useTextarea } from '../editor/useTextarea'
+import { useImages } from '../editor/useImages'
+import { useAiExtract } from '../editor/useAiExtract'
 
 const route = useRoute()
 const router = useRouter()
 const date = String(route.params.date)
 
-const session = ref<EditSession | null>(null)
-const text = ref('')
+const { session, text, status, saveError, statusText, meta, readOnly, isToday, open, flush, metaChanged, remove, isLeft } = useEntrySession(date)
 const mode = ref<'write' | 'read'>('write')
-const status = ref<'idle' | 'saving' | 'saved' | 'empty' | 'error'>('idle')
-const saveError = ref('')
-const textarea = ref<HTMLTextAreaElement | null>(null)
+/** 元数据下面的一行提示（定位失败、插图失败、AI 设置等） */
+const placeNote = ref('')
+const note = (s: string) => (placeNote.value = s)
 
-let savedBody = ''
-let metaDirty = false
-let timer: ReturnType<typeof setTimeout> | null = null
-let left = false
-/** 已经删除：之后不再写盘 */
-let deleted = false
+const { textarea, focused, autosize, focusEnd, onFocus, onBlur, onTool, onBeforeInput, replaceText } = useTextarea(text, readOnly, () => chooseImage())
+const { placeBusy, locOpen, weatherOpen, fillPlace, pickLocation, locLabel, fetchNowWeather, saveWeather, weatherText } =
+  usePlaceWeather({ date, meta, changed: metaChanged, isLeft, note })
+const { imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage } = useImages({
+  text, date, readOnly, meta, autosize, replaceText, flush, note,
+  cursor: () => (mode.value === 'write' && textarea.value ? textarea.value.selectionStart : null),
+})
+const { canExtract, ai, runExtract, acceptExtract } = useAiExtract(date, session, flush, note)
 
-
-const meta = computed(() => session.value?.doc.meta)
-const readOnly = computed(() => !!session.value?.error)
-const isToday = computed(() => date === today())
 const title = computed(() => {
   const d = parseYmd(date)
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日`
@@ -62,16 +61,17 @@ const subtitle = computed(() => {
   if (!isToday.value && !session.value?.existed) parts.push('补写')
   return parts.filter(Boolean).join(' · ')
 })
-const renderedRaw = computed(() =>
-  session.value ? renderMarkdown(bodyFor(session.value, text.value)) : '',
-)
-// 阅读视图：把相对路径的图片换成本地文件内容
+
+// ---------- 阅读视图 ----------
+
+const renderedRaw = computed(() => (session.value ? renderMarkdown(bodyFor(session.value, text.value)) : ''))
 const rendered = ref('')
 watch([renderedRaw, mode], async ([raw, m]) => {
   if (m !== 'read') return
   // 待办方框默认是禁用的；可编辑时让它能点
   const html = readOnly.value ? raw : raw.replace(/<input ((?:checked="" )?)disabled="" type="checkbox">/g, '<input $1type="checkbox" class="task">')
   rendered.value = html
+  // 把相对路径的图片换成本地文件内容
   rendered.value = await resolveImages(html)
 })
 
@@ -85,349 +85,11 @@ function onReadingChange(e: Event) {
   text.value = next
   void flush()
 }
-const statusText = computed(() => {
-  if (readOnly.value) return '只读'
-  switch (status.value) {
-    case 'saving': return '保存中'
-    case 'saved': return '已保存'
-    case 'empty': return '写点内容才会保存'
-    case 'error': return '保存失败'
-    default: return ''
-  }
-})
 
-// ---------- 保存 ----------
-
-/**
- * 有改动后最多 1 秒写盘一次（节流而不是防抖）：
- * 即使一直不停地打字，被强行杀掉时也最多丢失最后 1 秒的输入（阶段 1 验收项）。
- */
-function schedule() {
-  if (readOnly.value || timer) return
-  timer = setTimeout(() => void flush(), 1000)
-}
-
-function flush(): Promise<void> {
-  if (timer) {
-    clearTimeout(timer)
-    timer = null
-  }
-  const s = session.value
-  if (!s || s.error || deleted) return Promise.resolve()
-  const body = bodyFor(s, text.value)
-  return enqueue(async () => {
-    if (body === savedBody && !metaDirty) return
-    if (!hasContent(body)) {
-      status.value = 'empty'
-      return
-    }
-    status.value = 'saving'
-    try {
-      s.doc.body = body
-      await repo.saveEntry(s.doc)
-      savedBody = body
-      metaDirty = false
-      s.existed = true
-      status.value = 'saved'
-      await refreshDate(date)
-    } catch (e) {
-      status.value = 'error'
-      saveError.value = (e as Error).message
-    }
-  })
-}
-
-watch(text, schedule)
-
-function onHidden() {
-  if (document.visibilityState === 'hidden') void flush().then(syncOnHide)
-}
-
-let pauseHandle: PluginListenerHandle | null = null
-
-onMounted(async () => {
-  if (!isValidYmd(date)) {
-    router.replace('/')
-    return
-  }
-  const s = await openSession(repo, date, { append: route.query.append === '1' })
-  session.value = s
-  savedBody = s.originalBody
-  text.value = s.initialText
-  document.addEventListener('visibilitychange', onHidden)
-  window.addEventListener('pagehide', onHidden)
-  // 光标滚动进视野时，留出按钮条的高度
-  document.documentElement.style.scrollPaddingBottom = '72px'
-  if (Capacitor.isNativePlatform()) {
-    pauseHandle = await CapApp.addListener('pause', () => void flush())
-  }
-  // 已经写过的日记默认打开阅读视图；新的一天和“写今天”追加段落时直接编辑
-  if (!s.error && s.existed && !s.appended) mode.value = 'read'
-  await nextTick()
-  autosize()
-  if (!s.error && (!s.existed || s.appended)) focusEnd()
-  if (!s.error && isToday.value) void fillPlace()
-})
-
-// ---------- 位置与天气 ----------
-
-const placeNote = ref('')
-const skipKey = `nolocate:${date}`
-
-/** 当天第一次打开：自动记位置和天气（规格 5.3、5.4）。补写往日日记不自动获取。 */
-const placeBusy = ref(false)
-async function fillPlace() {
-  const m = meta.value
-  if (!m || (m.location && m.weather) || !prefs.place.autoLocate) return
-  placeBusy.value = true
-  const r = await autoFill(m, { skipLocation: prefs.seen.includes(skipKey) }).finally(() => (placeBusy.value = false))
-  if (!session.value || left) return
-  let changed = false
-  if (r.location && !m.location) {
-    m.location = r.location
-    changed = true
-  }
-  if (r.weather && !m.weather) {
-    m.weather = r.weather
-    changed = true
-  }
-  if (r.errors.length && !changed) placeNote.value = r.errors[0]
-  if (changed) {
-    metaDirty = true
-    schedule()
-  }
-}
-
-const locOpen = ref(false)
-function pickLocation(loc: Location | null) {
-  const m = meta.value
-  locOpen.value = false
-  if (!m) return
-  if (loc === null) {
-    delete m.location
-    if (!prefs.seen.includes(skipKey)) prefs.seen.push(skipKey)
-  } else {
-    m.location = loc
-    // 选了具体地点，就把它算作“这天去过的地方”（自动带入，不算手动修改，不锁定）
-    if (loc.name && !(m.places ?? []).includes(loc.name)) m.places = [...(m.places ?? []), loc.name]
-  }
-  metaDirty = true
-  void flush()
-}
-const locLabel = computed(() => {
-  const l = meta.value?.location
-  if (!l) return ''
-  if (l.name) return l.name
-  if (l.address) return l.address.replace(/^.+?(省|自治区)/, '').slice(0, 14)
-  return '已记坐标'
-})
-
-const weatherOpen = ref(false)
-/** 按现在的位置取天气，只在天气框里点“重新获取”时调用 */
-async function fetchNowWeather() {
-  const m = meta.value
-  const at = m?.location?.lat != null ? { lat: m.location.lat, lng: m.location.lng! } : await getPosition().catch(() => prefs.place.defaultCity)
-  if (!at) throw new Error('没有位置，也没有设置默认城市')
-  return fetchWeather(at.lat, at.lng)
-}
-function saveWeather(w: Weather | null) {
-  const m = meta.value
-  if (!m) return
-  if (w) m.weather = w
-  else delete m.weather
-  metaDirty = true
-  void flush()
-}
-
-// ---------- AI 标注（单篇抽取，规格 7.3：先显示结果，确认后才写入） ----------
-
-const canExtract = computed(() => !!profileFor('extract'))
-const ai = reactive({ open: false, busy: false, error: '', x: null as Extraction | null, model: '' })
-async function runExtract() {
-  if (ai.busy || !ensureConsent('extract')) return
-  await flush()
-  if (!session.value?.existed) {
-    placeNote.value = '先写点内容再让 AI 标注'
-    return
-  }
-  Object.assign(ai, { open: true, busy: true, error: '', x: null })
-  try {
-    const r = await extractPreview(date)
-    ai.x = r.x
-    ai.model = r.model
-  } catch (e) {
-    ai.error = (e as Error).message
-  } finally {
-    ai.busy = false
-  }
-}
-async function acceptExtract() {
-  const s = session.value
-  if (!s || !ai.x) return
-  applyExtraction(s.doc, ai.x, ai.model)
-  await enqueue(async () => {
-    await repo.saveEntry(s.doc, new Date(), { touchUpdated: false })
-    await refreshDate(date)
-  })
-  diaryChanged()
-  ai.open = false
-}
-/** 不让 AI 读这篇：问答、总结、抽取都跳过 */
-function toggleAiExclude() {
-  const m = meta.value
-  if (!m || readOnly.value) return
-  if (m.ai_exclude) delete m.ai_exclude
-  else m.ai_exclude = true
-  placeNote.value = m.ai_exclude ? '这篇不会给 AI 读：问答、总结、标注都会跳过它。' : '这篇恢复给 AI 读。'
-  metaDirty = true
-  void flush()
-}
-const FIELD_NAMES = { places: '去过的地方', people: '提到的人', tags: '标签' } as const
-
-// ---------- 插图 ----------
-
-const imgBusy = ref(false)
-const imgSheet = ref(false)
-/** 打开选图方式前记下光标位置（打开弹窗时编辑框会失焦）；阅读视图里插到末尾 */
-let imgPos: number | null = null
-function chooseImage() {
-  if (readOnly.value || imgBusy.value) return
-  imgPos = mode.value === 'write' && textarea.value ? textarea.value.selectionStart : null
-  imgSheet.value = true
-}
-async function insertImage(source: 'camera' | 'gallery') {
-  imgSheet.value = false
-  if (readOnly.value || imgBusy.value) return
-  const file = await pickImage(source)
-  if (!file) return
-  imgBusy.value = true
-  try {
-    const md = await saveImage(date, await compress(file))
-    if (source === 'camera') void cleanCameraTemp()
-    const pos = imgPos ?? text.value.length
-    const before = text.value.slice(0, pos)
-    const after = text.value.slice(pos)
-    const pre = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : ''
-    text.value = `${before}${pre}${md}\n\n${after.replace(/^\n+/, '')}`
-    await nextTick()
-    autosize()
-  } catch (e) {
-    placeNote.value = `插图失败：${(e as Error).message}`
-  } finally {
-    imgBusy.value = false
-  }
-}
-
-onBeforeUnmount(() => {
-  document.documentElement.style.scrollPaddingBottom = ''
-  document.removeEventListener('visibilitychange', onHidden)
-  window.removeEventListener('pagehide', onHidden)
-  pauseHandle?.remove()
-  if (!left) void flush()
-})
-
-onBeforeRouteLeave(async () => {
-  left = true
-  const s = session.value
-  if (!s || s.error || deleted) return true
-  if (timer) clearTimeout(timer)
-  const body = bodyFor(s, text.value)
-  if (!hasContent(body) && s.existed) {
-    if (window.confirm('正文已清空。要删除这一天的日记吗？\n\n删除后可以在“设置 → 最近删除”里找回，保留 30 天。')) {
-      await deleteEntryToTrash(date)
-      syncAfterEdit()
-    }
-    return true
-  }
-  await flush()
-  syncAfterEdit()
-  return true
-})
-
-// ---------- 编辑框 ----------
-
-function autosize() {
-  const el = textarea.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = `${Math.max(el.scrollHeight, window.innerHeight * 0.5)}px`
-}
-
-function focusEnd() {
-  const el = textarea.value
-  if (!el) return
-  el.focus()
-  const n = el.value.length
-  el.setSelectionRange(n, n)
-  if (Capacitor.getPlatform() === 'android') Keyboard.show().catch(() => {})
-  el.scrollIntoView({ block: 'end' })
-}
-
-// ---------- 快捷按钮与列表续行 ----------
-
-const focused = ref(false)
-function onFocus() {
-  focused.value = true
-}
-function onBlur() {
-  // 点按钮条时编辑框不会失焦；真正离开编辑框（收起键盘、点了别处）才隐藏按钮条
-  setTimeout(() => (focused.value = document.activeElement === textarea.value), 150)
-}
-
-/** 用 execCommand 改文字：会触发 input 事件（v-model 同步），并进入系统的撤销记录 */
-function applyEdit(e: Edit) {
-  const el = textarea.value
-  if (!el || readOnly.value) return
-  el.focus()
-  el.setSelectionRange(e.from, e.to)
-  let ok = false
-  try {
-    ok = e.insert ? document.execCommand('insertText', false, e.insert) : e.from === e.to || document.execCommand('delete')
-  } catch {
-    ok = false
-  }
-  if (!ok) {
-    el.setRangeText(e.insert, e.from, e.to, 'end')
-    el.dispatchEvent(new Event('input', { bubbles: true }))
-  }
-  el.setSelectionRange(e.selStart, e.selEnd)
-  autosize()
-}
-
-function state() {
-  const el = textarea.value!
-  return { text: el.value, start: el.selectionStart, end: el.selectionEnd }
-}
-
-function onTool(a: ToolAction) {
-  const el = textarea.value
-  if (!el || readOnly.value) return
-  switch (a) {
-    case 'bold': return applyEdit(toggleWrap(state()))
-    case 'bullet':
-    case 'number':
-    case 'todo':
-    case 'quote': return applyEdit(toggleLines(state(), a))
-    case 'time': return applyEdit(insertAt(state(), `${hhmm(new Date())} `))
-    case 'image': return chooseImage()
-    case 'undo':
-      el.focus()
-      document.execCommand('undo')
-      autosize()
-  }
-}
-
-/**
- * 回车续行。用 beforeinput 而不是 keydown：安卓输入法的回车往往没有可靠的 keydown，
- * 输入法组字（拼音候选）过程中不处理。
- */
-function onBeforeInput(ev: InputEvent) {
-  const isEnter = ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph' || (ev.inputType === 'insertText' && ev.data === '\n')
-  if (!isEnter || ev.isComposing || readOnly.value) return
-  const e = continueList(state())
-  if (!e) return
-  ev.preventDefault()
-  applyEdit(e)
+/** 阅读视图里点图片：改图片说明 */
+function onReadingClick(e: MouseEvent) {
+  const img = (e.target as HTMLElement).closest('img')
+  if (img && !readOnly.value) onReadingImage(img, e.currentTarget as HTMLElement)
 }
 
 /** 阅读视图里双击正文进入编辑（点到待办方框、链接、图片时不算） */
@@ -450,6 +112,25 @@ function toggleMode() {
   }
 }
 
+onMounted(async () => {
+  if (!isValidYmd(date)) {
+    router.replace('/')
+    return
+  }
+  const s = await open(route.query.append === '1')
+  // 光标滚动进视野时，留出按钮条的高度
+  document.documentElement.style.scrollPaddingBottom = '72px'
+  // 已经写过的日记默认打开阅读视图；新的一天和“写今天”追加段落时直接编辑
+  if (!s.error && s.existed && !s.appended) mode.value = 'read'
+  await nextTick()
+  autosize()
+  if (!s.error && (!s.existed || s.appended)) focusEnd()
+  if (!s.error && isToday.value) void fillPlace()
+})
+onBeforeUnmount(() => {
+  document.documentElement.style.scrollPaddingBottom = ''
+})
+
 // ---------- 元数据 ----------
 
 /** 心情：拖动条松手或点文字后立即保存 */
@@ -460,10 +141,19 @@ const mood = computed({
     if (!m || m.mood === v) return
     if (v == null) delete m.mood
     else m.mood = v
-    metaDirty = true
-    void flush()
+    metaChanged()
   },
 })
+
+/** 不让 AI 读这篇：问答、总结、抽取、图片说明都跳过 */
+function toggleAiExclude() {
+  const m = meta.value
+  if (!m || readOnly.value) return
+  if (m.ai_exclude) delete m.ai_exclude
+  else m.ai_exclude = true
+  note(m.ai_exclude ? '这篇不会给 AI 读：问答、总结、标注都会跳过它。' : '这篇恢复给 AI 读。')
+  metaChanged()
+}
 
 const sheet = ref<'' | 'tags' | 'more'>('')
 const draft = reactive<Record<ListField, string[]>>({ tags: [], people: [], places: [] })
@@ -479,8 +169,9 @@ function closeSheet() {
   const m = meta.value
   if (m) {
     const fields: ListField[] = sheet.value === 'tags' ? ['tags'] : ['people', 'places']
-    for (const f of fields) if (setListFieldManually(m, f, draft[f])) metaDirty = true
-    if (metaDirty) void flush()
+    let changed = false
+    for (const f of fields) if (setListFieldManually(m, f, draft[f])) changed = true
+    if (changed) metaChanged()
   }
   sheet.value = ''
 }
@@ -493,28 +184,12 @@ const suggestions = computed(() => {
   }
 })
 
-const weatherText = computed(() => {
-  const w = meta.value?.weather
-  if (!w) return ''
-  return [w.text, w.temp_c != null ? `${w.temp_c}°C` : ''].filter(Boolean).join(' ')
-})
-
-/** 删除这一天：移到“最近删除”，云端副本在下次同步时删除 */
 async function removeEntry() {
-  const s = session.value
-  if (!s?.existed) return
-  const ok = window.confirm(
+  const ok = await remove(
     `删除${title.value}的日记？\n\n日记和这天插的图片会移到“设置 → 最近删除”，保留 30 天，可以恢复。` +
       '开了同步的话，云端的副本会在下次同步时删除。',
   )
-  if (!ok) return
-  // 先把最后一秒的输入存下来，回收站里的才是完整版本
-  if (hasContent(bodyFor(s, text.value))) await flush()
-  left = true
-  deleted = true
-  await deleteEntryToTrash(date)
-  syncAfterEdit()
-  goBack()
+  if (ok) goBack()
 }
 
 function goBack() {
@@ -589,36 +264,19 @@ function goBack() {
           :placeholder="isToday ? '今天过得怎么样？' : '这一天发生了什么？'" aria-label="日记正文" @input="autosize"
           @focus="onFocus" @blur="onBlur" @beforeinput="onBeforeInput" />
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <article v-if="mode === 'read'" class="prose reading" @change="onReadingChange" @dblclick="onReadingDblClick" v-html="rendered" />
-        <p v-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑</p>
+        <article v-if="mode === 'read'" class="prose reading" :class="{ editable: !readOnly }" @change="onReadingChange" @click="onReadingClick"
+          @dblclick="onReadingDblClick" v-html="rendered" />
+        <p v-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑，点图片写说明</p>
       </main>
       <EditorToolbar v-if="mode === 'write' && !readOnly && focused" :img-busy="imgBusy" @action="onTool" />
     </template>
 
-    <Sheet :open="ai.open" title="AI 标注" @close="ai.open = false">
-      <p v-if="ai.busy" class="muted">正在读这篇日记……</p>
-      <p v-if="ai.error" class="ai-err">{{ ai.error }}</p>
-      <template v-if="ai.x && meta">
-        <div v-for="f in (['places', 'people', 'tags'] as const)" :key="f" class="ai-row">
-          <div class="ai-h">{{ FIELD_NAMES[f] }}<span v-if="meta.locked?.includes(f)" class="ai-lock">你改过，不会覆盖</span></div>
-          <div class="ai-vals" :class="{ dim: meta.locked?.includes(f) }">
-            <span v-for="v in ai.x[f]" :key="v" class="chip" :class="{ on: !(meta[f] ?? []).includes(v) }">{{ v }}</span>
-            <span v-if="!ai.x[f].length" class="muted">（无）</span>
-          </div>
-        </div>
-        <p class="muted small-note">深色的是新增的。确认后写入这篇日记的元数据。</p>
-        <button class="solid-btn" @click="acceptExtract">写入</button>
-      </template>
-    </Sheet>
+    <ExtractSheet :open="ai.open" :busy="ai.busy" :error="ai.error" :x="ai.x" :meta="meta" @close="ai.open = false" @accept="acceptExtract" />
     <WeatherSheet :open="weatherOpen" :current="meta?.weather" :can-fetch="isToday" :fetcher="fetchNowWeather"
       @close="weatherOpen = false" @save="saveWeather" />
-    <Sheet :open="imgSheet" title="插图" @close="imgSheet = false">
-      <div class="img-src">
-        <button class="src" @click="insertImage('camera')"><Icon name="camera" /><span>拍照</span></button>
-        <button class="src" @click="insertImage('gallery')"><Icon name="image" /><span>从相册选</span></button>
-      </div>
-      <p class="muted small-note">拍的照片只存进日记，不会出现在系统相册里。</p>
-    </Sheet>
+    <ImageSourceSheet :open="imgSheet" @close="imgSheet = false" @pick="insertImage" />
+    <CaptionSheet :open="caption.open" :date="date" :src="caption.src" :current="caption.current" :excerpt="() => text"
+      :can-ai="canCaption" :auto="autoCaption" @close="caption.open = false" @save="saveCaption" @late="lateCaption" />
     <LocationSheet :open="locOpen" :current="meta?.location" :can-locate="isToday" @close="locOpen = false" @pick="pickLocation" />
     <Sheet :open="sheet === 'tags'" title="标签" @close="closeSheet">
       <ListEditor v-model="draft.tags" :suggestions="suggestions.tags" label="标签" placeholder="输入标签，如 读书" />
@@ -712,29 +370,7 @@ function goBack() {
 .ai-ex::after { content: 'AI'; position: absolute; left: 50%; bottom: -1px; transform: translateX(-50%); font-size: 9px; font-weight: 700; letter-spacing: 0.05em; }
 .ai-ex.on::after { content: 'AI 不读'; white-space: nowrap; }
 .read-hint { animation: fade-in 0.6s 0.4s backwards; margin: 24px 0 0; font-size: 12px; color: var(--faint); text-align: center; }
-.img-src { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.src {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 20px 0;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: var(--surface);
-  font-weight: 700;
-}
-.src svg { width: 30px; height: 30px; }
-.src:active { transform: scale(0.96); }
 .ci { width: 16px; height: 16px; flex: none; }
-.chip:disabled { opacity: 1; }
-.ai-row { margin-bottom: 14px; }
-.ai-h { margin-bottom: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
-.ai-lock { margin-left: 8px; font-weight: 400; color: var(--faint); }
-.ai-vals { display: flex; flex-wrap: wrap; gap: 6px; }
-.ai-vals.dim { opacity: 0.45; }
-.ai-err { color: var(--danger); font-size: 14px; }
-.small-note { font-size: 12px; margin: 4px 0 12px; }
 .place-note { margin: -4px 20px 10px; font-size: 12px; color: var(--faint); }
 .paper { padding: 4px 20px calc(40px + var(--safe-bottom)); }
 .paper.with-tools { padding-bottom: calc(96px + var(--safe-bottom)); }
@@ -753,6 +389,7 @@ function goBack() {
 }
 .input::placeholder { color: var(--faint); }
 .reading { min-height: 50vh; }
+.reading.editable :deep(img) { cursor: pointer; }
 .sheet-sub { margin: 18px 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .sheet-sub:first-child { margin-top: 4px; }
 </style>

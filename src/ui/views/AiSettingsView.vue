@@ -4,19 +4,22 @@ import { useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
 import { TASK_LABEL, type Task } from '../../aiService'
 import Icon from '../components/Icon.vue'
+import Switch from '../components/Switch.vue'
 
 const router = useRouter()
-const tasks: Task[] = ['chat', 'extract', 'summary']
+const tasks: Task[] = ['chat', 'extract', 'summary', 'caption']
 const noteHint: Record<Task, string> = {
   chat: '比如：回答尽量简短；先说结论再列日期。',
   extract: '比如：标签只用 工作、运动、读书、聚餐、旅行、家人 这几个；地点写到店名就行，不要写城市。',
   summary: '比如：口气轻松一点；多写变化少写流水账；每份不超过 500 字。',
+  caption: '比如：照片里的橘猫是阿乐；写得更有画面感一点。',
 }
 const showTaskNotes = ref(tasks.some((t) => prefs.ai.taskNotes[t]?.trim()))
 const desc: Record<Task, string> = {
   chat: '在 AI 页提问。需要支持工具调用的模型。',
   extract: '从日记里标出人物、地点、标签。可以用便宜一些的模型。',
   summary: '写月度和年度总结。',
+  caption: '看图给插图写一句说明。要选能看图的模型，如 qwen-vl、glm-4v、gpt-4o、Claude。',
 }
 </script>
 
@@ -100,6 +103,17 @@ const desc: Record<Task, string> = {
           <option v-for="n in [10, 15, 20, 30]" :key="n" :value="n">{{ n }} 轮</option>
         </select>
       </label>
+    </section>
+
+    <section>
+      <h2>图片说明</h2>
+      <div class="item">
+        <div>
+          <div>插图后让 AI 写一句说明</div>
+          <div class="desc">插入图片时自动让 AI 看图写一句，写好后填进说明框，可以改。会把这张图（缩小后）发给 AI 服务。不开的话，在说明框里点“AI 看图写一句”也行。“不让 AI 读”的日记不会发。</div>
+        </div>
+        <Switch v-model="prefs.ai.caption.auto" label="插图后让 AI 写一句说明" />
+      </div>
     </section>
 
     <section>
