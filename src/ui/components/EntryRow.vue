@@ -4,6 +4,7 @@ import type { IndexRow } from '../../core/types'
 import { weekday } from '../../core/time'
 import { moodLabel } from '../mood'
 import Icon from './Icon.vue'
+import { vReveal } from '../reveal'
 
 const props = defineProps<{ row: IndexRow }>()
 const day = computed(() => String(Number(props.row.date.slice(8))))
@@ -14,7 +15,7 @@ const places = computed(() => [...new Set([props.row.locationName, ...props.row.
 </script>
 
 <template>
-  <router-link :to="`/entry/${row.date}`" class="row" :class="`mood-${row.mood ?? 0}`" :data-date="row.date">
+  <router-link v-reveal :to="`/entry/${row.date}`" class="row" :class="`mood-${row.mood ?? 0}`" :data-date="row.date">
     <div class="side">
       <span class="blob num" :title="moodLabel(row.mood)">{{ day }}</span>
       <span class="wd">{{ weekday(row.date) }}</span>
@@ -54,13 +55,12 @@ const places = computed(() => [...new Set([props.row.locationName, ...props.row.
   background: var(--line);
 }
 .row:active .content { opacity: 0.6; }
-/* 滚动时每一条从下方浮上来，日期圆点像星星一样亮起（浏览器原生的滚动驱动动画，不占主线程） */
-@supports (animation-timeline: view()) {
-  .row { animation: row-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
-  .blob { animation: blob-pop linear both; animation-timeline: view(); animation-range: entry 5% entry 60%; }
-}
-@keyframes row-rise { from { opacity: 0; transform: translateY(32px); } }
-@keyframes blob-pop { from { transform: scale(0.3) rotate(-30deg); opacity: 0; } 70% { transform: scale(1.12); } }
+/* 第一次滚进屏幕时浮上来、日期圆点像墨点一样晕开（只跑一次，见 ui/reveal.ts） */
+.row.reveal-wait { opacity: 0; }
+.row.reveal-in { animation: row-rise 0.5s var(--ease-out) both; }
+.row.reveal-in .blob { animation: blob-pop 0.55s var(--spring) both; }
+@keyframes row-rise { from { opacity: 0; transform: translateY(24px); } }
+@keyframes blob-pop { from { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.08); } }
 .side { position: relative; display: flex; flex-direction: column; align-items: center; }
 .blob {
   display: grid;

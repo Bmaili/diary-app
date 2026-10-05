@@ -378,7 +378,6 @@ const memoryDateLabel = (d: string) => {
   padding: 10px 20px 6px;
   background-color: var(--bg);
   background-image: var(--paper, none);
-  background-attachment: fixed;
   font-size: 15px;
   font-weight: 700;
   color: var(--muted);

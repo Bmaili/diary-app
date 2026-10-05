@@ -83,10 +83,11 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
 ## 设计语言：“宣纸水墨”（2026-10-05 起，用户要求去掉所有天文宇宙元素）
 
 - 浅色是米白宣纸（`--paper` 纸纹），墨色文字；深色是砚台夜墨，月白文字。朱砂红 `--accent` 只用于印章（`Seal.vue`）、今天、强调。
-- 心情用中国传统色：玄青、黛、缃、竹青、胭脂（`--m1`…`--m5`；深色心情上用浅字，见 `.mood-N` 的 `--onm` 和 `mood.ts` 的 `inkOn`）。成功 / 开关用竹青 `--m4`。
+- 心情用中国传统色，冷暗到暖亮：玄青、黛蓝、天青、竹青、杏黄（`--m1`…`--m5`；不要用红色表示好心情，用户觉得红是生气；深色心情上用浅字，见 `.mood-N` 的 `--onm` 和 `mood.ts` 的 `inkOn`）。成功 / 开关用竹青 `--m4`。
 - 字体用手机自带宋体（`--serif`），诗句用楷体（`--kai`），数字用衬线体（`--num`）。用户选择不内置字体（不想安装包变大）。
-- 首页最近 30 天画成一枝梅花（`PlumBranch.vue`），写一天开一朵；日历每天显示农历（`core/lunar.ts`，lunar-javascript），节气和节日朱红；首页有每日诗词（`core/poems.ts` 内置库 + 可选今日诗词接口，`dailyService.ts`）。
+- 首页最近 30 天画成一枝梅花（`PlumBranch.vue`），写一天开一朵；日历每天显示农历（`core/lunar.ts`，lunar-javascript），节气和节日朱红；首页有每日诗词（`core/poems.ts` 内置库 + 可选今日诗词接口，`dailyService.ts`）。日历标中国大陆法定假日“休 / 班”（lunar-javascript 的 HolidayUtil，数据到 2026 年；**每年 11 月国务院公布次年安排后升级 lunar-javascript**）。
 - 不要再引入星空、星座、月相、宇宙类意象。
+- 性能：不要用 `background-attachment: fixed`；不要给列表的每一条挂常驻动画（滚动驱动动画会让每条成为独立图层，2026-10-05 实测 207 个图层，滚动卡顿），进场动画用 `v-reveal`（`ui/reveal.ts`）只跑一次；会横向位移的元素外面套 `overflow: hidden`。
 - 新界面沿用 `style.css` 里的颜色变量和组件（Switch、Sheet、Icon 等），不要引入新的视觉风格。
 - 用户很懒：不要加必填项；默认值要合理。
 
@@ -99,9 +100,9 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
 - 云端加密：每个后端单独开关，默认关闭；age 格式。
 - 位置与天气：高德附近地点；插图。
 - AI：问答、抽取（标注）、月度和年度总结、词表合并、补充说明（共用 + 分功能）、服务高级设置（上下文长度、最大输出、温度、超时、额外参数）、token 用量显示。
-- 删除日记（编辑页按钮）+ 最近删除（30 天）。阅读视图单个换行即换行（`src/ui/markdown.ts`）。
+- 删除日记（编辑页顶栏按钮）+ 最近删除（30 天）。编辑页顶栏还有“不让 AI 读”的开关（删除和编辑按钮之间）。阅读视图单个换行即换行（`src/ui/markdown.ts`）。
 - 编辑页：已写过的日记默认阅读视图（双击或点笔进入编辑）；心情卡片上方是位置和天气（点开编辑框，天气不再点一下就重新获取），下方显示标签/人物/去过的地方，卡片外是操作按钮；插图可选拍照（`capture` 属性 + manifest 里的 `<queries>`）或相册。
-- 动效（`src/ui/motion.ts` + `style.css` 末尾）：View Transitions 页面切换和列表→正文共享元素、滚动驱动的列表入场、日历跟手换月、梅枝开花、首页飘落花瓣。设置里可关（`prefs.ui.motion`），系统“减少动画”时自动关。端到端测试用 `reducedMotion: 'reduce'` 关掉动画再截图；要看动画效果得另外开着动画截图。
+- 动效（`src/ui/motion.ts` + `style.css` 末尾）：View Transitions 页面切换和列表→正文共享元素、列表第一次进屏浮现（`v-reveal`）、日历跟手换月、梅枝开花、首页飘落花瓣。设置里可关（`prefs.ui.motion`），系统“减少动画”时自动关。端到端测试用 `reducedMotion: 'reduce'` 关掉动画再截图；要看动画效果得另外开着动画截图。
 - 写日记提醒、PIN 应用锁，可选指纹解锁（`BiometricPlugin.java` + `platform/biometric.ts`，依赖 androidx.biometric 1.1.0；端到端测试用 `window.__biometricMock`）。
 - AI 问答流式输出（`HttpStreamPlugin.java` + `platform/nativeStream.ts`，`core/http.ts` 的 `httpStream`；`client.ts` 里 SSE 解析，服务不支持时自动退回普通请求），可停止。月度总结超出上下文时按周分段再合成（`summarize.ts` 的 `chunkEntries`）。
 - 编辑快捷栏：加粗、列表、编号、待办、引用、时间、插图、撤销；回车续行；阅读视图里可勾选待办。

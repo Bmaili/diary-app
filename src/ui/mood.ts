@@ -1,15 +1,15 @@
-/** 心情档位的文字与颜色（中国传统色：玄青、黛、缃、竹青、胭脂）。颜色与 style.css 中的 --m1…--m5 一致，供需要连续插值的地方使用。 */
+/** 心情档位的文字与颜色（中国传统色，从冷暗到暖亮：玄青、黛蓝、天青、竹青、杏黄）。颜色与 style.css 中的 --m1…--m5 一致，供需要连续插值的地方使用。 */
 export const MOOD_LABELS = ['很差', '不好', '一般', '不错', '很好'] as const
 
 /** 心情对应的传统色名 */
-export const MOOD_COLORS = ['玄青', '黛', '缃', '竹青', '胭脂'] as const
+export const MOOD_COLORS = ['玄青', '黛蓝', '天青', '竹青', '杏黄'] as const
 
 export function moodLabel(v?: number | null): string {
   return v ? MOOD_LABELS[v - 1] : '没记'
 }
 
-const LIGHT = ['#3e3c52', '#5c6b7a', '#e0b54e', '#6e8b5a', '#a8343e']
-const DARK = ['#7a7896', '#8094a6', '#e3be5e', '#8daa77', '#cf5560']
+const LIGHT = ['#3b3d4f', '#5b6d80', '#93b1ae', '#6f9460', '#e3a33b']
+const DARK = ['#6c6b86', '#7e93a8', '#9fbdb9', '#8db27a', '#eab055']
 
 function isDark(): boolean {
   return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches

@@ -751,6 +751,11 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     await page.getByText('每天下面是农历').waitFor()
     expect(await page.getByText('恒星光谱').count()).toBe(0)
     await page.screenshot({ path: OUT + '72-calendar.png' })
+    // 法定节假日：2026 年 10 月有国庆放假和 10 日调休上班
+    await page.evaluate(() => (window as unknown as { __diary: unknown }).__diary)
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '72-calendar-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
     expect(errors).toEqual([])
     await ctx.close()
   })
@@ -876,8 +881,8 @@ describe('每日诗词、不让 AI 读', () => {
     await page.emulateMedia({ colorScheme: 'light' })
 
     await page.locator('.row').first().click()
-    await page.getByRole('button', { name: '不让 AI 读' }).click()
-    await page.getByRole('button', { name: 'AI 不读这篇' }).waitFor()
+    await page.getByRole('button', { name: '不让 AI 读这篇' }).click()
+    await page.getByRole('button', { name: /AI 不读这篇/ }).waitFor()
     const date: string = await page.evaluate(() => location.hash.split('/').pop()!.split('?')[0])
     expect(await until(async () => (await page.evaluate((d) =>
       (window as unknown as { __diary: { repo: { readEntryRaw(d: string): Promise<string> } } }).__diary.repo.readEntryRaw(d), date)).includes('ai_exclude: true'))).toBe(true)

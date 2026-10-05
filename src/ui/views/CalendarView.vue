@@ -31,11 +31,16 @@ const cells = computed(() => {
   const first = new Date(year.value, month.value - 1, 1)
   const lead = (first.getDay() + 6) % 7
   const days = new Date(year.value, month.value, 0).getDate()
-  const out: ({ date: string; day: number; lunar: string; special: boolean; full: string } | null)[] = Array(lead).fill(null)
+  const out: ({ date: string; day: number; lunar: string; special: boolean; full: string; rest: '' | '休' | '班' } | null)[] = Array(lead).fill(null)
   for (let d = 1; d <= days; d++) {
     const date = ymd(new Date(year.value, month.value - 1, d))
     const l = lunarDay(date)
-    out.push({ date, day: d, lunar: l.cell, special: !!(l.festival || l.jieqi), full: [l.full, l.festival, l.jieqi].filter(Boolean).join('，') })
+    const rest = l.holiday ? (l.holiday.off ? '休' : '班') : ''
+    const hol = l.holiday ? `${l.holiday.name}${l.holiday.off ? '放假' : '调休上班'}` : ''
+    out.push({
+      date, day: d, lunar: l.cell, special: !!(l.festival || l.jieqi || l.holiday?.first), rest,
+      full: [l.full, l.festival, l.jieqi, hol].filter(Boolean).join('，'),
+    })
   }
   while (out.length % 7) out.push(null)
   return out
@@ -157,6 +162,8 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
     <div class="grid wk">
       <span v-for="w in ['一', '二', '三', '四', '五', '六', '日']" :key="w" class="wh">{{ w }}</span>
     </div>
+    <!-- 换月滑动时把超出的部分裁掉：否则页面会临时变宽，安卓 WebView 会把整个页面（连同底部导航）挪位 -->
+    <div class="pane-clip">
     <div ref="pane" class="grid days" :class="{ animating }" :style="{ transform: dx ? `translateX(${dx}px)` : undefined, opacity: dx ? Math.max(0.3, 1 - Math.abs(dx) / 500) : undefined }"
       @touchstart.passive="onStart" @touchmove.passive="onMove" @touchend="onEnd" @touchcancel="onEnd">
       <template v-for="(c, i) in cells" :key="`${year}-${month}-${i}`">
@@ -167,15 +174,17 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
           @click="open(c.date)">
           <span class="d num">{{ c.day }}</span>
           <span class="m" :class="{ special: c.special }" :title="c.full">{{ c.lunar }}</span>
+          <span v-if="c.rest" class="rest" :class="{ work: c.rest === '班' }" :aria-label="c.rest === '休' ? '放假' : '调休上班'">{{ c.rest }}</span>
         </button>
       </template>
+    </div>
     </div>
 
     <div class="legend" aria-label="心情颜色">
       <span v-for="(w, i) in MOOD_LABELS" :key="w" :class="`mood-${i + 1}`"><i class="dot"></i>{{ w }}</span>
       <span class="mood-0"><i class="dot"></i>没记心情</span>
     </div>
-    <p class="hint muted">每天下面是农历，节气和传统节日用朱红标出。点没写的日子可以补写，左右滑动换月份。</p>
+    <p class="hint muted">每天下面是农历，节气和节日用朱红标出；右上角“休”是法定放假，“班”是调休上班。点没写的日子可以补写，左右滑动换月份。</p>
   </div>
 </template>
 
@@ -188,6 +197,7 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
 .summary p { margin: 0; font-size: 15px; }
 .summary strong { font-weight: 800; }
 .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px 6px; padding: 0 14px; }
+.pane-clip { overflow: hidden; }
 .grid.days { touch-action: pan-y; will-change: transform; }
 .grid.days.animating { transition: transform 0.3s var(--ease-out), opacity 0.3s; }
 /* 换月后每天依次亮起，有日记的日子弹一下 */
@@ -227,6 +237,13 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
 .cell.today { color: var(--ink); }
 .cell .m { font-size: 10px; line-height: 1.1; letter-spacing: 0.02em; color: var(--faint); white-space: nowrap; }
 .cell .m.special { color: var(--accent); font-weight: 600; }
+.cell { position: relative; }
+.rest {
+  position: absolute; top: 0; right: 0; z-index: 1;
+  padding: 2px; border-radius: 50%; background: var(--bg);
+  font-size: 10px; font-weight: 700; line-height: 1; color: var(--accent);
+}
+.rest.work { color: var(--muted); }
 .cell.future { opacity: 0.4; }
 .cell:active:not(:disabled) .d { transform: scale(0.9); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 22px 20px 0; font-size: 12px; color: var(--muted); }

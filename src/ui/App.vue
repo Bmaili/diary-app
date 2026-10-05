@@ -96,7 +96,6 @@ onMounted(() => {
   padding-bottom: var(--safe-bottom);
   background-color: var(--bg);
   background-image: var(--paper, none);
-  background-attachment: fixed;
   border-top: 1px solid var(--line);
   view-transition-name: nav;
 }

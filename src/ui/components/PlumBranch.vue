@@ -70,7 +70,7 @@ const petals = [0, 1, 2, 3, 4].map((k) => (k * 72 * Math.PI) / 180)
 .twig { stroke: var(--ink); stroke-width: 1.2; stroke-linecap: round; opacity: 0.7; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.4s ease-out forwards; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 .petal { fill: var(--mc); opacity: 0.92; }
-.heart { fill: #f2d27c; }
+.heart { fill: var(--ink); opacity: 0.45; }
 .bud { fill: var(--ink); opacity: 0.35; }
 .today { fill: none; stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 2.5 2; }
 /* 花一朵朵开出来 */

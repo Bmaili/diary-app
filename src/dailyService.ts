@@ -104,5 +104,6 @@ export async function nextPoem(): Promise<void> {
 /** 首页标题下的一行：农历、节气 */
 export function almanac(date: string): string {
   const l = lunarDay(date)
-  return [l.full, l.festival, l.jieqi ?? `${l.term}时节`].filter(Boolean).join(' · ')
+  const hol = l.holiday ? (l.holiday.off ? `${l.holiday.name}假期` : '调休上班') : ''
+  return [l.full, l.festival, l.jieqi ?? `${l.term}时节`, hol].filter(Boolean).join(' · ')
 }

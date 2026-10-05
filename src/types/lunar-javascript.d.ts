@@ -14,6 +14,12 @@ declare module 'lunar-javascript' {
     getYearInGanZhi(): string
     getYearShengXiao(): string
   }
+  export class Holiday {
+    getName(): string
+    isWork(): boolean
+    getTarget(): string
+  }
+  export const HolidayUtil: { getHoliday(ymd: string): Holiday | null }
   export class Solar {
     static fromYmd(y: number, m: number, d: number): Solar
     getLunar(): Lunar

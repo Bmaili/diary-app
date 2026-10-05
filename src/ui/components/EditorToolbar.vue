@@ -61,7 +61,6 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
   background-color: var(--bg);
   background-image: var(--paper, none);
-  background-attachment: fixed;
   border-top: 1px solid var(--line);
   scrollbar-width: none;
 }

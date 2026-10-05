@@ -362,7 +362,6 @@ function toggleSel(v: string) {
   padding: 8px 10px 8px 16px;
   background-color: var(--bg);
   background-image: var(--paper, none);
-  background-attachment: fixed;
   border-top: 1px solid var(--line);
 }
 .composer textarea {

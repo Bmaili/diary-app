@@ -1,7 +1,7 @@
 /*
  * 视觉方向：“宣纸水墨”（2026-10-05 起，替换原来的“观测日志”）。
  * 浅色像一张米白的宣纸，墨色文字，朱砂红只用在印章和少量点缀上；深色像砚台里的夜墨，字是月白色。
- * 心情用中国传统色：玄青、黛、缃、竹青、胭脂（很差 → 很好）。
+ * 心情用中国传统色，从冷暗到暖亮：玄青、黛蓝、天青、竹青、杏黄（很差 → 很好）。不用红色：红容易读成生气。
  * 字体用手机自带的宋体（思源宋体 / Noto Serif CJK），没有时退回系统字体；数字用衬线体。
  * 记忆点：首页把最近一个月画成一枝梅花，写一天开一朵；日历每天下面是农历，节气和节日用朱红标出。
  */
@@ -18,12 +18,12 @@
   --accent: #b5382c;
   --on-accent: #fbf8f2;
 
-  /* 心情：玄青、黛、缃、竹青、胭脂 */
-  --m1: #3e3c52;
-  --m2: #5c6b7a;
-  --m3: #e0b54e;
-  --m4: #6e8b5a;
-  --m5: #a8343e;
+  /* 心情：玄青、黛蓝、天青、竹青、杏黄（从冷暗到暖亮） */
+  --m1: #3b3d4f;
+  --m2: #5b6d80;
+  --m3: #93b1ae;
+  --m4: #6f9460;
+  --m5: #e3a33b;
   --m0: #d3cabb;
   --on-mood: #2a2724;
   --glow: none;
@@ -51,11 +51,11 @@
     --danger: #e0675c;
     --accent: #cf5246;
     --on-accent: #f6f1e6;
-    --m1: #7a7896;
-    --m2: #8094a6;
-    --m3: #e3be5e;
-    --m4: #8daa77;
-    --m5: #cf5560;
+    --m1: #6c6b86;
+    --m2: #7e93a8;
+    --m3: #9fbdb9;
+    --m4: #8db27a;
+    --m5: #eab055;
     --m0: #47454a;
     --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .9 0 0 0 0 .86 0 0 0 0 .78 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     color-scheme: dark;
@@ -68,7 +68,6 @@
 html, body, .sky-bg {
   background-color: var(--bg);
   background-image: var(--paper, none);
-  background-attachment: fixed;
 }
 body { min-height: 100vh; }
 
@@ -105,7 +104,6 @@ button { cursor: pointer; }
   padding: var(--safe-top) 8px 0;
   background-color: var(--bg);
   background-image: var(--paper, none);
-  background-attachment: fixed;
 }
 .topbar h1 {
   flex: 1;
@@ -163,9 +161,9 @@ button { cursor: pointer; }
 .mood-2 { --mc: var(--m2); --onm: #f6f1e6; }
 .mood-3 { --mc: var(--m3); --onm: #2a2724; }
 .mood-4 { --mc: var(--m4); --onm: #f6f1e6; }
-.mood-5 { --mc: var(--m5); --onm: #f6f1e6; }
+.mood-5 { --mc: var(--m5); --onm: #2a2724; }
 @media (prefers-color-scheme: dark) {
-  .mood-2, .mood-4 { --onm: #1a1a1c; }
+  .mood-2, .mood-3, .mood-4, .mood-5 { --onm: #1a1a1c; }
 }
 
 .dot {
@@ -308,7 +306,7 @@ html[data-vt='pop']::view-transition-new(nav) { animation: 0.34s var(--ease-out)
   width: 9px;
   height: 7px;
   border-radius: 70% 0 70% 0;
-  background: var(--m5);
+  background: #e2a9ad;
   opacity: 0;
   transform: scale(var(--s, 1));
   animation: petal-fall var(--d, 20s) linear var(--delay, 0s) infinite;

@@ -58,9 +58,9 @@ const title = computed(() => {
 const subtitle = computed(() => {
   const y = date.slice(0, 4)
   const l = lunarDay(date)
-  const parts = [`${y} 年`, weekday(date), l.full, ...(l.festival ? [l.festival] : []), ...(l.jieqi ? [l.jieqi] : [])]
+  const parts = [y === today().slice(0, 4) ? '' : `${y}年`, weekday(date), l.full.replace('农历', ''), l.festival, l.jieqi, l.holiday?.off && !l.festival ? `${l.holiday.name}假期` : '']
   if (!isToday.value && !session.value?.existed) parts.push('补写')
-  return parts.join('，')
+  return parts.filter(Boolean).join(' · ')
 })
 const renderedRaw = computed(() =>
   session.value ? renderMarkdown(bodyFor(session.value, text.value)) : '',
@@ -278,6 +278,7 @@ function toggleAiExclude() {
   if (!m || readOnly.value) return
   if (m.ai_exclude) delete m.ai_exclude
   else m.ai_exclude = true
+  placeNote.value = m.ai_exclude ? '这篇不会给 AI 读：问答、总结、标注都会跳过它。' : '这篇恢复给 AI 读。'
   metaDirty = true
   void flush()
 }
@@ -528,13 +529,19 @@ function goBack() {
       <button class="icon-btn" aria-label="返回" @click="goBack"><Icon name="back" /></button>
       <div class="titles">
         <h1>{{ title }}</h1>
-        <span class="sub">{{ subtitle }}</span>
+        <span class="sub">
+          <span class="sub-text">{{ subtitle }}</span>
+          <Transition name="status" mode="out-in">
+            <span v-if="statusText" :key="statusText" class="status" aria-live="polite">{{ statusText }}</span>
+          </Transition>
+        </span>
       </div>
-      <Transition name="status" mode="out-in">
-        <span :key="statusText" class="status" aria-live="polite">{{ statusText }}</span>
-      </Transition>
       <button v-if="session?.existed" class="icon-btn" aria-label="删除这篇日记" @click="removeEntry">
         <Icon name="trash" />
+      </button>
+      <button v-if="meta && !readOnly" class="icon-btn ai-ex" :class="{ on: meta.ai_exclude }" :aria-pressed="!!meta.ai_exclude"
+        :aria-label="meta.ai_exclude ? 'AI 不读这篇（点一下恢复）' : '不让 AI 读这篇'" @click="toggleAiExclude">
+        <Icon :name="meta.ai_exclude ? 'eye-off' : 'eye'" />
       </button>
       <button class="icon-btn" :aria-label="mode === 'write' ? '阅读视图' : '编辑'" :disabled="!session"
         @click="toggleMode">
@@ -574,9 +581,6 @@ function goBack() {
         <button class="act" @click="openSheet('more')"><Icon name="person" class="ci" />人物和地点</button>
         <button class="act" :disabled="imgBusy" @click="chooseImage"><Icon name="image" class="ci" />{{ imgBusy ? '处理中' : '插图' }}</button>
         <button v-if="canExtract && !meta.ai_exclude" class="act" @click="runExtract"><Icon name="sparkle" class="ci" />AI 标注</button>
-        <button class="act" :class="{ on: meta.ai_exclude }" :aria-pressed="!!meta.ai_exclude" @click="toggleAiExclude">
-          <Icon name="eye-off" class="ci" />{{ meta.ai_exclude ? 'AI 不读这篇' : '不让 AI 读' }}
-        </button>
       </div>
       <p v-if="placeNote" class="place-note">{{ placeNote }}</p>
 
@@ -632,8 +636,10 @@ function goBack() {
 .editor { min-height: 100vh; background: var(--bg); }
 .titles { flex: 1; display: flex; flex-direction: column; margin-left: 4px; min-width: 0; }
 .titles h1 { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--num); font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: 0.02em; }
-.sub { font-size: 12px; color: var(--muted); }
-.status { font-size: 12px; color: var(--faint); white-space: nowrap; }
+.sub { display: flex; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.sub-text { overflow: hidden; text-overflow: ellipsis; }
+.status { flex: none; color: var(--faint); }
+.status::before { content: '·'; margin-right: 6px; }
 .banner {
   margin: 4px 16px 8px;
   padding: 10px 12px;
@@ -700,6 +706,11 @@ function goBack() {
 /* 切换阅读 / 编辑：内容轻轻浮上来 */
 .reading { animation: rise-in 0.3s var(--ease-out); }
 .reading :deep(img) { animation: pop-in 0.4s var(--ease-out); }
+.ai-ex { position: relative; color: var(--faint); }
+.ai-ex.on { color: var(--accent); }
+/* 打开后图标下面写一个小字，免得只看图标猜不出意思 */
+.ai-ex::after { content: 'AI'; position: absolute; left: 50%; bottom: -1px; transform: translateX(-50%); font-size: 9px; font-weight: 700; letter-spacing: 0.05em; }
+.ai-ex.on::after { content: 'AI 不读'; white-space: nowrap; }
 .read-hint { animation: fade-in 0.6s 0.4s backwards; margin: 24px 0 0; font-size: 12px; color: var(--faint); text-align: center; }
 .img-src { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .src {

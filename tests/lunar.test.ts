@@ -10,6 +10,14 @@ describe('农历与节气', () => {
     expect(lunarDay('2026-02-17')).toMatchObject({ month: '正月', day: '初一', festival: '春节' })
     expect(lunarDay('2026-10-10').cell).toBe('九月')
   })
+  it('法定节假日和调休', () => {
+    expect(lunarDay('2026-10-01')).toMatchObject({ holiday: { name: '国庆', off: true, first: true }, cell: '国庆' })
+    expect(lunarDay('2026-10-03').holiday).toEqual({ name: '国庆', off: true, first: false })
+    expect(lunarDay('2026-10-10').holiday).toEqual({ name: '国庆', off: false, first: false })
+    expect(lunarDay('2026-02-14').holiday?.off).toBe(false)
+    expect(lunarDay('2026-01-01').cell).toBe('元旦')
+    expect(lunarDay('2026-10-12').holiday).toBeUndefined()
+  })
   it('按节气分四季', () => {
     expect(seasonOf('立春')).toBe('spring')
     expect(seasonOf('大暑')).toBe('summer')
