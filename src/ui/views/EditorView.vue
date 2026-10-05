@@ -6,12 +6,11 @@ import { App as CapApp } from '@capacitor/app'
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import { deleteEntryToTrash, enqueue, index, indexVersion, refreshDate, repo, today } from '../../app'
-import { syncAfterEdit } from '../../syncService'
+import { syncAfterEdit, syncOnHide } from '../../syncService'
 import { bodyFor, openSession, type EditSession } from '../../core/session'
 import { hasContent, setListFieldManually } from '../../core/entryFile'
 import { isValidYmd, parseYmd, weekday } from '../../core/time'
-import { moonOnDate } from '../../core/astro'
-import MoonIcon from '../components/MoonIcon.vue'
+import { lunarDay } from '../../core/lunar'
 import type { ListField } from '../../core/types'
 import Icon from '../components/Icon.vue'
 import Sheet from '../components/Sheet.vue'
@@ -58,7 +57,8 @@ const title = computed(() => {
 })
 const subtitle = computed(() => {
   const y = date.slice(0, 4)
-  const parts = [`${y} 年`, weekday(date), moonOnDate(date).name]
+  const l = lunarDay(date)
+  const parts = [`${y} 年`, weekday(date), l.full, ...(l.festival ? [l.festival] : []), ...(l.jieqi ? [l.jieqi] : [])]
   if (!isToday.value && !session.value?.existed) parts.push('补写')
   return parts.join('，')
 })
@@ -140,7 +140,7 @@ function flush(): Promise<void> {
 watch(text, schedule)
 
 function onHidden() {
-  if (document.visibilityState === 'hidden') void flush().then(syncAfterEdit)
+  if (document.visibilityState === 'hidden') void flush().then(syncOnHide)
 }
 
 let pauseHandle: PluginListenerHandle | null = null
@@ -175,10 +175,12 @@ const placeNote = ref('')
 const skipKey = `nolocate:${date}`
 
 /** 当天第一次打开：自动记位置和天气（规格 5.3、5.4）。补写往日日记不自动获取。 */
+const placeBusy = ref(false)
 async function fillPlace() {
   const m = meta.value
-  if (!m || (m.location && m.weather)) return
-  const r = await autoFill(m, { skipLocation: prefs.seen.includes(skipKey) })
+  if (!m || (m.location && m.weather) || !prefs.place.autoLocate) return
+  placeBusy.value = true
+  const r = await autoFill(m, { skipLocation: prefs.seen.includes(skipKey) }).finally(() => (placeBusy.value = false))
   if (!session.value || left) return
   let changed = false
   if (r.location && !m.location) {
@@ -269,6 +271,15 @@ async function acceptExtract() {
   })
   diaryChanged()
   ai.open = false
+}
+/** 不让 AI 读这篇：问答、总结、抽取都跳过 */
+function toggleAiExclude() {
+  const m = meta.value
+  if (!m || readOnly.value) return
+  if (m.ai_exclude) delete m.ai_exclude
+  else m.ai_exclude = true
+  metaDirty = true
+  void flush()
 }
 const FIELD_NAMES = { places: '去过的地方', people: '提到的人', tags: '标签' } as const
 
@@ -516,7 +527,7 @@ function goBack() {
     <header class="topbar">
       <button class="icon-btn" aria-label="返回" @click="goBack"><Icon name="back" /></button>
       <div class="titles">
-        <h1><MoonIcon :phase="moonOnDate(date).phase" :size="16" class="moon" />{{ title }}</h1>
+        <h1>{{ title }}</h1>
         <span class="sub">{{ subtitle }}</span>
       </div>
       <Transition name="status" mode="out-in">
@@ -541,10 +552,10 @@ function goBack() {
         <template #top>
           <div class="readouts">
             <button class="readout" :class="{ empty: !locLabel }" :aria-label="`位置：${locLabel || '未记录'}`" @click="locOpen = true">
-              <Icon name="pin" class="ri" /><span>{{ locLabel || '记录位置' }}</span>
+              <Icon name="pin" class="ri" /><span>{{ locLabel || (placeBusy ? '正在定位…' : '记录位置') }}</span>
             </button>
             <button class="readout" :class="{ empty: !weatherText }" :aria-label="`天气：${weatherText || '未记录'}`" @click="weatherOpen = true">
-              <Icon name="weather" class="ri" /><span>{{ weatherText || '天气' }}</span>
+              <Icon name="weather" class="ri" /><span>{{ weatherText || (placeBusy ? '正在取天气…' : '天气') }}</span>
             </button>
           </div>
         </template>
@@ -562,7 +573,10 @@ function goBack() {
         <button class="act" @click="openSheet('tags')"><Icon name="hash" class="ci" />{{ meta.tags?.length ? '改标签' : '加标签' }}</button>
         <button class="act" @click="openSheet('more')"><Icon name="person" class="ci" />人物和地点</button>
         <button class="act" :disabled="imgBusy" @click="chooseImage"><Icon name="image" class="ci" />{{ imgBusy ? '处理中' : '插图' }}</button>
-        <button v-if="canExtract" class="act" @click="runExtract"><Icon name="sparkle" class="ci" />AI 标注</button>
+        <button v-if="canExtract && !meta.ai_exclude" class="act" @click="runExtract"><Icon name="sparkle" class="ci" />AI 标注</button>
+        <button class="act" :class="{ on: meta.ai_exclude }" :aria-pressed="!!meta.ai_exclude" @click="toggleAiExclude">
+          <Icon name="eye-off" class="ci" />{{ meta.ai_exclude ? 'AI 不读这篇' : '不让 AI 读' }}
+        </button>
       </div>
       <p v-if="placeNote" class="place-note">{{ placeNote }}</p>
 
@@ -676,6 +690,7 @@ function goBack() {
 }
 .act:active { transform: scale(0.94); background: var(--line); }
 .act:disabled { opacity: 0.6; }
+.act.on { background: var(--ink); color: var(--bg); box-shadow: none; }
 .status-enter-active, .status-leave-active { transition: opacity 0.2s, transform 0.2s; }
 .status-enter-from { opacity: 0; transform: translateY(6px); }
 .status-leave-to { opacity: 0; transform: translateY(-6px); }
@@ -713,7 +728,7 @@ function goBack() {
 .paper { padding: 4px 20px calc(40px + var(--safe-bottom)); }
 .paper.with-tools { padding-bottom: calc(96px + var(--safe-bottom)); }
 .reading :deep(li:has(> .task)) { list-style: none; margin-left: -1.2em; }
-.reading :deep(.task) { width: 18px; height: 18px; margin: 0 6px 0 0; vertical-align: -3px; accent-color: var(--m5); }
+.reading :deep(.task) { width: 18px; height: 18px; margin: 0 6px 0 0; vertical-align: -3px; accent-color: var(--m4); }
 .input {
   display: block;
   width: 100%;

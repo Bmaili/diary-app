@@ -12,18 +12,24 @@ const route = useRoute()
 const router = useRouter()
 const tab = computed(() => route.meta.tab as string | undefined)
 
-/** 夜空里会闪的星星：位置和节奏固定（按序号算），每次打开都一样 */
-const twinkles = Array.from({ length: 14 }, (_, i) => {
+/** 首页上偶尔飘落的梅花瓣：位置和节奏按序号算，每次都一样 */
+const petals = Array.from({ length: 7 }, (_, i) => {
   const r = (n: number) => ((Math.sin(i * 12.9898 + n * 78.233) * 43758.5453) % 1 + 1) % 1
-  return { left: `${(r(1) * 100).toFixed(1)}%`, top: `${(r(2) * 100).toFixed(1)}%`, d: `${(4 + r(3) * 5).toFixed(1)}s`, delay: `${(r(4) * 6).toFixed(1)}s` }
+  return {
+    left: `${(5 + r(1) * 90).toFixed(1)}%`,
+    d: `${(16 + r(3) * 14).toFixed(1)}s`,
+    delay: `${(-r(4) * 30).toFixed(1)}s`,
+    s: (0.7 + r(2) * 0.6).toFixed(2),
+    sway: `${Math.round(30 + r(5) * 60)}px`,
+  }
 })
 const tabIndex = computed(() => Math.max(0, tabs.findIndex((t) => t.key === tab.value)))
 
 const tabs = [
   { key: 'home', path: '/', label: '日记', icon: 'book' },
-  { key: 'calendar', path: '/calendar', label: '日历', icon: 'moon' },
-  { key: 'search', path: '/search', label: '搜索', icon: 'telescope' },
-  { key: 'ai', path: '/ai', label: 'AI', icon: 'orbit' },
+  { key: 'calendar', path: '/calendar', label: '日历', icon: 'calendar' },
+  { key: 'search', path: '/search', label: '搜索', icon: 'search' },
+  { key: 'ai', path: '/ai', label: 'AI', icon: 'brush' },
 ]
 
 onMounted(() => {
@@ -47,9 +53,8 @@ onMounted(() => {
     <p class="muted">正在读取日记…</p>
   </div>
   <template v-else>
-    <div class="night-sky" aria-hidden="true">
-      <i v-for="(t, i) in twinkles" :key="i" :style="{ left: t.left, top: t.top, '--d': t.d, '--delay': t.delay }"></i>
-      <b></b>
+    <div v-if="tab === 'home'" class="petals" aria-hidden="true">
+      <i v-for="(p, i) in petals" :key="i" :style="{ left: p.left, '--d': p.d, '--delay': p.delay, '--s': p.s, '--sway': p.sway }"></i>
     </div>
     <div class="shell" :inert="lock.locked || undefined">
     <router-view v-slot="{ Component }">
@@ -90,7 +95,7 @@ onMounted(() => {
   height: calc(var(--nav-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   background-color: var(--bg);
-  background-image: var(--stars, none);
+  background-image: var(--paper, none);
   background-attachment: fixed;
   border-top: 1px solid var(--line);
   view-transition-name: nav;
@@ -107,11 +112,10 @@ onMounted(() => {
   transition: transform 0.45s var(--spring);
 }
 .nav-ind i {
-  width: 18px;
+  width: 16px;
   height: 3px;
   border-radius: 2px;
-  background: var(--m3);
-  box-shadow: 0 0 8px var(--m3);
+  background: var(--accent);
 }
 .nav-item {
   display: flex;

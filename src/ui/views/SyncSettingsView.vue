@@ -121,6 +121,15 @@ function stateText(id: BackendId): { cls: string; text: string } {
   if (s.pending) return { cls: 'pending', text: `待同步 ${s.pending} 个文件` }
   return { cls: 'ok', text: s.lastOk ? `已同步，${new Date(s.lastOk).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '已同步' }
 }
+
+const QUIET = [
+  { v: 0, label: '离开编辑页就传' },
+  { v: 1, label: '1 分钟' },
+  { v: 2, label: '2 分钟' },
+  { v: 5, label: '5 分钟' },
+  { v: 15, label: '15 分钟' },
+  { v: 30, label: '30 分钟' },
+]
 </script>
 
 <template>
@@ -154,10 +163,28 @@ function stateText(id: BackendId): { cls: string; text: string } {
       <div class="item">
         <div>
           <div>写完自动同步</div>
-          <div class="desc">离开编辑页、打开 app 时，把改动传上去。</div>
+          <div class="desc">停笔一会儿、切到后台、打开 app 时，把改动传上去。</div>
         </div>
         <Switch v-model="prefs.sync.autoSync" label="写完自动同步" />
       </div>
+      <template v-if="prefs.sync.autoSync">
+        <label class="item">
+          <div>
+            <div>停笔多久后同步</div>
+            <div class="desc">这段时间里再改会重新计时，反复修改只传一次。日记每秒都保存在手机上，晚传不会丢。</div>
+          </div>
+          <select v-model.number="prefs.sync.quietMin" class="field sel">
+            <option v-for="o in QUIET" :key="o.v" :value="o.v">{{ o.label }}</option>
+          </select>
+        </label>
+        <div class="item">
+          <div>
+            <div>切到后台时立即同步</div>
+            <div class="desc">建议开着：app 在后台可能被系统清掉，等不到停笔计时结束。关掉的话，没传的改动会在下次打开 app 时传。</div>
+          </div>
+          <Switch v-model="prefs.sync.syncOnHide" label="切到后台时立即同步" />
+        </div>
+      </template>
       <div class="item">
         <div>
           <div>只在 Wi‑Fi 下自动同步</div>
@@ -221,4 +248,5 @@ function stateText(id: BackendId): { cls: string; text: string } {
 
 <style scoped>
 .bad-text { color: var(--danger); }
+.sel { width: auto; min-height: 38px; padding: 0 8px; }
 </style>

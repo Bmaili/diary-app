@@ -114,7 +114,7 @@ const groups: { key: ListField; label: string }[] = [
     </section>
 
     <p v-if="active" class="total">共 <strong>{{ hits.length }}</strong> 篇</p>
-    <div v-else class="idle"><Icon name="telescope" class="scope" /><p class="hint muted">输入关键词，或打开筛选按日期、心情、标签查找。多个词用空格隔开，会找同时包含它们的日记。</p></div>
+    <div v-else class="idle"><Icon name="search" class="scope" /><p class="hint muted">输入关键词，或打开筛选按日期、心情、标签查找。多个词用空格隔开，会找同时包含它们的日记。</p></div>
 
     <ul class="results">
       <li v-for="h in hits.slice(0, limit)" :key="h.row.date">

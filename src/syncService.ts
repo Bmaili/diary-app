@@ -4,7 +4,7 @@
  * - 失败后在 app 开着的期间按 30 秒、1、2、5、10 分钟退避重试；
  * - “立即同步”随时可点，忽略“仅 Wi-Fi”。
  */
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { Network } from '@capacitor/network'
@@ -192,25 +192,73 @@ export async function syncNow(manual = true, only?: BackendId[]): Promise<void> 
   await Promise.all(ids.map(runOne))
 }
 
+/**
+ * 自动同步的时机（2026-10-05 改）：
+ * - 改了日记后等“停笔”一段时间（默认 2 分钟）再传，期间再改就重新计时，短时间内反复修改只传一次；
+ * - 切到后台时，有没传的改动就立即传（默认开），因为 app 在后台可能被系统清掉，计时器不一定能走完；
+ * - 打开 app、回到前台时，有没传的就传。
+ * 本地每秒都在保存，延后的只是上传，不影响日记安全。
+ */
 let autoTimer: ReturnType<typeof setTimeout> | undefined
-/** 日记有变化：刷新待同步数，并按自动同步设置在 2 秒后同步（把连续几次改动合并成一次） */
-function onChange() {
-  void refreshPending()
-  clearTimeout(autoTimer)
-  autoTimer = setTimeout(() => void syncNow(false), 2000)
+/** 下一次自动同步的时间（界面显示用） */
+export const autoSyncAt = ref<number | null>(null)
+
+function quietMs(): number {
+  const m = Number(prefs.sync.quietMin)
+  return Number.isFinite(m) && m >= 0 ? m * 60000 : 120000
 }
 
-/** 离开编辑页、app 切到后台时调用：立即按自动同步设置同步 */
-export function syncAfterEdit() {
+function scheduleQuiet() {
   clearTimeout(autoTimer)
-  void refreshPending().then(() => syncNow(false))
+  const ms = quietMs()
+  if (!prefs.sync.autoSync || !enabled().length) {
+    autoSyncAt.value = null
+    return
+  }
+  autoSyncAt.value = Date.now() + ms
+  autoTimer = setTimeout(() => {
+    autoSyncAt.value = null
+    void syncNow(false)
+  }, Math.max(ms, 1500))
+}
+
+/** 日记有变化：刷新待同步数，停笔一段时间后同步 */
+function onChange() {
+  void refreshPending()
+  scheduleQuiet()
+}
+
+/** 离开编辑页时调用：停笔时间设为 0 时立即同步，否则重新计时 */
+export function syncAfterEdit() {
+  void refreshPending().then(() => {
+    if (quietMs() === 0) {
+      clearTimeout(autoTimer)
+      autoSyncAt.value = null
+      void syncNow(false)
+    } else scheduleQuiet()
+  })
+}
+
+/** 切到后台：有没传的改动就立即传 */
+export async function syncOnHide() {
+  if (!prefs.sync.syncOnHide) return
+  await refreshPending()
+  if (enabled().some((id) => syncState[id].pending > 0)) {
+    clearTimeout(autoTimer)
+    autoSyncAt.value = null
+    void syncNow(false)
+  }
 }
 
 export function initSync() {
   // 端到端测试用的调试入口
   const w = window as unknown as { __diary?: Record<string, unknown> }
-  if (w.__diary) Object.assign(w.__diary, { engine, syncState, loadKeys })
+  if (w.__diary) Object.assign(w.__diary, { engine, syncState, loadKeys, prefs })
   onDiaryChanged(onChange)
+  // 切到后台：稍等一下，让编辑页先把最后的输入存盘
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') setTimeout(() => void syncOnHide(), 400)
+  })
   onStarted(async () => {
     await refreshPending()
     if (enabled().some((id) => syncState[id].pending > 0)) void syncNow(false)

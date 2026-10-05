@@ -22,7 +22,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
   background: var(--line);
   transition: background 0.18s;
 }
-.sw.on { background: var(--m5); }
+.sw.on { background: var(--m4); }
 .sw:disabled { opacity: 0.4; }
 .knob {
   position: absolute;

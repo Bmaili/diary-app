@@ -170,11 +170,10 @@ function toggleSel(v: string) {
 
     <!-- 还没配置 -->
     <div v-if="!hasProfile" class="wrap">
-      <div class="orrery" aria-hidden="true">
-        <span class="core"></span>
-        <span class="ring r1"><i></i></span>
-        <span class="ring r2"><i></i></span>
-      </div>
+      <!-- 圆相：一笔画成的墨圈，中间一方朱印 -->
+      <svg class="enso" viewBox="0 0 150 150" aria-hidden="true">
+        <path d="M 112 38 C 132 62 128 104 96 120 C 64 136 26 118 22 82 C 18 48 46 22 80 24 C 94 25 104 30 110 36" pathLength="1" />
+      </svg>
       <p class="lead">先接上一个 AI 服务</p>
       <p class="muted center">
         之后可以直接问“过去一年去过几次某家饭店”“这几年都发生了什么”，也能让它帮你标注人物和地点、写月度和年度总结。
@@ -312,13 +311,13 @@ function toggleSel(v: string) {
 .tabs button.on, .seg button.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 700; }
 .wrap { padding: 8px 24px; }
 .center { text-align: center; }
-.orrery { position: relative; width: 150px; height: 150px; margin: 8px auto 20px; }
-.core { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: var(--m3); box-shadow: 0 0 24px var(--m3); }
-.ring { position: absolute; inset: 0; border: 1px dashed var(--faint); border-radius: 50%; animation: spin 18s linear infinite; }
-.ring.r1 { inset: 34px; animation-duration: 9s; }
-.ring i { position: absolute; top: -5px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--m5); box-shadow: 0 0 10px var(--m5); }
-.ring.r1 i { width: 7px; height: 7px; top: -3.5px; margin-left: -3.5px; background: var(--m1); box-shadow: 0 0 8px var(--m1); }
-@keyframes spin { to { transform: rotate(360deg); } }
+.enso { display: block; width: 140px; height: 140px; margin: 8px auto 16px; }
+.enso path {
+  fill: none; stroke: var(--ink); stroke-width: 7; stroke-linecap: round; opacity: 0.85;
+  stroke-dasharray: 1; stroke-dashoffset: 1; animation: enso 1.6s cubic-bezier(0.5, 0, 0.2, 1) 0.2s forwards;
+}
+@keyframes enso { to { stroke-dashoffset: 0; } }
+.no-motion .enso path { stroke-dashoffset: 0; }
 .lead { font-size: 20px; font-weight: 800; margin: 0 0 8px; text-align: center; }
 .link-btn { display: inline-flex; align-items: center; margin: 16px 0; text-decoration: none; }
 .small { font-size: 13px; }
@@ -330,7 +329,7 @@ function toggleSel(v: string) {
 .q { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
 .steps { list-style: none; margin: 0 0 8px; padding: 0; font-size: 13px; color: var(--muted); }
 .steps li { position: relative; padding-left: 16px; line-height: 1.7; }
-.steps li::before { content: ''; position: absolute; left: 3px; top: 0.7em; width: 6px; height: 6px; border-radius: 50%; border: 1.2px solid var(--m2); }
+.steps li::before { content: ''; position: absolute; left: 3px; top: 0.7em; width: 6px; height: 6px; border-radius: 50%; border: 1.2px solid var(--accent); }
 .thinking { animation: blink 1.4s ease-in-out infinite; }
 /* 查日记的每一步滑进来，回答浮上来 */
 .steps li { animation: step-in 0.35s var(--ease-out) backwards; }
@@ -348,7 +347,7 @@ function toggleSel(v: string) {
 .err { color: var(--danger); font-size: 14px; }
 .usage { margin: 6px 0 0; font-size: 12px; color: var(--faint); }
 /* 流式输出时末尾一个闪烁的光标 */
-.a.live :deep(.caret) { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--m3); animation: blink 1s steps(2) infinite; }
+.a.live :deep(.caret) { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--accent); animation: blink 1s steps(2) infinite; }
 .sendb.stop { background: var(--ink); color: var(--bg); animation: pop-in 0.3s var(--spring); }
 .sq { width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
 .composer {
@@ -362,7 +361,7 @@ function toggleSel(v: string) {
   gap: 6px;
   padding: 8px 10px 8px 16px;
   background-color: var(--bg);
-  background-image: var(--stars, none);
+  background-image: var(--paper, none);
   background-attachment: fixed;
   border-top: 1px solid var(--line);
 }
@@ -378,7 +377,7 @@ function toggleSel(v: string) {
   font-size: 16px;
   line-height: 1.5;
 }
-.composer textarea:focus { outline: none; border-color: var(--m5); }
+.composer textarea:focus { outline: none; border-color: var(--accent); }
 .sendb { background: var(--ink); color: var(--bg); }
 .sendb:disabled { background: var(--line); color: var(--faint); }
 .sums { padding: 0 0 20px; }
@@ -387,8 +386,8 @@ function toggleSel(v: string) {
 .srow { display: flex; justify-content: space-between; align-items: center; min-height: 50px; padding: 0 20px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
 .srow.yearly span:first-child { font-weight: 700; }
 .st { font-size: 13px; color: var(--faint); }
-.st.fresh { color: var(--m5); }
-.st.stale, .st.locked-stale { color: var(--m2); }
+.st.fresh { color: var(--m4); }
+.st.stale, .st.locked-stale { color: var(--accent); }
 .st.locked { color: var(--muted); }
 .tidy { padding: 0 16px 20px; }
 .card { margin-bottom: 14px; padding: 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
@@ -402,7 +401,7 @@ function toggleSel(v: string) {
 .seg { display: flex; gap: 6px; margin-bottom: 12px; }
 .vals { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; max-height: 40vh; overflow-y: auto; }
 .cnt { margin-left: 2px; font-size: 13px; opacity: 0.6; }
-.ok { color: var(--m5); font-weight: 600; }
+.ok { color: var(--m4); font-weight: 600; }
 .hist { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
 .hist-open { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 0; border: 0; background: transparent; text-align: left; }
 </style>

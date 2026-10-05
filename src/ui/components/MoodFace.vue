@@ -4,12 +4,14 @@
  * 嘴角弧度、眉毛、眼睛形状都随 value 连续变化。
  */
 import { computed } from 'vue'
-import { moodColor } from '../mood'
+import { inkOn, moodColor } from '../mood'
 
 const props = withDefaults(defineProps<{ value: number | null; size?: number }>(), { size: 48 })
 
 const k = computed(() => (props.value == null ? 0 : (props.value - 3) / 2)) // -1 难过 … 1 开心
 const fill = computed(() => (props.value == null ? 'var(--m0)' : moodColor(props.value)))
+/** 深色的脸（玄青、黛）上用浅色画五官 */
+const ink = computed(() => (props.value == null ? 'var(--ink)' : inkOn(props.value)))
 // 嘴：两端随心情上扬或下垂，中间控制点决定弧度
 const mouth = computed(() => {
   const s = k.value
@@ -26,14 +28,14 @@ const blush = computed(() => (props.value == null ? 0 : Math.max(0, (props.value
 <template>
   <svg :width="size" :height="size" viewBox="-24 -24 48 48" aria-hidden="true" class="face">
     <circle r="22" :fill="fill" />
-    <g fill="none" stroke="#20222b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <g fill="none" :stroke="ink" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
       <template v-if="happyEyes">
         <path d="M -10.5 -3 Q -7 -8 -3.5 -3" />
         <path d="M 3.5 -3 Q 7 -8 10.5 -3" />
       </template>
       <template v-else>
-        <circle cx="-7" cy="-4" r="1.9" fill="#20222b" stroke="none" />
-        <circle cx="7" cy="-4" r="1.9" fill="#20222b" stroke="none" />
+        <circle cx="-7" cy="-4" r="1.9" :fill="ink" stroke="none" />
+        <circle cx="7" cy="-4" r="1.9" :fill="ink" stroke="none" />
       </template>
       <g v-if="brow > 0" :opacity="Math.min(1, brow + 0.3)">
         <path :d="`M -11 ${-9 - brow * 2} L -4 ${-11 + brow * 1.5}`" />

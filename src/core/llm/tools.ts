@@ -104,8 +104,16 @@ const FIELDS: ListField[] = ['places', 'people', 'tags']
 export class DiaryTools {
   constructor(private index: DiaryIndex, private repo: DiaryRepo, private store: FileStore) {}
 
+  /** 只给 AI 看没设置“不让 AI 读”的日记 */
   private rows(from?: unknown, to?: unknown): IndexRow[] {
-    return this.index.all().filter((r) => inRange(r.date, from, to))
+    return this.index.aiRows().filter((r) => inRange(r.date, from, to))
+  }
+
+  /** 词表：按 AI 能读的日记重新计数 */
+  private values(field: ListField): { value: string; count: number }[] {
+    const c = new Map<string, number>()
+    for (const r of this.rows()) for (const v of r[field]) c.set(v, (c.get(v) ?? 0) + 1)
+    return [...c].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
   }
 
   get_stats(a: Record<string, unknown>) {
@@ -124,7 +132,7 @@ export class DiaryTools {
     const field = (FIELDS.includes(a.field as ListField) ? a.field : 'places') as ListField
     const q = String(a.query ?? '').trim().toLowerCase()
     const limit = Math.min(Number(a.limit) || 50, 300)
-    let vals = this.index.values(field)
+    let vals = this.values(field)
     if (q) {
       // 子串匹配；再放宽到“共享至少两个字”，以便找到简称
       const direct = vals.filter((v) => v.value.toLowerCase().includes(q) || q.includes(v.value.toLowerCase()))
@@ -183,7 +191,7 @@ export class DiaryTools {
       people: strArr(a.people),
       places: strArr(a.places),
       moods: Array.isArray(a.moods) ? a.moods.map(Number) : undefined,
-    })
+    }).filter((h) => !h.row.aiExclude)
     const limit = Math.min(Number(a.limit) || 20, 100)
     return {
       total: hits.length,
@@ -203,7 +211,7 @@ export class DiaryTools {
     const offset = Math.max(0, Number(a.offset) || 0)
     const want = strArr(a.dates)
     const rows = want.length
-      ? want.map((d) => this.index.get(d)).filter((r): r is IndexRow => !!r)
+      ? want.map((d) => this.index.get(d)).filter((r): r is IndexRow => !!r && !r.aiExclude)
       : this.rows(a.from, a.to).slice().reverse()
     const out: Record<string, unknown>[] = []
     let used = 0
@@ -229,7 +237,7 @@ export class DiaryTools {
 
   async get_summaries(a: Record<string, unknown>) {
     const kind = a.kind === 'yearly' ? 'yearly' : 'monthly'
-    const all = this.index.all()
+    const all = this.index.aiRows()
     if (!all.length) return { summaries: [], missing: [] }
     const periods = new Set(all.map((r) => (kind === 'yearly' ? r.date.slice(0, 4) : r.date.slice(0, 7))))
     const list = [...periods].filter((p) => (!a.from || p >= String(a.from)) && (!a.to || p <= String(a.to))).sort()

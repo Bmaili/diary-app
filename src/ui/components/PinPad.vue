@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PIN 键盘。输入的每一位点亮一颗星。
+ * PIN 键盘。输入的每一位落一个朱砂点。
  * - 给了 len：输满自动提交（解锁用）
  * - 没给 len：4–8 位，按“确定”提交（设置新 PIN 用）
  */
@@ -67,9 +67,8 @@ function onKey(e: KeyboardEvent) {
   transition: all 0.15s;
 }
 .dot.on {
-  border-color: var(--m3);
-  background: var(--m3);
-  box-shadow: 0 0 10px 1px var(--m3);
+  border-color: var(--accent);
+  background: var(--accent);
   transform: scale(1.15);
 }
 .shake { animation: shake 0.35s; }
@@ -91,5 +90,5 @@ function onKey(e: KeyboardEvent) {
 .key:active:not(:disabled) { background: var(--line); }
 .key:disabled { opacity: 0.35; }
 .key.small { font-family: var(--sans); font-size: 18px; border-color: transparent; background: transparent; }
-.key.ok { color: var(--m5); font-weight: 700; }
+.key.ok { color: var(--accent); font-weight: 700; }
 </style>

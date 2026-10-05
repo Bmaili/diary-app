@@ -33,7 +33,7 @@
   font-size: 14px;
   line-height: 1.65;
 }
-.settings .note.warn { border-color: var(--m1); }
+.settings .note.warn { border-color: var(--accent); }
 .settings .note strong { display: block; }
 .form { padding: 0 20px; }
 .form label { display: block; margin-top: 14px; }
@@ -51,6 +51,6 @@
   text-align: center;
 }
 .state { font-size: 13px; font-weight: 600; }
-.state.ok { color: var(--m5); }
+.state.ok { color: var(--m4); }
 .state.error { color: var(--danger); }
-.state.syncing, .state.pending { color: var(--m2); }
+.state.syncing, .state.pending { color: var(--muted); }

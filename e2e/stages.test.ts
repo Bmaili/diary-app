@@ -81,6 +81,8 @@ async function newPage(opts: { geo?: boolean } = {}): Promise<{ ctx: BrowserCont
   page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()))
   await page.goto(BASE)
   await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && !document.body.innerText.includes('正在读取日记'))
+  // 测试里不等“停笔 2 分钟”，离开编辑页就同步
+  await page.evaluate(() => ((window as unknown as { __diary: { prefs: { sync: { quietMin: number } } } }).__diary.prefs.sync.quietMin = 0))
   return { ctx, page, errors }
 }
 
@@ -250,6 +252,12 @@ describe('阶段 3：位置、天气与插图', () => {
     await page.getByText(/地址：广东省广州市/).waitFor()
     await page.getByText(/天气：晴间多云 27°C/).waitFor()
     await page.screenshot({ path: OUT + '30-place-settings.png' })
+    await page.getByRole('button', { name: '高德地图的配置教程' }).click()
+    await page.getByText('“服务平台”一定选').waitFor()
+    await page.screenshot({ path: OUT + '30b-place-help.png' })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '30b-place-help-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
 
     await page.goto(BASE + '#/')
     await page.getByRole('button', { name: '写今天' }).click()
@@ -520,7 +528,7 @@ describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
     await page.waitForTimeout(500)
     await page.goto(BASE + '#/')
     await page.reload()
-    await page.getByText('观测站已上锁').waitFor()
+    await page.getByText('日记已上锁').waitFor()
     // 底下的内容不可交互
     expect(await page.locator('.shell').getAttribute('inert')).not.toBeNull()
     await typePin(page, '1111')
@@ -530,15 +538,15 @@ describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
     await page.screenshot({ path: OUT + '52-lock-screen-dark.png' })
     await page.emulateMedia({ colorScheme: 'light' })
     await typePin(page, '2580')
-    await page.getByText('观测站已上锁').waitFor({ state: 'detached' })
+    await page.getByText('日记已上锁').waitFor({ state: 'detached' })
     await page.getByText('上锁之前写的一句。').waitFor()
 
     // 切到后台再回来（延迟设为“立即”）
     await setVisibility(page, 'hidden')
     await setVisibility(page, 'visible')
-    await page.getByText('观测站已上锁').waitFor()
+    await page.getByText('日记已上锁').waitFor()
     await typePin(page, '2580')
-    await page.getByText('观测站已上锁').waitFor({ state: 'detached' })
+    await page.getByText('日记已上锁').waitFor({ state: 'detached' })
 
     // 关闭：要先输旧 PIN
     await page.goto(BASE + '#/settings/lock')
@@ -550,7 +558,7 @@ describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
     await page.getByRole('switch', { name: '启用应用锁' }).and(page.locator('[aria-checked="false"]')).waitFor()
     await page.reload()
     await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
-    expect(await page.getByText('观测站已上锁').count()).toBe(0)
+    expect(await page.getByText('日记已上锁').count()).toBe(0)
     expect(errors).toEqual([])
     await ctx.close()
   })
@@ -560,7 +568,7 @@ describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
     await page.goto(BASE + '#/settings')
     await page.getByRole('link', { name: /写日记提醒/ }).click()
     await page.getByText('写一句今天的日记').waitFor()
-    expect(await page.locator('.n-body').innerText()).toMatch(/^今晚/)
+    expect(await page.locator('.n-body').innerText()).toMatch(/^今天/)
     await page.getByText('提醒只在手机上有效').waitFor()
     await page.screenshot({ path: OUT + '53-reminder.png' })
 
@@ -740,7 +748,7 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
 
     // 日历页：图例只剩心情文字
     await page.goto(BASE + '#/calendar')
-    await page.getByText('每天下面是当晚的月相').waitFor()
+    await page.getByText('每天下面是农历').waitFor()
     expect(await page.getByText('恒星光谱').count()).toBe(0)
     await page.screenshot({ path: OUT + '72-calendar.png' })
     expect(errors).toEqual([])
@@ -834,20 +842,46 @@ describe('指纹解锁、月度总结分段', () => {
     await page.goto(BASE + '#/')
     await page.reload()
     await page.getByText('指纹测试的一天。').waitFor()
-    expect(await page.getByText('观测站已上锁').count()).toBe(0)
+    expect(await page.getByText('日记已上锁').count()).toBe(0)
     expect(await page.evaluate(() => (window as unknown as { __bio: { calls: number } }).__bio.calls)).toBe(1)
 
     // 取消指纹：停在锁屏，可以点指纹按钮再试，也可以输 PIN
     await page.evaluate(() => sessionStorage.setItem('bioCancel', '1'))
     await page.reload()
-    await page.getByText('观测站已上锁').waitFor()
+    await page.getByText('日记已上锁').waitFor()
     await page.getByRole('button', { name: '用指纹解锁' }).waitFor()
     await page.screenshot({ path: OUT + '56-lock-biometric.png' })
     await page.emulateMedia({ colorScheme: 'dark' })
     await page.screenshot({ path: OUT + '56-lock-biometric-dark.png' })
     await page.emulateMedia({ colorScheme: 'light' })
     await typePin2(page, '1357')
-    await page.getByText('观测站已上锁').waitFor({ state: 'detached' })
+    await page.getByText('日记已上锁').waitFor({ state: 'detached' })
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+})
+
+describe('每日诗词、不让 AI 读', () => {
+  it('首页有诗词可以换一首；编辑页可以设置不让 AI 读', async () => {
+    const { ctx, page, errors } = await newPage()
+    await writeToday(page, '今天不想让 AI 看到的一篇。')
+    const verse = page.locator('.poem .verse')
+    await verse.waitFor()
+    const first = await verse.innerText()
+    await page.getByRole('button', { name: '换一首' }).click()
+    await page.waitForFunction((t) => document.querySelector('.poem .verse')?.textContent !== t, first)
+    await page.screenshot({ path: OUT + '80-home-poem.png' })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '80-home-poem-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
+
+    await page.locator('.row').first().click()
+    await page.getByRole('button', { name: '不让 AI 读' }).click()
+    await page.getByRole('button', { name: 'AI 不读这篇' }).waitFor()
+    const date: string = await page.evaluate(() => location.hash.split('/').pop()!.split('?')[0])
+    expect(await until(async () => (await page.evaluate((d) =>
+      (window as unknown as { __diary: { repo: { readEntryRaw(d: string): Promise<string> } } }).__diary.repo.readEntryRaw(d), date)).includes('ai_exclude: true'))).toBe(true)
+    await page.screenshot({ path: OUT + '81-editor-ai-exclude.png' })
     expect(errors).toEqual([])
     await ctx.close()
   })

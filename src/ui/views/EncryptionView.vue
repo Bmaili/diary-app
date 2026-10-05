@@ -180,7 +180,7 @@ code { font-size: 0.9em; word-break: break-all; }
   background: transparent;
   font-size: 14px;
 }
-.tabs button.on { background: var(--surface); border-color: var(--m5); font-weight: 700; }
+.tabs button.on { background: var(--surface); border-color: var(--accent); font-weight: 700; }
 .row.tight { margin-top: 8px; }
 .check { display: flex !important; align-items: center; gap: 8px; margin-top: 16px; font-size: 14px; }
 .check input { width: 18px; height: 18px; }

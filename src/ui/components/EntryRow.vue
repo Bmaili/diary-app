@@ -69,7 +69,7 @@ const places = computed(() => [...new Set([props.row.locationName, ...props.row.
   height: 42px;
   border-radius: 50%;
   background: var(--mc);
-  color: var(--on-mood);
+  color: var(--onm, var(--on-mood));
   font-size: 23px;
   font-weight: 600;
   box-shadow: var(--glow);

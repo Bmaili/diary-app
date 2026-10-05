@@ -4,15 +4,13 @@ import { lock, unlock, unlockWithBiometric } from '../../lockService'
 import { biometricStatus } from '../../platform/biometric'
 import Icon from './Icon.vue'
 import { prefs } from '../../prefs'
-import { moonPhase } from '../../core/astro'
-import MoonIcon from './MoonIcon.vue'
+import Seal from './Seal.vue'
 import PinPad from './PinPad.vue'
 
 const shake = ref(0)
 const msg = ref('')
 const now = ref(Date.now())
 const showForgot = ref(false)
-const moon = moonPhase(new Date())
 let timer: ReturnType<typeof setInterval> | undefined
 /** 开了指纹解锁并且手机能用：锁屏一出来就弹指纹框，取消了可以点按钮再弹，或者输 PIN */
 const bio = ref(false)
@@ -55,8 +53,8 @@ async function submit(pin: string) {
 <template>
   <div class="lock sky-bg" role="dialog" aria-modal="true" aria-label="应用已上锁">
     <div class="top">
-      <MoonIcon :phase="moon.phase" :size="44" />
-      <h1>观测站已上锁</h1>
+      <Seal text="日记" :size="52" />
+      <h1>日记已上锁</h1>
       <p class="sub">{{ wait ? `请等待 ${wait} 秒再试` : msg || '输入 PIN 继续' }}</p>
     </div>
     <PinPad :len="lock.len" :disabled="wait > 0" :shake="shake" @submit="submit">
@@ -87,12 +85,12 @@ async function submit(pin: string) {
   gap: 40px;
   padding: calc(24px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
 }
-.top { display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--m3); }
+.top { display: flex; flex-direction: column; align-items: center; text-align: center; }
 h1 { margin: 14px 0 4px; font-size: 20px; color: var(--ink); letter-spacing: 0.08em; }
 .sub { margin: 0; min-height: 1.5em; color: var(--muted); font-size: 14px; }
 .forgot { border: 0; background: transparent; color: var(--muted); font-size: 14px; }
 .forgot.under { margin-top: -20px; }
-.bio { display: grid; place-items: center; width: 64px; height: 64px; border: 0; border-radius: 50%; background: transparent; color: var(--m3); }
+.bio { display: grid; place-items: center; width: 64px; height: 64px; border: 0; border-radius: 50%; background: transparent; color: var(--accent); }
 .bio svg { width: 34px; height: 34px; }
 .bio:active { background: var(--line); }
 .forgot-box {

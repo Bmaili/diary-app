@@ -94,7 +94,8 @@ export async function listSummaries(store: FileStore): Promise<string[]> {
 
 /** 某月日记的内容摘要：按日期排序后各篇文件哈希的哈希 */
 export async function monthSourceHash(index: DiaryIndex, ym: string): Promise<{ hash: string; count: number }> {
-  const rows = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7))).slice().sort((a, b) => (a.date < b.date ? -1 : 1))
+  // 不让 AI 读的日记不算：切换这个设置后，总结会显示“源内容已变”
+  const rows = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7))).filter((r) => !r.aiExclude).sort((a, b) => (a.date < b.date ? -1 : 1))
   return { hash: 'sha256:' + (await sha256Hex(rows.map((r) => `${r.date}:${r.hash}`).join('\n'))), count: rows.length }
 }
 

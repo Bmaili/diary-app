@@ -12,15 +12,27 @@ import type { EntryMeta, Location, Weather } from './core/types'
 
 export interface Position { lat: number; lng: number; accuracy: number }
 
-export function getPosition(timeoutMs = 15000): Promise<Position> {
+function locate(high: boolean, timeoutMs: number): Promise<Position> {
   return new Promise((resolve, reject) => {
     if (!('geolocation' in navigator)) return reject(new Error('这台设备不支持定位'))
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: round6(p.coords.latitude), lng: round6(p.coords.longitude), accuracy: p.coords.accuracy }),
-      (e) => reject(new Error(e.code === 1 ? '没有定位权限' : e.code === 3 ? '定位超时' : '定位失败')),
-      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 5 * 60 * 1000 },
+      (e) => reject(Object.assign(new Error(e.code === 1 ? '没有定位权限' : e.code === 3 ? '定位超时' : '定位失败'), { code: e.code })),
+      { enableHighAccuracy: high, timeout: timeoutMs, maximumAge: 5 * 60 * 1000 },
     )
   })
+}
+
+/**
+ * 先用 GPS 精确定位；室内常常收不到 GPS 而超时，这时退回网络定位（基站、Wi‑Fi，精度几十米，够选附近地点）。
+ */
+export async function getPosition(timeoutMs = 10000): Promise<Position> {
+  try {
+    return await locate(true, timeoutMs)
+  } catch (e) {
+    if ((e as { code?: number }).code === 1) throw e
+    return locate(false, timeoutMs)
+  }
 }
 
 export async function amapKey(): Promise<string> {

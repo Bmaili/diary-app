@@ -8,6 +8,7 @@ import { refreshPending, resetManifest, syncNow, type BackendId } from '../../sy
 import { OssStore, regionOf } from '../../core/sync/oss'
 import { GitHubStore } from '../../core/sync/github'
 import Icon from '../components/Icon.vue'
+import HelpTip from '../components/HelpTip.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -89,6 +90,24 @@ async function save() {
       <p class="note">
         建议新建一个 RAM 子账号，只给它这个 Bucket 这个前缀的读写权限；Bucket 设为私有；并在 OSS 控制台打开<strong style="display: inline">版本控制</strong>，误删后能找回。
       </p>
+      <HelpTip title="阿里云 OSS 配置教程" label="阿里云 OSS 的配置教程">
+        <ol>
+          <li><b>建 Bucket</b>：打开 OSS 控制台 <code>oss.console.aliyun.com</code> → Bucket 列表 → 创建 Bucket。地域选离你近的；读写权限选 <b>私有</b>；建议打开 <b>版本控制</b>（误删、被覆盖后能找回旧版本）。</li>
+          <li><b>建子账号</b>：打开 RAM 访问控制 <code>ram.console.aliyun.com</code> → 用户 → 创建用户，访问方式勾选 <b>使用永久 AccessKey 访问</b>（OpenAPI 调用访问）。创建后马上复制 AccessKey ID 和 Secret，Secret 只显示这一次。</li>
+          <li><b>给子账号授权</b>：最省事是在用户的“权限管理”里添加系统策略 <code>AliyunOSSFullAccess</code>。更安全的做法是自定义一条只允许这个 Bucket 的策略（把 my-diary 换成你的 Bucket 名）：
+            <pre>{"Version": "1", "Statement": [{
+  "Effect": "Allow",
+  "Action": ["oss:PutObject", "oss:GetObject",
+             "oss:DeleteObject", "oss:ListObjects"],
+  "Resource": ["acs:oss:*:*:my-diary",
+               "acs:oss:*:*:my-diary/*"]
+}]}</pre>
+          </li>
+          <li><b>找 Endpoint</b>：Bucket 概览页 → 访问端口 → <b>外网访问</b> 那一行的 Endpoint（地域节点），例如 <code>oss-cn-hangzhou.aliyuncs.com</code>。不要带 Bucket 名，也不要带 https://。</li>
+          <li>填好后点“测试连接”：会写入并删除一个临时文件。成功后回到上一页打开开关。</li>
+        </ol>
+        <p class="tip">路径前缀是 Bucket 里放日记的文件夹，默认 diary/。日记很小，存储和流量费用通常每月几分钱。</p>
+      </HelpTip>
       <label><span>Endpoint</span><input v-model="oss.endpoint" class="field" placeholder="oss-cn-hangzhou.aliyuncs.com" autocapitalize="off" /></label>
       <p class="hint">在 Bucket 概览页的“访问端口”里，用外网访问的那个。</p>
       <label><span>Bucket</span><input v-model="oss.bucket" class="field" placeholder="my-diary" autocapitalize="off" /></label>
@@ -101,6 +120,22 @@ async function save() {
       <p class="note">
         在 GitHub 设置里创建一个 Fine-grained token，只选这个仓库，权限给 Contents 读写。仓库请设为私有。大陆网络访问 GitHub 不稳定时，可以填自建的反向代理地址。
       </p>
+      <HelpTip title="GitHub 配置教程" label="GitHub 的配置教程">
+        <ol>
+          <li><b>建仓库</b>：打开 <code>github.com/new</code>，起个名字（比如 diary），选 <b>Private</b>，其他都不用勾，空仓库就行。</li>
+          <li><b>建 Token</b>：头像 → Settings → 最底下 Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token。
+            <ul>
+              <li>Expiration（有效期）：可以选最长；到期后同步会报“token 不对”，换一个新的填进来就行。</li>
+              <li>Repository access：选 <b>Only select repositories</b>，只选刚建的仓库。</li>
+              <li>Permissions → Repository permissions → <b>Contents</b> 设为 <b>Read and write</b>，其他保持默认。</li>
+            </ul>
+            生成后马上复制，离开页面就看不到了。
+          </li>
+          <li><b>用户名或组织</b>和<b>仓库名</b>：就是仓库地址 <code>github.com/用户名/仓库名</code> 里的两段。</li>
+          <li>填好后点“测试连接”，成功后回到上一页打开开关。每次同步是一个 commit，在 GitHub 网页上能直接看日记。</li>
+        </ol>
+        <p class="tip">国内访问 GitHub 不稳定，失败会自动重试，不影响 OSS。也可以在“API 地址”里填你自建的反向代理。仓库是私有的，但 GitHub 能看到明文，介意的话可以在同步设置里打开加密。</p>
+      </HelpTip>
       <label><span>用户名或组织</span><input v-model="gh.owner" class="field" placeholder="your-name" autocapitalize="off" /></label>
       <label><span>仓库名</span><input v-model="gh.repo" class="field" placeholder="diary" autocapitalize="off" /></label>
       <label><span>分支</span><input v-model="gh.branch" class="field" placeholder="main" autocapitalize="off" /></label>

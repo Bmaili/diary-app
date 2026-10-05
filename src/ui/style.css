@@ -1,35 +1,39 @@
 /*
- * 视觉方向：“观测日志”。
- * 每天的日记是一条观测记录。浅色模式像印刷的星图纸，深色模式是带星点的夜空。
- * 唯一的彩色来自恒星光谱：心情从冷红（M 型）到炽热的蓝白（B 型），“一般”恰好是和太阳一样的 G 型。
- * 日期与数字用窄体，像仪表读数；中文用系统字体。
- * 记忆点：首页把连续写日记的日子连成星座，日历每天下面是当晚真实的月相。
+ * 视觉方向：“宣纸水墨”（2026-10-05 起，替换原来的“观测日志”）。
+ * 浅色像一张米白的宣纸，墨色文字，朱砂红只用在印章和少量点缀上；深色像砚台里的夜墨，字是月白色。
+ * 心情用中国传统色：玄青、黛、缃、竹青、胭脂（很差 → 很好）。
+ * 字体用手机自带的宋体（思源宋体 / Noto Serif CJK），没有时退回系统字体；数字用衬线体。
+ * 记忆点：首页把最近一个月画成一枝梅花，写一天开一朵；日历每天下面是农历，节气和节日用朱红标出。
  */
-@import '@fontsource/barlow-condensed/latin-500.css';
-@import '@fontsource/barlow-condensed/latin-600.css';
 
 :root {
-  --bg: #eef1f7;
-  --surface: #ffffff;
-  --ink: #1b2340;
-  --muted: #5d6685;
-  --faint: #9aa2bd;
-  --line: #d9deea;
-  --danger: #c2453b;
+  --bg: #f3ede1;
+  --surface: #fbf8f2;
+  --ink: #2a2724;
+  --muted: #6f675d;
+  --faint: #a89f91;
+  --line: #e0d7c6;
+  --danger: #a8322a;
+  /* 朱砂：印章、今天、强调 */
+  --accent: #b5382c;
+  --on-accent: #fbf8f2;
 
-  /* 恒星光谱色：M 红、K 橙、G 黄（太阳）、F 黄白、B 蓝白 */
-  --m1: #e0603f;
-  --m2: #ef9440;
-  --m3: #e8c04a;
-  --m4: #93bdea;
-  --m5: #5b8def;
-  --m0: #c3c9da;
-  --on-mood: #121834;
-  --glow: 0 0 0 transparent;
+  /* 心情：玄青、黛、缃、竹青、胭脂 */
+  --m1: #3e3c52;
+  --m2: #5c6b7a;
+  --m3: #e0b54e;
+  --m4: #6e8b5a;
+  --m5: #a8343e;
+  --m0: #d3cabb;
+  --on-mood: #2a2724;
+  --glow: none;
+  /* 宣纸的纤维感：很淡的噪点 */
+  --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .42 0 0 0 0 .34 0 0 0 0 .22 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
-  --sans: system-ui, -apple-system, 'OPPOSans', 'HarmonyOS Sans SC', 'PingFang SC', 'Noto Sans SC',
-    'Microsoft YaHei', sans-serif;
-  --num: 'Barlow Condensed', var(--sans);
+  --sans: system-ui, -apple-system, 'HarmonyOS Sans SC', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --serif: 'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'Source Han Serif CN', 'Songti SC', 'STSong', 'SimSun', serif;
+  --kai: 'Kaiti SC', 'STKaiti', 'KaiTi', 'LXGW WenKai', var(--serif);
+  --num: 'Noto Serif', Georgia, 'Times New Roman', var(--serif);
   --nav-h: 62px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -38,39 +42,41 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b1024;
-    --surface: #141b36;
-    --ink: #e7ebf8;
-    --muted: #99a3c4;
-    --faint: #5a6488;
-    --line: #232c4e;
-    --danger: #ff8f80;
-    --m1: #ff7a59;
-    --m2: #ffa65e;
-    --m3: #ffd96a;
-    --m4: #cfe0ff;
-    --m5: #86abff;
-    --m0: #3a4366;
-    --glow: 0 0 14px -2px var(--mc);
-    --stars: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='360'%3E%3Ccircle cx='116.6' cy='54.3' r='0.5' fill='%23ffffff' fill-opacity='0.74'/%3E%3Ccircle cx='131.6' cy='20.9' r='0.5' fill='%23cfe0ff' fill-opacity='0.3'/%3E%3Ccircle cx='25.1' cy='32.7' r='1.0' fill='%23ffffff' fill-opacity='0.32'/%3E%3Ccircle cx='227.0' cy='209.9' r='1.6' fill='%23ffffff' fill-opacity='0.6'/%3E%3Ccircle cx='351.5' cy='16.8' r='0.7' fill='%23ffffff' fill-opacity='0.5'/%3E%3Ccircle cx='205.5' cy='201.7' r='0.5' fill='%23ffffff' fill-opacity='0.6'/%3E%3Ccircle cx='134.1' cy='197.2' r='1.6' fill='%23ffffff' fill-opacity='0.29'/%3E%3Ccircle cx='178.7' cy='191.4' r='0.8' fill='%23ffe6c2' fill-opacity='0.6'/%3E%3Ccircle cx='130.2' cy='89.4' r='0.6' fill='%23ffffff' fill-opacity='0.3'/%3E%3Ccircle cx='189.1' cy='315.0' r='0.7' fill='%23ffffff' fill-opacity='0.62'/%3E%3Ccircle cx='42.5' cy='150.5' r='0.6' fill='%23cfe0ff' fill-opacity='0.81'/%3E%3Ccircle cx='14.1' cy='240.6' r='1.0' fill='%23ffffff' fill-opacity='0.72'/%3E%3Ccircle cx='122.4' cy='126.1' r='0.8' fill='%23ffffff' fill-opacity='0.29'/%3E%3Ccircle cx='340.1' cy='170.7' r='0.5' fill='%23ffffff' fill-opacity='0.69'/%3E%3Ccircle cx='233.0' cy='357.5' r='0.7' fill='%23ffffff' fill-opacity='0.68'/%3E%3Ccircle cx='8.1' cy='166.2' r='0.5' fill='%23ffffff' fill-opacity='0.55'/%3E%3Ccircle cx='276.6' cy='46.6' r='0.8' fill='%23ffe6c2' fill-opacity='0.8'/%3E%3Ccircle cx='29.0' cy='161.7' r='0.6' fill='%23ffffff' fill-opacity='0.74'/%3E%3Ccircle cx='254.3' cy='355.1' r='0.8' fill='%23ffffff' fill-opacity='0.82'/%3E%3Ccircle cx='29.9' cy='54.5' r='0.5' fill='%23ffffff' fill-opacity='0.54'/%3E%3Ccircle cx='94.6' cy='1.5' r='0.7' fill='%23ffffff' fill-opacity='0.62'/%3E%3Ccircle cx='343.1' cy='248.6' r='1.0' fill='%23ffffff' fill-opacity='0.64'/%3E%3Ccircle cx='164.4' cy='313.6' r='1.3' fill='%23cfe0ff' fill-opacity='0.73'/%3E%3Ccircle cx='143.3' cy='141.9' r='0.8' fill='%23ffffff' fill-opacity='0.29'/%3E%3Ccircle cx='354.5' cy='158.6' r='1.0' fill='%23ffffff' fill-opacity='0.28'/%3E%3Ccircle cx='204.0' cy='193.2' r='1.0' fill='%23ffffff' fill-opacity='0.27'/%3E%3Ccircle cx='221.1' cy='53.5' r='0.7' fill='%23ffe6c2' fill-opacity='0.61'/%3E%3Ccircle cx='44.2' cy='305.6' r='0.8' fill='%23ffffff' fill-opacity='0.54'/%3E%3Ccircle cx='30.9' cy='36.8' r='0.7' fill='%23ffffff' fill-opacity='0.54'/%3E%3Ccircle cx='185.9' cy='73.9' r='0.7' fill='%23ffffff' fill-opacity='0.34'/%3E%3Ccircle cx='272.9' cy='107.3' r='0.5' fill='%23ffffff' fill-opacity='0.67'/%3E%3Ccircle cx='186.6' cy='327.0' r='0.6' fill='%23ffffff' fill-opacity='0.57'/%3E%3Ccircle cx='229.1' cy='220.8' r='0.6' fill='%23cfe0ff' fill-opacity='0.73'/%3E%3Ccircle cx='266.4' cy='81.6' r='0.7' fill='%23ffffff' fill-opacity='0.69'/%3E%3Ccircle cx='284.4' cy='170.0' r='1.0' fill='%23ffe6c2' fill-opacity='0.82'/%3E%3Ccircle cx='291.1' cy='260.3' r='0.7' fill='%23ffffff' fill-opacity='0.3'/%3E%3Ccircle cx='81.7' cy='70.8' r='1.0' fill='%23ffffff' fill-opacity='0.84'/%3E%3Ccircle cx='172.6' cy='235.1' r='0.5' fill='%23ffffff' fill-opacity='0.75'/%3E%3Ccircle cx='327.5' cy='281.6' r='0.8' fill='%23cfe0ff' fill-opacity='0.78'/%3E%3Ccircle cx='284.1' cy='119.7' r='1.3' fill='%23cfe0ff' fill-opacity='0.49'/%3E%3Ccircle cx='267.6' cy='30.6' r='0.6' fill='%23ffe6c2' fill-opacity='0.27'/%3E%3Ccircle cx='290.3' cy='52.6' r='0.8' fill='%23ffffff' fill-opacity='0.64'/%3E%3Ccircle cx='56.1' cy='197.4' r='1.6' fill='%23ffffff' fill-opacity='0.73'/%3E%3Ccircle cx='189.6' cy='336.1' r='0.6' fill='%23ffffff' fill-opacity='0.75'/%3E%3Ccircle cx='10.1' cy='76.6' r='1.0' fill='%23cfe0ff' fill-opacity='0.45'/%3E%3Ccircle cx='300.3' cy='21.9' r='0.8' fill='%23cfe0ff' fill-opacity='0.65'/%3E%3Ccircle cx='297.8' cy='316.1' r='0.6' fill='%23ffffff' fill-opacity='0.56'/%3E%3Ccircle cx='314.2' cy='279.5' r='0.6' fill='%23ffe6c2' fill-opacity='0.35'/%3E%3Ccircle cx='222.9' cy='43.3' r='1.6' fill='%23ffe6c2' fill-opacity='0.66'/%3E%3Ccircle cx='282.3' cy='38.2' r='0.6' fill='%23ffffff' fill-opacity='0.36'/%3E%3Ccircle cx='278.0' cy='182.8' r='0.5' fill='%23ffffff' fill-opacity='0.52'/%3E%3Ccircle cx='249.4' cy='162.8' r='0.8' fill='%23ffffff' fill-opacity='0.55'/%3E%3Ccircle cx='251.7' cy='315.6' r='0.7' fill='%23ffffff' fill-opacity='0.8'/%3E%3Ccircle cx='302.4' cy='49.4' r='0.8' fill='%23ffffff' fill-opacity='0.44'/%3E%3Ccircle cx='154.2' cy='76.6' r='0.5' fill='%23ffffff' fill-opacity='0.79'/%3E%3Ccircle cx='338.2' cy='231.6' r='0.7' fill='%23ffe6c2' fill-opacity='0.78'/%3E%3Ccircle cx='79.1' cy='342.9' r='0.8' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='58.1' cy='155.3' r='0.7' fill='%23ffffff' fill-opacity='0.5'/%3E%3Ccircle cx='114.7' cy='260.0' r='1.6' fill='%23ffe6c2' fill-opacity='0.58'/%3E%3Ccircle cx='253.1' cy='138.4' r='0.7' fill='%23ffffff' fill-opacity='0.56'/%3E%3Ccircle cx='40.6' cy='330.7' r='0.5' fill='%23ffffff' fill-opacity='0.3'/%3E%3Ccircle cx='14.3' cy='280.4' r='0.6' fill='%23ffffff' fill-opacity='0.74'/%3E%3Ccircle cx='146.1' cy='193.2' r='0.8' fill='%23ffffff' fill-opacity='0.67'/%3E%3Ccircle cx='100.5' cy='287.9' r='0.5' fill='%23ffffff' fill-opacity='0.41'/%3E%3C/svg%3E");
+    --bg: #1a1a1c;
+    --surface: #242427;
+    --ink: #e9e4d8;
+    --muted: #a8a194;
+    --faint: #6f6a61;
+    --line: #343337;
+    --danger: #e0675c;
+    --accent: #cf5246;
+    --on-accent: #f6f1e6;
+    --m1: #7a7896;
+    --m2: #8094a6;
+    --m3: #e3be5e;
+    --m4: #8daa77;
+    --m5: #cf5560;
+    --m0: #47454a;
+    --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .9 0 0 0 0 .86 0 0 0 0 .78 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     color-scheme: dark;
   }
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-/* 深色模式的星点背景；顶栏、导航等吸顶元素也铺同一张图并固定在视口，看起来是一整片夜空 */
-body, .sky-bg {
+/* 宣纸底纹；顶栏、导航等吸顶元素也铺同一张图并固定在视口，看起来是一整张纸 */
+html, body, .sky-bg {
   background-color: var(--bg);
-  background-image: var(--stars, none);
+  background-image: var(--paper, none);
   background-attachment: fixed;
 }
+body { min-height: 100vh; }
 
 html, body {
   margin: 0;
   background-color: var(--bg);
   color: var(--ink);
-  font-family: var(--sans);
+  font-family: var(--serif);
   font-size: 16px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -79,13 +85,13 @@ html, body {
 
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
-:focus-visible { outline: 2px solid var(--m5); outline-offset: 2px; border-radius: 6px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
 
-.num { font-family: var(--num); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.num { font-family: var(--num); font-variant-numeric: lining-nums tabular-nums; letter-spacing: 0; }
 
 /* 顶栏 */
 .topbar {
@@ -98,7 +104,7 @@ button { cursor: pointer; }
   min-height: calc(58px + var(--safe-top));
   padding: var(--safe-top) 8px 0;
   background-color: var(--bg);
-  background-image: var(--stars, none);
+  background-image: var(--paper, none);
   background-attachment: fixed;
 }
 .topbar h1 {
@@ -152,12 +158,15 @@ button { cursor: pointer; }
 .muted { color: var(--muted); }
 
 /* 心情色：元素加 mood-N 类后，用 var(--mc) 取到这一档的颜色 */
-.mood-0 { --mc: var(--m0); }
-.mood-1 { --mc: var(--m1); }
-.mood-2 { --mc: var(--m2); }
-.mood-3 { --mc: var(--m3); }
-.mood-4 { --mc: var(--m4); }
-.mood-5 { --mc: var(--m5); }
+.mood-0 { --mc: var(--m0); --onm: var(--ink); }
+.mood-1 { --mc: var(--m1); --onm: #f6f1e6; }
+.mood-2 { --mc: var(--m2); --onm: #f6f1e6; }
+.mood-3 { --mc: var(--m3); --onm: #2a2724; }
+.mood-4 { --mc: var(--m4); --onm: #f6f1e6; }
+.mood-5 { --mc: var(--m5); --onm: #f6f1e6; }
+@media (prefers-color-scheme: dark) {
+  .mood-2, .mood-4 { --onm: #1a1a1c; }
+}
 
 .dot {
   display: inline-block;
@@ -166,7 +175,6 @@ button { cursor: pointer; }
   height: 10px;
   border-radius: 50%;
   background: var(--mc, var(--m0));
-  box-shadow: var(--glow);
 }
 
 .chip {
@@ -185,7 +193,7 @@ button { cursor: pointer; }
 .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .chip.add { background: transparent; border: 1.5px dashed var(--faint); color: var(--muted); }
 
-.hl { background: var(--m3); color: var(--on-mood); border-radius: 3px; padding: 0 2px; }
+.hl { background: color-mix(in srgb, var(--m3) 55%, transparent); color: var(--ink); border-radius: 2px; padding: 0 2px; }
 
 .field {
   width: 100%;
@@ -195,7 +203,7 @@ button { cursor: pointer; }
   border-radius: 14px;
   background: var(--surface);
 }
-.field:focus { outline: none; border-color: var(--m5); }
+.field:focus { outline: none; border-color: var(--accent); }
 
 /* 正文排版 */
 .prose { font-size: 17px; line-height: 1.85; word-break: break-word; }
@@ -219,7 +227,7 @@ button { cursor: pointer; }
 .prose table { border-collapse: collapse; margin-bottom: 0.9em; font-size: 14px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
 .prose img { max-width: 100%; border-radius: 10px; }
-.prose a { color: inherit; text-decoration-thickness: 2px; text-decoration-color: var(--m5); }
+.prose a { color: inherit; text-decoration-thickness: 2px; text-decoration-color: var(--accent); }
 
 /* ================= 动效（2026-10-04 加入） =================
  * 原则：只动 transform 和 opacity（交给 GPU，不卡顿）；系统“减少动画”或设置里关掉时全部停用。
@@ -290,39 +298,25 @@ html[data-vt='pop']::view-transition-new(nav) { animation: 0.34s var(--ease-out)
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes pop-in { from { opacity: 0; transform: scale(0.85); } }
 
-/* ---- 深色模式：会闪的星星和偶尔的流星 ---- */
+
+/* ---- 首页偶尔飘落的梅花瓣（在内容后面，不挡字） ---- */
 #app { position: relative; z-index: 0; }
-.night-sky { display: none; }
-@media (prefers-color-scheme: dark) {
-  .night-sky { display: block; position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
-  .night-sky i {
-    position: absolute;
-    width: 2px;
-    height: 2px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 0 6px 1px rgba(207, 224, 255, 0.8);
-    opacity: 0;
-    animation: twinkle var(--d, 5s) ease-in-out var(--delay, 0s) infinite;
-  }
-  .night-sky b {
-    position: absolute;
-    top: 9%;
-    left: 70%;
-    width: 110px;
-    height: 1.5px;
-    border-radius: 1px;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), transparent);
-    transform: rotate(-28deg);
-    transform-origin: left center;
-    opacity: 0;
-    animation: meteor 19s linear 6s infinite;
-  }
+.petals { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.petals i {
+  position: absolute;
+  top: -20px;
+  width: 9px;
+  height: 7px;
+  border-radius: 70% 0 70% 0;
+  background: var(--m5);
+  opacity: 0;
+  transform: scale(var(--s, 1));
+  animation: petal-fall var(--d, 20s) linear var(--delay, 0s) infinite;
 }
-@keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(0.6); } 50% { opacity: 0.9; transform: scale(1); } }
-@keyframes meteor {
-  0% { opacity: 0; transform: rotate(-28deg) translateX(0) scaleX(0.3); }
-  1% { opacity: 1; }
-  5% { opacity: 0; transform: rotate(-28deg) translateX(-260px) scaleX(1); }
-  100% { opacity: 0; transform: rotate(-28deg) translateX(-260px); }
+@keyframes petal-fall {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0) scale(var(--s, 1)); }
+  8% { opacity: 0.38; }
+  50% { transform: translate(var(--sway), 50vh) rotate(200deg) scale(var(--s, 1)); }
+  92% { opacity: 0.3; }
+  100% { opacity: 0; transform: translate(calc(var(--sway) * -0.4), 105vh) rotate(420deg) scale(var(--s, 1)); }
 }

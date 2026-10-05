@@ -8,7 +8,7 @@ import { parseEntry, plainText } from './entryFile'
 import { DiaryRepo, entryPath, type EntryFile } from './repo'
 
 export const INDEX_CACHE = 'cache/index.json'
-const CACHE_VERSION = 3
+const CACHE_VERSION = 4
 
 export async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
@@ -44,6 +44,7 @@ export async function rowFromRaw(f: EntryFile, raw: string): Promise<IndexRow> {
       ...(m.ai?.extracted_at ? { extractedAt: String(m.ai.extracted_at) } : {}),
       ...(m.locked?.length ? { locked: m.locked } : {}),
       ...(test ? { test: true } : {}),
+      ...(m.ai_exclude ? { aiExclude: true } : {}),
     }
   } catch (e) {
     return {
@@ -212,7 +213,12 @@ export class DiaryIndex {
 
   /** 还没抽取过、或抽取后又改过的日记（规格 7.3） */
   needsExtraction(): IndexRow[] {
-    return this.all().filter((r) => !r.error && needsExtraction(r))
+    return this.all().filter((r) => !r.error && !r.aiExclude && needsExtraction(r))
+  }
+
+  /** AI 能读的日记（去掉设置了“不让 AI 读”的），新的在前 */
+  aiRows(): IndexRow[] {
+    return this.all().filter((r) => !r.aiExclude)
   }
 
   testRows(): IndexRow[] {

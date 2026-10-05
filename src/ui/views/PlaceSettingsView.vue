@@ -7,6 +7,7 @@ import { fetchWeather, getPosition, resolveCity } from '../../placeService'
 import { reverseGeocode } from '../../core/geo/amap'
 import { outOfChina } from '../../core/geo/coords'
 import Icon from '../components/Icon.vue'
+import HelpTip from '../components/HelpTip.vue'
 import Switch from '../components/Switch.vue'
 
 const router = useRouter()
@@ -90,7 +91,16 @@ async function test() {
     </section>
 
     <section class="form">
-      <h2 style="margin: 0">高德地图</h2>
+      <HelpTip title="高德地图">
+        <p>用来把坐标换成地址、列出附近的店和地点。不填也能用，只是只记坐标。</p>
+        <ol>
+          <li>打开高德开放平台 <code>lbs.amap.com</code>，注册并完成开发者认证（个人认证就行）。</li>
+          <li>进入控制台 → 应用管理 → 我的应用 → <b>创建新应用</b>，名字随便起。</li>
+          <li>在这个应用下点 <b>添加 Key</b>，“服务平台”一定选 <b>Web 服务</b>。不要选“Android 平台”或“Web 端（JS API）”，那两种在这里用不了。</li>
+          <li>复制生成的 Key，粘贴到下面，然后点最底下的“现在定位一次试试”，能显示地址就成功了。</li>
+        </ol>
+        <p class="tip">个人开发者有每天的免费额度，写日记的用量远远用不完。Key 只加密保存在这台手机上，不会同步。</p>
+      </HelpTip>
       <label>
         <span>Web 服务 key</span>
         <input v-model="amapKey" class="field" type="password" autocomplete="off" @blur="saveKeys" />
@@ -99,7 +109,16 @@ async function test() {
         在高德开放平台创建应用，添加 key 时“服务平台”选 <strong>Web 服务</strong>。填了才能把坐标换成地址、列出附近的地点；不填就只记坐标。
       </p>
 
-      <h2 style="margin: 22px 0 0">天气</h2>
+      <HelpTip title="天气" style="margin-top: 22px">
+        <p>不填任何东西也有天气：默认用 Open-Meteo，免费、不需要 key，国内一般能访问。想用国内的和风天气（更准、有中文天气描述）再按下面配置：</p>
+        <ol>
+          <li>打开和风天气控制台 <code>console.qweather.com</code>，注册并登录。</li>
+          <li>项目管理 → <b>创建项目</b>，选免费的订阅；凭据类型选 <b>API KEY</b>，创建后复制这串 key。</li>
+          <li>在控制台的 <b>设置</b> 里找到 <b>API Host</b>，形如 <code>abcd1234.re.qweatherapi.com</code>。每个账号都不一样，两样都要填。</li>
+          <li>填好后点最底下的“现在定位一次试试”，能显示天气就成功了。</li>
+        </ol>
+        <p class="tip">和风天气出错时，“自动”模式会退回 Open-Meteo，不会影响写日记。</p>
+      </HelpTip>
       <label>
         <span>天气来源</span>
         <select v-model="prefs.place.weatherProvider" class="field">

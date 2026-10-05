@@ -24,6 +24,7 @@ export const README_MD = `# 日记数据
 | tags / people / places | 标签、提到的人、当天去过的地方 |
 | ai | 哪些字段的当前值由 AI 生成 |
 | locked | 手动改过、AI 不会再覆盖的字段 |
+| ai_exclude | 为 true 时，app 的 AI 功能（问答、总结、标注）不读这篇 |
 
 其他字段会被原样保留。
 

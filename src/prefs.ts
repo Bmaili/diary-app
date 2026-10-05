@@ -25,6 +25,10 @@ export const prefs = reactive({
   sync: {
     autoSync: true,
     wifiOnly: false,
+    /** 停笔多少分钟后自动同步；0 表示离开编辑页就同步。期间再改会重新计时，多次修改只传一次 */
+    quietMin: 2,
+    /** 切到后台时，有没传的改动就立即同步（app 在后台可能被系统清掉，计时器不一定能走完） */
+    syncOnHide: true,
     oss: { enabled: false, endpoint: '', bucket: '', prefix: 'diary/', accessKeyId: '', encrypt: false },
     github: { enabled: false, owner: '', repo: '', branch: 'main', apiBase: 'https://api.github.com', prefix: '', encrypt: false },
   },
@@ -63,6 +67,10 @@ export const prefs = reactive({
     hideInRecents: true,
     /** 指纹解锁（PIN 仍可用） */
     biometric: false,
+  },
+  daily: {
+    /** 首页的每日诗词：local 内置诗词库，online 今日诗词接口，off 不显示 */
+    mode: 'local' as 'local' | 'online' | 'off',
   },
   ui: {
     /** 动态效果（页面切换、列表入场、日历跟手滑动等）；系统开了“减少动画”时也会关掉 */

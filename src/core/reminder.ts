@@ -1,10 +1,10 @@
 /**
  * 写日记提醒的排程（纯函数，便于测试）。
- * 不用“每天重复”的通知，而是预排未来 N 天的一次性通知：这样能跳过已经写过的日子，每条还能带上当天的月相。
+ * 不用“每天重复”的通知，而是预排未来 N 天的一次性通知：这样能跳过已经写过的日子，每条还能带上当天的农历和节气。
  * app 每次启动、回到前台、保存日记、改设置时都会重排，所以 N 天内总会打开一次就够了。
  */
 import { addDays } from './time'
-import { moonOnDate } from './astro'
+import { lunarDay } from './lunar'
 
 export const REMINDER_BASE_ID = 7000
 export const REMINDER_DAYS = 14
@@ -18,21 +18,19 @@ export interface PlannedReminder {
 }
 
 const LINES = [
-  '哪怕一句话，也是一条观测记录。',
-  '给今天留一个坐标。',
-  '今天的信号还没有落地。',
-  '记下一点今天的光。',
-  '一句话就够，宇宙不嫌短。',
+  '哪怕一句话，也是今天的一页。',
+  '给今天落一笔。',
+  '今日之事，今日记之。',
+  '片言只语，也是光阴。',
+  '一句话就够，纸不嫌短。',
 ]
 
 export function reminderText(date: string): { title: string; body: string } {
-  const moon = moonOnDate(date)
+  const l = lunarDay(date)
   const n = Number(date.replace(/-/g, ''))
   const line = LINES[n % LINES.length]
-  let sky = `今晚${moon.name}`
-  if (moon.name === '满月') sky = '今晚满月，适合抬头看看'
-  else if (moon.name === '新月') sky = '今晚新月，天晴的话星星会很多'
-  return { title: '写一句今天的日记', body: `${sky}。${line}` }
+  const day = l.festival ? `今天${l.festival}` : l.jieqi ? `今天${l.jieqi}` : `今天${l.full}`
+  return { title: '写一句今天的日记', body: `${day}。${line}` }
 }
 
 /**

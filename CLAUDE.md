@@ -32,7 +32,7 @@
 ## 命令
 
 ```bash
-npm test                     # 单元测试（约 160 项），提交前必须全过
+npm test                     # 单元测试（约 165 项），提交前必须全过
 npm run build                # vue-tsc 类型检查 + vite 构建
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e          # 第 1 阶段端到端（需先 build）
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e:stages   # 其余端到端，截图在 e2e/out/
@@ -50,6 +50,7 @@ npm run cap:sync             # 构建并同步到 android/
 - 写文件都是原子写入（先写 tmp 再 rename）。必须保留用户手动添加的未知字段。
 - AI 写回时不更新 `updated`，并记录 `ai.extracted_at`。手动改过的 `tags/people/places` 字段整个进入 `locked`，AI 不再覆盖。
 - 索引缓存在 `cache/index.json`，同步清单和状态在 `sync/`，问答记录在 `ai/chats.json`。这些都在 `diary/` 之外，可以重建。
+- 日记可设 `ai_exclude: true`（不让 AI 读）：问答工具（`index.aiRows()`）、总结、批量抽取都跳过，月度总结的源哈希也不算它。
 - 删除的日记在 `trash/<日期>_<时间戳>/`（diary/ 之外，不同步），30 天后启动时清理。删除一律走 `deleteEntryToTrash`，不要直接 `repo.deleteEntry`（开发者选项清测试数据除外）。
 - 详细规格见 `SPEC.md`，用户文档见 `README.md`。和规格不同的地方，两份文档里都有注明，改动时同步更新。
 
@@ -66,7 +67,7 @@ src/core/            与平台无关、有单元测试的逻辑
                      tools.ts agent.ts（工具调用问答，计数在代码里做；按上下文长度压缩发送量）
                      extract.ts summarize.ts
   mdEdit.ts          编辑快捷按钮与列表续行
-  pin.ts reminder.ts astro.ts（月相）summaries.ts vocab.ts trash.ts（最近删除）
+  pin.ts reminder.ts astro.ts（只剩日期差，月相已不用）lunar.ts（农历节气）poems.ts（内置诗词）summaries.ts vocab.ts trash.ts（最近删除）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare
@@ -79,25 +80,28 @@ e2e/                 端到端测试
 android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用阿里云镜像）
 ```
 
-## 设计语言：“观测日志”
+## 设计语言：“宣纸水墨”（2026-10-05 起，用户要求去掉所有天文宇宙元素）
 
-- 深色模式是带星点的夜空，浅色模式像星图纸。
-- 心情的颜色取自恒星光谱 M/K/G/F/B（“一般”是 G 型，和太阳一样）。界面上不再解释光谱（用户要求去掉日历页的说明和图例字母）。
-- 数字用 Barlow Condensed 字体。日历每天显示当晚月相，首页把连续写日记的日子连成星座。
+- 浅色是米白宣纸（`--paper` 纸纹），墨色文字；深色是砚台夜墨，月白文字。朱砂红 `--accent` 只用于印章（`Seal.vue`）、今天、强调。
+- 心情用中国传统色：玄青、黛、缃、竹青、胭脂（`--m1`…`--m5`；深色心情上用浅字，见 `.mood-N` 的 `--onm` 和 `mood.ts` 的 `inkOn`）。成功 / 开关用竹青 `--m4`。
+- 字体用手机自带宋体（`--serif`），诗句用楷体（`--kai`），数字用衬线体（`--num`）。用户选择不内置字体（不想安装包变大）。
+- 首页最近 30 天画成一枝梅花（`PlumBranch.vue`），写一天开一朵；日历每天显示农历（`core/lunar.ts`，lunar-javascript），节气和节日朱红；首页有每日诗词（`core/poems.ts` 内置库 + 可选今日诗词接口，`dailyService.ts`）。
+- 不要再引入星空、星座、月相、宇宙类意象。
 - 新界面沿用 `style.css` 里的颜色变量和组件（Switch、Sheet、Icon 等），不要引入新的视觉风格。
 - 用户很懒：不要加必填项；默认值要合理。
 
 ## 已实现的功能
 
 - 本地写作：心情拖动条、标签、人物和地点、日历、那年今日、搜索、导出 zip。
-- 同步：阿里云 OSS、GitHub 私有仓库，可以都开、只开一个或都不开；自动同步；从云端恢复。
+- 同步：阿里云 OSS、GitHub 私有仓库，可以都开、只开一个或都不开；自动同步（停笔 N 分钟后传，默认 2，切到后台时有待传就传；端到端测试里设 `__diary.prefs.sync.quietMin = 0`）；从云端恢复。
+- 高德、和风、OSS、GitHub 配置处有可展开的教程（`HelpTip.vue`）。定位先 GPS、超时退回网络定位。
 - 核对云端：每周自动加手动，云端缺失或改动的文件会补传。
 - 云端加密：每个后端单独开关，默认关闭；age 格式。
 - 位置与天气：高德附近地点；插图。
 - AI：问答、抽取（标注）、月度和年度总结、词表合并、补充说明（共用 + 分功能）、服务高级设置（上下文长度、最大输出、温度、超时、额外参数）、token 用量显示。
 - 删除日记（编辑页按钮）+ 最近删除（30 天）。阅读视图单个换行即换行（`src/ui/markdown.ts`）。
 - 编辑页：已写过的日记默认阅读视图（双击或点笔进入编辑）；心情卡片上方是位置和天气（点开编辑框，天气不再点一下就重新获取），下方显示标签/人物/去过的地方，卡片外是操作按钮；插图可选拍照（`capture` 属性 + manifest 里的 `<queries>`）或相册。
-- 动效（`src/ui/motion.ts` + `style.css` 末尾）：View Transitions 页面切换和列表→正文共享元素、滚动驱动的列表入场、日历跟手换月、星座绘制、夜空闪烁和流星。设置里可关（`prefs.ui.motion`），系统“减少动画”时自动关。端到端测试用 `reducedMotion: 'reduce'` 关掉动画再截图；要看动画效果得另外开着动画截图。
+- 动效（`src/ui/motion.ts` + `style.css` 末尾）：View Transitions 页面切换和列表→正文共享元素、滚动驱动的列表入场、日历跟手换月、梅枝开花、首页飘落花瓣。设置里可关（`prefs.ui.motion`），系统“减少动画”时自动关。端到端测试用 `reducedMotion: 'reduce'` 关掉动画再截图；要看动画效果得另外开着动画截图。
 - 写日记提醒、PIN 应用锁，可选指纹解锁（`BiometricPlugin.java` + `platform/biometric.ts`，依赖 androidx.biometric 1.1.0；端到端测试用 `window.__biometricMock`）。
 - AI 问答流式输出（`HttpStreamPlugin.java` + `platform/nativeStream.ts`，`core/http.ts` 的 `httpStream`；`client.ts` 里 SSE 解析，服务不支持时自动退回普通请求），可停止。月度总结超出上下文时按周分段再合成（`summarize.ts` 的 `chunkEntries`）。
 - 编辑快捷栏：加粗、列表、编号、待办、引用、时间、插图、撤销；回车续行；阅读视图里可勾选待办。

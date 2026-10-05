@@ -74,12 +74,10 @@ describe('提醒排程', () => {
     expect(planReminders({ ...base, now: new Date(), today: '2026-10-04', time: 'abc', written: () => false })).toEqual([])
   })
 
-  it('文案带月相', () => {
-    // 2026-10-26 前后是满月附近
-    const texts = Array.from({ length: 30 }, (_, i) => reminderText(`2026-10-${String(i + 1).padStart(2, '0')}`).body)
-    expect(texts.some((t) => t.includes('满月'))).toBe(true)
-    expect(texts.some((t) => t.includes('新月'))).toBe(true)
-    expect(texts.every((t) => t.startsWith('今晚'))).toBe(true)
+  it('文案带农历、节气和节日', () => {
+    expect(reminderText('2026-10-05').body).toMatch(/^今天农历八月廿五。/)
+    expect(reminderText('2026-10-08').body).toMatch(/^今天寒露。/)
+    expect(reminderText('2026-10-18').body).toMatch(/^今天重阳。/)
   })
 })
 

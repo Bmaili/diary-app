@@ -37,12 +37,14 @@ export interface EntryMeta {
   places?: string[]
   ai?: AiMeta
   locked?: string[]
+  /** 不让 AI 读这篇：问答、总结、抽取都跳过（2026-10-05 加入） */
+  ai_exclude?: boolean
 }
 
 /** front matter 中已知字段的输出顺序（规格 4.4 第 1 条：按 4.3 表顺序输出）。 */
 export const KNOWN_KEYS = [
   'date', 'created', 'updated', 'weather', 'mood', 'location',
-  'tags', 'people', 'places', 'ai', 'locked',
+  'tags', 'people', 'places', 'ai', 'locked', 'ai_exclude',
 ] as const
 
 /** 文件系统抽象：真机用 Capacitor Filesystem，测试用 Node fs。路径均相对于 app 数据根目录。 */
@@ -94,6 +96,8 @@ export interface IndexRow {
   text: string
   /** 测试数据标记，便于一键清除 */
   test?: boolean
+  /** 不让 AI 读（front matter 的 ai_exclude） */
+  aiExclude?: boolean
   /** 文件无法解析时的错误信息；此时 app 不会改写该文件 */
   error?: string
 }

@@ -99,6 +99,11 @@ function tapVersion() {
 }
 
 const hours = [0, 1, 2, 3, 4, 5, 6]
+const DAILY_DESC = {
+  local: '首页显示一句古诗词，按节日、节气和季节挑选，不联网。',
+  online: '用“今日诗词”接口，按时间、天气推荐，内容更多。每天联网一次，会让对方知道你的大致位置（IP）；失败时用内置的。',
+  off: '首页不显示诗词。',
+} as const
 const appVersion = __APP_VERSION__
 
 const syncOn = computed(() => prefs.sync.oss.enabled || prefs.sync.github.enabled)
@@ -178,10 +183,21 @@ const syncLine = computed(() => {
           <option v-for="h in hours" :key="h" :value="h">凌晨 {{ h }}:00</option>
         </select>
       </label>
+      <label class="item">
+        <div>
+          <div>每日诗词</div>
+          <div class="desc">{{ DAILY_DESC[prefs.daily.mode] }}</div>
+        </div>
+        <select v-model="prefs.daily.mode" class="field select">
+          <option value="local">内置诗词</option>
+          <option value="online">今日诗词（联网）</option>
+          <option value="off">不显示</option>
+        </select>
+      </label>
       <div class="item">
         <div>
           <div>动态效果</div>
-          <div class="desc">页面切换、列表浮现、日历跟手滑动、夜空里的星星和流星。手机系统开了“减少动画”时会自动关掉。</div>
+          <div class="desc">页面切换、列表浮现、日历跟手滑动、梅枝开花、飘落的花瓣。手机系统开了“减少动画”时会自动关掉。</div>
         </div>
         <Switch v-model="prefs.ui.motion" label="动态效果" />
       </div>

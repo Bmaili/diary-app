@@ -41,7 +41,7 @@ const PART_SYSTEM = `你在帮用户整理一个月的日记。这个月写得�
 - 只写日记里有的事，不要编造，不要评价，不要给建议。`
 
 export function monthStats(index: DiaryIndex, ym: string): string {
-  const rows = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)))
+  const rows = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7))).filter((r) => !r.aiExclude)
   const moods = [0, 0, 0, 0, 0]
   for (const r of rows) if (r.mood) moods[r.mood - 1]++
   const top = (field: 'places' | 'people' | 'tags') => {
@@ -118,8 +118,9 @@ export async function generateMonthly(
   cfg: LlmConfig, repo: DiaryRepo, index: DiaryIndex, ym: string, now = new Date(),
   onProgress?: (msg: string) => void,
 ): Promise<SummaryDoc> {
-  const rows = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7))).slice().reverse()
-  if (!rows.length) throw new Error(`${ym} 没有日记`)
+  const month = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)))
+  const rows = month.filter((r) => !r.aiExclude).reverse()
+  if (!rows.length) throw new Error(month.length ? `${ym} 的日记都设置了不让 AI 读` : `${ym} 没有日记`)
   const items: { date: string; block: string }[] = []
   for (const r of rows) items.push({ date: r.date, block: await entryBlock(repo, r.date, r.text) })
   const maxOut = cfg.maxOutput || 2000
@@ -177,7 +178,7 @@ export async function generateMonthly(
 }
 
 export function yearStats(index: DiaryIndex, year: string) {
-  const rows = index.all().filter((r) => r.date.startsWith(year))
+  const rows = index.aiRows().filter((r) => r.date.startsWith(year))
   const moods = rows.map((r) => r.mood).filter((m): m is number => m != null)
   const top = (field: 'places' | 'people') => {
     const c = new Map<string, number>()
@@ -197,7 +198,7 @@ export async function generateYearly(
   cfg: LlmConfig, repo: DiaryRepo, index: DiaryIndex, store: FileStore, year: string,
   onProgress?: (msg: string) => void, now = new Date(),
 ): Promise<SummaryDoc> {
-  const months = [...new Set(index.all().filter((r) => r.date.startsWith(year)).map((r) => r.date.slice(0, 7)))].sort()
+  const months = [...new Set(index.aiRows().filter((r) => r.date.startsWith(year)).map((r) => r.date.slice(0, 7)))].sort()
   if (!months.length) throw new Error(`${year} 年没有日记`)
   const texts: string[] = []
   for (const ym of months) {

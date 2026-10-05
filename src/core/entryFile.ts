@@ -88,6 +88,7 @@ function coerceMeta(m: Record<string, unknown>, fallbackDate?: string): EntryMet
   if (m.ai && typeof m.ai === 'object') out.ai = m.ai as EntryMeta['ai']
   const locked = strList(m.locked)
   if (locked) out.locked = locked
+  if (m.ai_exclude === true || m.ai_exclude === 'true') out.ai_exclude = true
   return out
 }
 
@@ -115,7 +116,7 @@ export function serializeEntry(e: EntryDoc): string {
   const metaRec = e.meta as unknown as Record<string, unknown>
   for (const key of KNOWN_KEYS) {
     const raw = metaRec[key]
-    if (isEmpty(raw)) continue
+    if (isEmpty(raw) || raw === false) continue
     const value = prune(raw)
     const node = doc.createNode(value) as unknown
     // 与规格示例一致：weather、各列表字段、ai.fields 用行内（flow）写法；location、ai 用块写法

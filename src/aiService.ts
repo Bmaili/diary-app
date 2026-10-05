@@ -149,7 +149,7 @@ export async function askQuestion(q: string): Promise<void> {
   }
   Object.assign(asking, { busy: true, steps: [], question: q.trim(), partial: '' })
   controller = new AbortController()
-  const all = index.all()
+  const all = index.aiRows()
   const turn: ChatTurn = { q: q.trim(), a: '', steps: [], dates: [], at: Date.now() }
   try {
     const r = await ask({

@@ -5,9 +5,8 @@ import { index, indexVersion, today } from '../../app'
 import { ymd } from '../../core/time'
 import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
-import MoonIcon from '../components/MoonIcon.vue'
 import { MOOD_LABELS } from '../mood'
-import { moonOnDate } from '../../core/astro'
+import { lunarDay } from '../../core/lunar'
 
 defineOptions({ name: 'CalendarView' })
 
@@ -32,11 +31,11 @@ const cells = computed(() => {
   const first = new Date(year.value, month.value - 1, 1)
   const lead = (first.getDay() + 6) % 7
   const days = new Date(year.value, month.value, 0).getDate()
-  const out: ({ date: string; day: number; phase: number; moon: string } | null)[] = Array(lead).fill(null)
+  const out: ({ date: string; day: number; lunar: string; special: boolean; full: string } | null)[] = Array(lead).fill(null)
   for (let d = 1; d <= days; d++) {
     const date = ymd(new Date(year.value, month.value - 1, d))
-    const m = moonOnDate(date)
-    out.push({ date, day: d, phase: m.phase, moon: m.name })
+    const l = lunarDay(date)
+    out.push({ date, day: d, lunar: l.cell, special: !!(l.festival || l.jieqi), full: [l.full, l.festival, l.jieqi].filter(Boolean).join('，') })
   }
   while (out.length % 7) out.push(null)
   return out
@@ -167,7 +166,7 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
           :aria-label="`${c.day} 日，${rows.has(c.date) ? (moodOf(c.date) ? '心情' + MOOD_LABELS[moodOf(c.date) - 1] : '有日记') : '没写'}`"
           @click="open(c.date)">
           <span class="d num">{{ c.day }}</span>
-          <MoonIcon :phase="c.phase" :size="11" class="m" :title="c.moon" />
+          <span class="m" :class="{ special: c.special }" :title="c.full">{{ c.lunar }}</span>
         </button>
       </template>
     </div>
@@ -176,7 +175,7 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
       <span v-for="(w, i) in MOOD_LABELS" :key="w" :class="`mood-${i + 1}`"><i class="dot"></i>{{ w }}</span>
       <span class="mood-0"><i class="dot"></i>没记心情</span>
     </div>
-    <p class="hint muted">每天下面是当晚的月相。点没写的日子可以补写，左右滑动换月份。</p>
+    <p class="hint muted">每天下面是农历，节气和传统节日用朱红标出。点没写的日子可以补写，左右滑动换月份。</p>
   </div>
 </template>
 
@@ -221,11 +220,13 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
   font-size: 19px;
   font-weight: 500;
 }
-.cell.has .d { background: var(--mc); color: var(--on-mood); font-weight: 600; box-shadow: var(--glow); }
+.cell.has .d { background: var(--mc); color: var(--onm, var(--on-mood)); font-weight: 600; box-shadow: var(--glow); }
 .cell.has.mood-0 .d { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 2px var(--m0); }
-.cell.today .d { outline: 2px solid var(--ink); outline-offset: 2px; }
+.cell.today .d { outline: 1.5px solid var(--accent); outline-offset: 2px; color: var(--accent); }
+.cell.today.has .d { color: var(--onm, var(--on-mood)); }
 .cell.today { color: var(--ink); }
-.cell .m { opacity: 0.85; }
+.cell .m { font-size: 10px; line-height: 1.1; letter-spacing: 0.02em; color: var(--faint); white-space: nowrap; }
+.cell .m.special { color: var(--accent); font-weight: 600; }
 .cell.future { opacity: 0.4; }
 .cell:active:not(:disabled) .d { transform: scale(0.9); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 22px 20px 0; font-size: 12px; color: var(--muted); }

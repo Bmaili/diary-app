@@ -6,9 +6,12 @@ import type { IndexRow } from '../../core/types'
 import EntryRow from '../components/EntryRow.vue'
 import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
-import MoonIcon from '../components/MoonIcon.vue'
-import Constellation from '../components/Constellation.vue'
-import { daysBetween, moonPhase } from '../../core/astro'
+import PlumBranch from '../components/PlumBranch.vue'
+import Seal from '../components/Seal.vue'
+import { daysBetween } from '../../core/astro'
+import { lunarDay } from '../../core/lunar'
+import { almanac, daily, loadDaily, nextPoem } from '../../dailyService'
+import { prefs } from '../../prefs'
 import { overall } from '../../syncService'
 import { profileFor } from '../../aiService'
 import { readSummary } from '../../core/summaries'
@@ -43,10 +46,6 @@ const titleDate = computed(() => {
   const d = parseYmd(todayStr.value)
   return { m: d.getMonth() + 1, d: d.getDate(), wd: '日一二三四五六'[d.getDay()] }
 })
-const moon = computed(() => {
-  void hour.value
-  return moonPhase(new Date())
-})
 /** 从第一篇日记算起，今天是第几天 */
 const dayNo = computed(() => {
   const all = rows.value
@@ -69,7 +68,7 @@ const stats = computed(() => {
 })
 const subline = computed(() => {
   const s = stats.value
-  if (!rows.value.length) return '写下第一篇，第一颗星就亮了。'
+  if (!rows.value.length) return '写下第一篇，枝头就开第一朵花。'
   const parts: string[] = []
   if (s.streak >= 2) parts.push(`已经连续写了 ${s.streak} 天`)
   parts.push(`这个月写了 ${s.monthCount} 篇`)
@@ -156,6 +155,8 @@ function refreshNow() {
   todayStr.value = today()
   hour.value = new Date().getHours()
 }
+const lunar = computed(() => lunarDay(todayStr.value))
+watch([todayStr, () => prefs.daily.mode], () => void loadDaily(todayStr.value), { immediate: true })
 onActivated(refreshNow)
 
 // 上个月有日记但还没有总结时提示生成；1 月还提示上一年的年度总结（规格 7.4）
@@ -193,6 +194,7 @@ const memoryDateLabel = (d: string) => {
       <h1 class="date">
         <span class="num big">{{ titleDate.m }}.{{ String(titleDate.d).padStart(2, '0') }}</span>
         <span class="wk">星期{{ titleDate.wd }}</span>
+        <Seal :text="lunar.day" :size="30" class="today-seal" />
       </h1>
       <router-link to="/settings/sync" class="icon-btn sync" :class="sync.kind" :aria-label="syncLabel">
         <Icon :name="syncIcon" />
@@ -203,12 +205,24 @@ const memoryDateLabel = (d: string) => {
 
     <section class="hello">
       <p class="sky-line">
-        <MoonIcon :phase="moon.phase" :size="18" />
-        <span>今晚{{ moon.name }}，照亮 <span class="num">{{ Math.round(moon.illumination * 100) }}%</span></span>
+        <span>{{ almanac(todayStr) }}</span>
         <span v-if="dayNo" class="day-no">记录的第 <span class="num">{{ dayNo }}</span> 天</span>
       </p>
-      <Constellation v-if="rows.length" :days="ribbon" :today="todayStr" class="stars" />
+      <PlumBranch v-if="rows.length" :days="ribbon" :today="todayStr" class="stars" />
       <p class="muted sub">{{ subline }}</p>
+    </section>
+
+    <section v-if="prefs.daily.mode !== 'off' && daily.text" class="poem" aria-label="每日诗词">
+      <Transition name="poem" mode="out-in">
+        <div :key="daily.text" class="poem-body">
+          <p class="verse">{{ daily.text }}</p>
+          <p class="cite">—— {{ daily.author }}<template v-if="daily.title">《{{ daily.title }}》</template></p>
+        </div>
+      </Transition>
+      <div class="poem-foot">
+        <span class="reason">{{ daily.reason }}</span>
+        <button class="text-btn swap" :disabled="daily.busy" @click="nextPoem">{{ daily.busy ? '取诗中' : '换一首' }}</button>
+      </div>
     </section>
 
     <section v-if="prompts.length" class="prompts">
@@ -220,7 +234,7 @@ const memoryDateLabel = (d: string) => {
     </section>
 
     <section v-if="memories.length" class="memories" aria-label="那年今日">
-      <p class="mem-note">你此刻看到的，是从过去发出的光。</p>
+      <p class="mem-note">往事如书，翻到了今天这一页。</p>
       <div class="mem-track">
         <router-link v-for="m in memories" :key="m.date" :to="`/entry/${m.date}`" class="mem" :class="`mood-${m.mood ?? 0}`">
           <div class="mem-head">
@@ -236,7 +250,7 @@ const memoryDateLabel = (d: string) => {
     </section>
 
     <div v-if="!rows.length" class="empty">
-      <MoonIcon :phase="moon.phase" :size="72" />
+      <Seal text="日记" :size="64" />
       <p>还没有日记。</p>
       <p class="muted">点右下角的“写今天”，写一句话就行。</p>
     </div>
@@ -257,7 +271,7 @@ const memoryDateLabel = (d: string) => {
 <style scoped>
 .sync { position: relative; color: var(--muted); }
 .sync.error { color: var(--danger); }
-.sync.off { color: var(--m1); }
+.sync.off { color: var(--accent); }
 .sync.syncing svg { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 .sync .badge {
@@ -281,6 +295,16 @@ const memoryDateLabel = (d: string) => {
 .sky-line { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; color: var(--muted); }
 .sky-line .num { font-size: 16px; color: var(--ink); }
 .day-no { margin-left: auto; }
+.today-seal { align-self: center; margin-left: 2px; }
+/* 每日诗词：竖线引出，楷体 */
+.poem { margin: 0 16px 14px; padding: 12px 16px 6px 18px; border-left: 2px solid var(--accent); animation: rise-in 0.5s var(--ease-out) 0.1s backwards; }
+.verse { margin: 0; font-family: var(--kai); font-size: 18px; line-height: 1.75; letter-spacing: 0.06em; color: var(--ink); }
+.cite { margin: 4px 0 0; text-align: right; font-size: 13px; color: var(--muted); }
+.poem-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
+.reason { font-size: 12px; color: var(--accent); letter-spacing: 0.1em; }
+.swap { min-height: 32px; padding: 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.poem-enter-active, .poem-leave-active { transition: opacity 0.35s, filter 0.35s, transform 0.35s; }
+.poem-enter-from, .poem-leave-to { opacity: 0; filter: blur(3px); transform: translateY(4px); }
 .stars { margin: 2px 0 4px; }
 .sub { margin: 0; font-size: 14px; }
 .prompts { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -291,12 +315,12 @@ const memoryDateLabel = (d: string) => {
   min-height: 48px;
   padding: 0 14px;
   border-radius: 16px;
-  border: 1px dashed var(--m3);
+  border: 1px dashed var(--accent);
   color: inherit;
   text-decoration: none;
   font-weight: 700;
 }
-.prompt svg { width: 20px; height: 20px; color: var(--m3); flex: none; }
+.prompt svg { width: 20px; height: 20px; color: var(--accent); flex: none; }
 .prompt span { flex: 1; }
 .prompt .chev { color: var(--faint); width: 16px; height: 16px; }
 .memories { padding: 4px 0 14px; }
@@ -353,7 +377,7 @@ const memoryDateLabel = (d: string) => {
   margin: 0;
   padding: 10px 20px 6px;
   background-color: var(--bg);
-  background-image: var(--stars, none);
+  background-image: var(--paper, none);
   background-attachment: fixed;
   font-size: 15px;
   font-weight: 700;

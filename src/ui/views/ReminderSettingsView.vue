@@ -66,7 +66,7 @@ async function toggle(on: boolean) {
         <div class="n-title">{{ preview.title }}</div>
         <div class="n-body">{{ preview.body }}</div>
       </div>
-      <p class="desc pad">每条都会带上当晚的月相。提醒排好未来两周，期间打开一次 app 就会续上。部分手机为了省电会晚几分钟弹出。</p>
+      <p class="desc pad">每条都会带上当天的农历、节气或节日。提醒排好未来两周，期间打开一次 app 就会续上。部分手机为了省电会晚几分钟弹出。</p>
     </section>
   </div>
 </template>
