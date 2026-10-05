@@ -4,7 +4,9 @@
  * - OpenAI：assistant 消息带 tool_calls，arguments 是 JSON 字符串；结果用 role=tool 的消息回传。
  * - Anthropic：assistant 内容块里有 tool_use（input 是对象）；结果放在 user 消息的 tool_result 块里。
  */
-import { http } from '../http'
+import { AbortedError, http, httpStream } from '../http'
+
+export { AbortedError }
 
 export interface LlmConfig {
   protocol: 'openai' | 'anthropic'
@@ -23,6 +25,8 @@ export interface LlmConfig {
   timeoutMs?: number
   /** 合并进请求体的额外参数，例如 {"enable_thinking": false} */
   extraBody?: Record<string, unknown>
+  /** 问答是否流式输出，默认开 */
+  stream?: boolean
 }
 
 export const DEFAULT_CONTEXT_TOKENS = 64000
@@ -75,6 +79,10 @@ export interface ChatRequest {
   maxTokens?: number
   temperature?: number
   timeoutMs?: number
+  /** 给了就用流式请求，边收边回调文字片段（服务不支持时自动退回普通请求） */
+  onText?: (delta: string) => void
+  /** 停止生成 */
+  signal?: AbortSignal
 }
 
 export interface Usage {
@@ -156,7 +164,13 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
   }
 }
 
-async function chatOpenAI(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
+interface Prepared {
+  url: string
+  headers: Record<string, string>
+  body: Record<string, unknown>
+}
+
+function prepareOpenAI(cfg: LlmConfig, req: ChatRequest): Prepared {
   const messages: unknown[] = [{ role: 'system', content: withInstructions(req.system, cfg.instructions) }]
   for (const m of req.messages) {
     if (m.role === 'user') messages.push({ role: 'user', content: m.content })
@@ -180,10 +194,15 @@ async function chatOpenAI(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult>
   const temperature = cfg.temperature ?? req.temperature
   if (temperature != null) body.temperature = temperature
   Object.assign(body, cfg.extraBody)
-  const data = (await post(openaiUrl(cfg.baseUrl), { Authorization: `Bearer ${cfg.apiKey}` }, body, timeoutOf(cfg, req))) as {
-    choices?: { message?: { content?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }; finish_reason?: string }[]
-    usage?: { prompt_tokens?: number; completion_tokens?: number }
-  }
+  return { url: openaiUrl(cfg.baseUrl), headers: { Authorization: `Bearer ${cfg.apiKey}` }, body }
+}
+
+type OpenAIData = {
+  choices?: { message?: { content?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }; finish_reason?: string }[]
+  usage?: { prompt_tokens?: number; completion_tokens?: number }
+}
+
+function parseOpenAI(data: OpenAIData): ChatResult {
   const choice = data.choices?.[0]
   if (!choice?.message) throw new LlmError('服务没有返回回答')
   const toolCalls = (choice.message.tool_calls ?? []).map((c, i) => {
@@ -197,7 +216,7 @@ async function chatOpenAI(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult>
   }
 }
 
-async function chatAnthropic(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
+function prepareAnthropic(cfg: LlmConfig, req: ChatRequest): Prepared {
   const messages: { role: 'user' | 'assistant'; content: unknown[] }[] = []
   const push = (role: 'user' | 'assistant', block: unknown) => {
     const last = messages[messages.length - 1]
@@ -218,25 +237,28 @@ async function chatAnthropic(cfg: LlmConfig, req: ChatRequest): Promise<ChatResu
   const temperature = cfg.temperature ?? req.temperature
   if (temperature != null) body.temperature = temperature
   Object.assign(body, cfg.extraBody)
-  const data = (await post(
-    anthropicUrl(cfg.baseUrl),
-    { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+  return {
+    url: anthropicUrl(cfg.baseUrl),
+    headers: { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
     body,
-    timeoutOf(cfg, req),
-  )) as {
-    content?: { type: string; text?: string; id?: string; name?: string; input?: unknown }[]
-    stop_reason?: string
-    usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
   }
+}
+
+type AnthropicUsage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+const anthropicInput = (u: AnthropicUsage) => (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+
+function parseAnthropic(data: {
+  content?: { type: string; text?: string; id?: string; name?: string; input?: unknown }[]
+  stop_reason?: string
+  usage?: AnthropicUsage
+}): ChatResult {
   const blocks = data.content ?? []
   const u = data.usage
   return {
     text: blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join(''),
     toolCalls: blocks.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id!, name: b.name!, args: parseArgs(b.input).args })),
     stop: data.stop_reason ?? '',
-    ...(u?.input_tokens != null
-      ? { usage: { input: u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens ?? 0 } }
-      : {}),
+    ...(u?.input_tokens != null ? { usage: { input: anthropicInput(u), output: u.output_tokens ?? 0 } } : {}),
   }
 }
 
@@ -244,10 +266,178 @@ function timeoutOf(cfg: LlmConfig, req: ChatRequest): number {
   return cfg.timeoutMs || req.timeoutMs || 120000
 }
 
+async function chatOnce(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
+  const anthropic = cfg.protocol === 'anthropic'
+  const p = anthropic ? prepareAnthropic(cfg, req) : prepareOpenAI(cfg, req)
+  const data = await post(p.url, p.headers, p.body, timeoutOf(cfg, req))
+  return anthropic ? parseAnthropic(data as never) : parseOpenAI(data as OpenAIData)
+}
+
+// ---------- 流式（SSE） ----------
+
+/** 这次运行里发现不支持流式（或不认 stream_options）的服务，之后不再尝试 */
+const noStream = new Set<string>()
+const noStreamOptions = new Set<string>()
+const keyOf = (cfg: LlmConfig) => `${cfg.protocol} ${cfg.baseUrl} ${cfg.model}`
+
+/** 流式请求被服务拒绝（参数不认识等），可以退回普通请求 */
+class StreamRejected extends Error {
+  constructor(readonly status: number, readonly detail: string) {
+    super(detail)
+  }
+}
+
+/** SSE 解析器：逐行喂进去，最后得到和普通请求一样的结果 */
+export function sseParser(protocol: 'openai' | 'anthropic', onText?: (d: string) => void) {
+  let text = ''
+  let stop = ''
+  let usage: Usage | undefined
+  let error = ''
+  let events = 0
+  const raw: string[] = []
+  const oaCalls: { id: string; name: string; args: string }[] = []
+  const anBlocks: { type: string; id?: string; name?: string; json: string }[] = []
+  const emit = (d: string) => {
+    if (!d) return
+    text += d
+    onText?.(d)
+  }
+  return {
+    line(line: string) {
+      if (!line.startsWith('data:')) {
+        if (line && !line.startsWith('event:') && !line.startsWith(':') && !line.startsWith('id:') && !line.startsWith('retry:')) raw.push(line)
+        return
+      }
+      const d = line.slice(5).trim()
+      if (!d || d === '[DONE]') return
+      let j: Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+      try {
+        j = JSON.parse(d)
+      } catch {
+        return
+      }
+      events++
+      if (j.error) {
+        error = typeof j.error === 'string' ? j.error : j.error.message ?? JSON.stringify(j.error)
+        return
+      }
+      if (protocol === 'openai') {
+        const ch = j.choices?.[0]
+        const delta = ch?.delta ?? {}
+        if (typeof delta.content === 'string') emit(delta.content)
+        for (const tc of delta.tool_calls ?? []) {
+          const i = typeof tc.index === 'number' ? tc.index : oaCalls.length
+          oaCalls[i] ??= { id: '', name: '', args: '' }
+          if (tc.id) oaCalls[i].id = tc.id
+          if (tc.function?.name) oaCalls[i].name += tc.function.name
+          if (tc.function?.arguments) oaCalls[i].args += tc.function.arguments
+        }
+        if (ch?.finish_reason) stop = ch.finish_reason
+        if (j.usage?.prompt_tokens != null) usage = { input: j.usage.prompt_tokens, output: j.usage.completion_tokens ?? 0 }
+      } else {
+        switch (j.type) {
+          case 'message_start':
+            if (j.message?.usage) usage = { input: anthropicInput(j.message.usage), output: j.message.usage.output_tokens ?? 0 }
+            break
+          case 'content_block_start':
+            anBlocks[j.index] = { type: j.content_block?.type, id: j.content_block?.id, name: j.content_block?.name, json: '' }
+            if (j.content_block?.type === 'text' && j.content_block.text) emit(j.content_block.text)
+            break
+          case 'content_block_delta':
+            if (j.delta?.type === 'text_delta') emit(j.delta.text ?? '')
+            else if (j.delta?.type === 'input_json_delta' && anBlocks[j.index]) anBlocks[j.index].json += j.delta.partial_json ?? ''
+            break
+          case 'message_delta':
+            if (j.delta?.stop_reason) stop = j.delta.stop_reason
+            if (j.usage?.output_tokens != null) usage = { input: usage?.input ?? 0, output: j.usage.output_tokens }
+            break
+        }
+      }
+    },
+    result(): ChatResult {
+      if (error) throw new LlmError(`服务返回错误（${error}）`)
+      if (!events) {
+        // 服务没理会 stream 参数，直接返回了普通 JSON
+        const body = raw.join('\n').trim()
+        let data: unknown
+        try {
+          data = JSON.parse(body)
+        } catch {
+          throw new LlmError('服务返回的不是 JSON，接口地址可能不对')
+        }
+        const r = protocol === 'anthropic' ? parseAnthropic(data as never) : parseOpenAI(data as OpenAIData)
+        if (r.text) onText?.(r.text)
+        return r
+      }
+      const toolCalls: ToolCall[] = protocol === 'openai'
+        ? oaCalls.filter(Boolean).map((c, i) => {
+          const p = parseArgs(c.args)
+          return { id: c.id || `call_${i}`, name: c.name, args: p.args, ...(p.bad ? { badArgs: p.bad } : {}) }
+        })
+        : anBlocks.filter((b) => b?.type === 'tool_use').map((b) => {
+          const p = parseArgs(b.json || '{}')
+          return { id: b.id!, name: b.name!, args: p.args, ...(p.bad ? { badArgs: p.bad } : {}) }
+        })
+      return { text, toolCalls, stop, ...(usage ? { usage } : {}) }
+    },
+  }
+}
+
+async function chatStream(cfg: LlmConfig, req: ChatRequest, withOptions: boolean): Promise<ChatResult> {
+  const anthropic = cfg.protocol === 'anthropic'
+  const p = anthropic ? prepareAnthropic(cfg, req) : prepareOpenAI(cfg, req)
+  p.body.stream = true
+  if (!anthropic && withOptions) p.body.stream_options = { include_usage: true }
+  const parser = sseParser(cfg.protocol, req.onText)
+  const ms = timeoutOf(cfg, req)
+  let res
+  try {
+    res = await httpStream(
+      { url: p.url, method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...p.headers }, body: JSON.stringify(p.body), timeoutMs: ms, signal: req.signal },
+      (l) => parser.line(l),
+    )
+  } catch (e) {
+    if (e instanceof AbortedError) throw e
+    throw new LlmError((e as Error).message)
+  }
+  if (!res.ok) {
+    if ([400, 404, 405, 415, 422].includes(res.status)) throw new StreamRejected(res.status, res.errorText)
+    throw new LlmError(errorMessage(res.status, res.errorText), res.status)
+  }
+  return parser.result()
+}
+
 export function chat(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
   if (!cfg.apiKey) return Promise.reject(new LlmError('还没有填 API Key'))
   if (!cfg.model) return Promise.reject(new LlmError('还没有填模型名'))
-  return cfg.protocol === 'anthropic' ? chatAnthropic(cfg, req) : chatOpenAI(cfg, req)
+  const key = keyOf(cfg)
+  if (!req.onText || cfg.stream === false || noStream.has(key)) {
+    return chatOnce(cfg, req).then((r) => {
+      if (r.text) req.onText?.(r.text)
+      return r
+    })
+  }
+  const fallback = async (): Promise<ChatResult> => {
+    noStream.add(key)
+    const r = await chatOnce(cfg, req)
+    if (r.text) req.onText?.(r.text)
+    return r
+  }
+  return chatStream(cfg, req, !noStreamOptions.has(key)).catch(async (e) => {
+    if (!(e instanceof StreamRejected)) throw e
+    // 有的服务不认识 stream_options：去掉它再试一次流式
+    if (cfg.protocol === 'openai' && !noStreamOptions.has(key) && /stream_options/i.test(e.detail)) {
+      noStreamOptions.add(key)
+      return chatStream(cfg, req, false).catch((e2) => (e2 instanceof StreamRejected ? fallback() : Promise.reject(e2)))
+    }
+    return fallback()
+  })
+}
+
+/** 测试用：清掉“不支持流式”的记录 */
+export function resetStreamMemory() {
+  noStream.clear()
+  noStreamOptions.clear()
 }
 
 /** “测试”按钮：带一个工具发请求，确认连得上、并且模型会调用工具（问答必须支持工具调用） */

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { lock, unlock } from '../../lockService'
+import { lock, unlock, unlockWithBiometric } from '../../lockService'
+import { biometricStatus } from '../../platform/biometric'
+import Icon from './Icon.vue'
 import { prefs } from '../../prefs'
 import { moonPhase } from '../../core/astro'
 import MoonIcon from './MoonIcon.vue'
@@ -12,7 +14,28 @@ const now = ref(Date.now())
 const showForgot = ref(false)
 const moon = moonPhase(new Date())
 let timer: ReturnType<typeof setInterval> | undefined
-onMounted(() => (timer = setInterval(() => (now.value = Date.now()), 1000)))
+/** 开了指纹解锁并且手机能用：锁屏一出来就弹指纹框，取消了可以点按钮再弹，或者输 PIN */
+const bio = ref(false)
+const bioBusy = ref(false)
+async function tryBio() {
+  if (bioBusy.value) return
+  bioBusy.value = true
+  try {
+    const r = await unlockWithBiometric()
+    if (r.ok) return
+    if (r.code === 7 || r.code === 9) msg.value = '指纹试错太多次，请输入 PIN'
+    else if (r.code !== 10 && r.code !== 13 && r.code !== 5 && r.message) msg.value = r.message
+  } finally {
+    bioBusy.value = false
+  }
+}
+onMounted(async () => {
+  timer = setInterval(() => (now.value = Date.now()), 1000)
+  if (prefs.lock.biometric && (await biometricStatus()).available) {
+    bio.value = true
+    if (document.visibilityState === 'visible') void tryBio()
+  }
+})
 onUnmounted(() => clearInterval(timer))
 
 const wait = computed(() => Math.max(0, Math.ceil((lock.until - now.value) / 1000)))
@@ -38,9 +61,11 @@ async function submit(pin: string) {
     </div>
     <PinPad :len="lock.len" :disabled="wait > 0" :shake="shake" @submit="submit">
       <template #extra>
-        <button class="forgot" @click="showForgot = true">忘记了</button>
+        <button v-if="bio" class="bio" aria-label="用指纹解锁" :disabled="bioBusy" @click="tryBio"><Icon name="fingerprint" /></button>
+        <button v-else class="forgot" @click="showForgot = true">忘记了</button>
       </template>
     </PinPad>
+    <button v-if="bio" class="forgot under" @click="showForgot = true">忘记 PIN 了</button>
     <div v-if="showForgot" class="forgot-box" role="alertdialog">
       <p>应用锁没有后门。忘记 PIN 只能在系统设置里清除本 app 的数据，这会<strong>删掉手机上的全部日记</strong>。</p>
       <p v-if="syncOn">你开启了云端同步，清除后可以在“设置 → 同步与备份 → 从云端恢复”里找回已同步的日记；最近还没同步上去的部分会丢失。</p>
@@ -66,6 +91,10 @@ async function submit(pin: string) {
 h1 { margin: 14px 0 4px; font-size: 20px; color: var(--ink); letter-spacing: 0.08em; }
 .sub { margin: 0; min-height: 1.5em; color: var(--muted); font-size: 14px; }
 .forgot { border: 0; background: transparent; color: var(--muted); font-size: 14px; }
+.forgot.under { margin-top: -20px; }
+.bio { display: grid; place-items: center; width: 64px; height: 64px; border: 0; border-radius: 50%; background: transparent; color: var(--m3); }
+.bio svg { width: 34px; height: 34px; }
+.bio:active { background: var(--line); }
 .forgot-box {
   position: absolute;
   left: 16px;

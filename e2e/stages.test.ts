@@ -795,3 +795,60 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     await ctx.close()
   })
 })
+
+describe('指纹解锁、月度总结分段', () => {
+  async function typePin2(page: Page, pin: string) {
+    for (const d of pin) await page.getByRole('button', { name: d, exact: true }).last().click()
+  }
+  it('开了指纹解锁：锁屏一出来就弹指纹，认证成功直接进；取消了还能输 PIN', async () => {
+    const { ctx, page, errors } = await newPage()
+    // 假的指纹：记录调用次数，结果由测试决定
+    await ctx.addInitScript(() => {
+      const w = window as unknown as { __bio: { calls: number; next: { ok: boolean; code?: number } }; __biometricMock: unknown }
+      w.__bio = { calls: 0, next: sessionStorage.getItem('bioCancel') ? { ok: false, code: 13 } : { ok: true } }
+      w.__biometricMock = {
+        status: async () => ({ available: true, reason: 'ok' }),
+        authenticate: async () => {
+          w.__bio.calls++
+          return w.__bio.next
+        },
+      }
+    })
+    await page.reload()
+    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    await writeToday(page, '指纹测试的一天。')
+    await page.goto(BASE + '#/settings/lock')
+    await page.getByRole('switch', { name: '启用应用锁' }).click()
+    await page.getByText('设置新的 PIN').waitFor()
+    await typePin2(page, '1357')
+    await page.getByRole('button', { name: '确定' }).click()
+    await page.getByText('再输一次').waitFor()
+    await typePin2(page, '1357')
+    await page.getByRole('button', { name: '确定' }).click()
+    await page.getByRole('switch', { name: '指纹解锁' }).click()
+    await page.locator('[role=switch][aria-label="指纹解锁"][aria-checked="true"]').waitFor()
+    await page.screenshot({ path: OUT + '55-lock-biometric-settings.png' })
+    await page.waitForTimeout(500)
+
+    // 重开：自动弹指纹并解锁
+    await page.goto(BASE + '#/')
+    await page.reload()
+    await page.getByText('指纹测试的一天。').waitFor()
+    expect(await page.getByText('观测站已上锁').count()).toBe(0)
+    expect(await page.evaluate(() => (window as unknown as { __bio: { calls: number } }).__bio.calls)).toBe(1)
+
+    // 取消指纹：停在锁屏，可以点指纹按钮再试，也可以输 PIN
+    await page.evaluate(() => sessionStorage.setItem('bioCancel', '1'))
+    await page.reload()
+    await page.getByText('观测站已上锁').waitFor()
+    await page.getByRole('button', { name: '用指纹解锁' }).waitFor()
+    await page.screenshot({ path: OUT + '56-lock-biometric.png' })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '56-lock-biometric-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
+    await typePin2(page, '1357')
+    await page.getByText('观测站已上锁').waitFor({ state: 'detached' })
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+})

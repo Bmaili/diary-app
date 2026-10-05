@@ -9,6 +9,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // 本工程自带的原生插件，要在 super.onCreate 之前注册
         registerPlugin(PrivacyScreenPlugin.class);
+        registerPlugin(HttpStreamPlugin.class);
+        registerPlugin(BiometricPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

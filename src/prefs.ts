@@ -17,6 +17,8 @@ export interface LlmProfile {
   timeoutSec?: number
   /** 合并进请求体的 JSON，原样保存用户输入 */
   extraBody?: string
+  /** 问答流式输出，不填为开 */
+  stream?: boolean
 }
 
 export const prefs = reactive({
@@ -59,6 +61,8 @@ export const prefs = reactive({
     delaySec: 60,
     /** 在最近任务里隐藏内容并禁止截屏 */
     hideInRecents: true,
+    /** 指纹解锁（PIN 仍可用） */
+    biometric: false,
   },
   ui: {
     /** 动态效果（页面切换、列表入场、日历跟手滑动等）；系统开了“减少动画”时也会关掉 */

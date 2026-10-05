@@ -22,6 +22,14 @@ export interface LlmMock {
   failNext: number
   /** 失败时的状态码和错误信息，默认 500 boom */
   failWith?: { status: number; message: string }
+  /**
+   * 收到 stream: true 时怎么办：
+   * sse（默认，分几块按 SSE 返回）、reject（400，不支持流式）、ignore（忽略，照常返回 JSON）、
+   * rejectOptions（不认识 stream_options 时 400）
+   */
+  streamMode?: 'sse' | 'reject' | 'ignore' | 'rejectOptions'
+  /** 每块之间的间隔（毫秒），用来测停止 */
+  chunkDelay?: number
   close: () => Promise<void>
 }
 
@@ -74,6 +82,48 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
     const tools = (body.tools ?? []).map((t: { name?: string; function?: { name: string } }) => t.name ?? t.function!.name)
     const out = mock.script({ system, turns, tools })
     const calls = (out.toolCalls ?? []).map((c) => ({ ...c, id: `call_${++n}` }))
+    const mode = mock.streamMode ?? 'sse'
+    if (body.stream && mode === 'reject') return json(400, { error: { message: 'stream is not supported' } })
+    if (body.stream && mode === 'rejectOptions' && body.stream_options) return json(400, { error: { message: 'Unrecognized request argument: stream_options' } })
+    if (body.stream && mode !== 'ignore') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      const text = out.text ?? ''
+      const pieces = text ? [text.slice(0, Math.ceil(text.length / 3)), text.slice(Math.ceil(text.length / 3), Math.ceil((2 * text.length) / 3)), text.slice(Math.ceil((2 * text.length) / 3))].filter(Boolean) : []
+      const send = async (ev: unknown, name?: string) => {
+        if (res.destroyed) return
+        res.write(`${name ? `event: ${name}\n` : ''}data: ${JSON.stringify(ev)}\n\n`)
+        if (mock.chunkDelay) await new Promise((r) => setTimeout(r, mock.chunkDelay))
+      }
+      if (anthropic) {
+        await send({ type: 'message_start', message: { usage: { input_tokens: 100, output_tokens: 1 } } }, 'message_start')
+        let i = 0
+        if (pieces.length) {
+          await send({ type: 'content_block_start', index: i, content_block: { type: 'text', text: '' } }, 'content_block_start')
+          for (const p of pieces) await send({ type: 'content_block_delta', index: i, delta: { type: 'text_delta', text: p } }, 'content_block_delta')
+          await send({ type: 'content_block_stop', index: i++ }, 'content_block_stop')
+        }
+        for (const c of calls) {
+          await send({ type: 'content_block_start', index: i, content_block: { type: 'tool_use', id: c.id, name: c.name, input: {} } }, 'content_block_start')
+          const js = JSON.stringify(c.args)
+          await send({ type: 'content_block_delta', index: i, delta: { type: 'input_json_delta', partial_json: js.slice(0, 5) } }, 'content_block_delta')
+          await send({ type: 'content_block_delta', index: i, delta: { type: 'input_json_delta', partial_json: js.slice(5) } }, 'content_block_delta')
+          await send({ type: 'content_block_stop', index: i++ }, 'content_block_stop')
+        }
+        await send({ type: 'message_delta', delta: { stop_reason: calls.length ? 'tool_use' : 'end_turn' }, usage: { output_tokens: 10 } }, 'message_delta')
+        await send({ type: 'message_stop' }, 'message_stop')
+      } else {
+        for (const p of pieces) await send({ choices: [{ index: 0, delta: { content: p } }] })
+        for (const [i, c] of calls.entries()) {
+          const js = JSON.stringify(c.args)
+          await send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: c.id, type: 'function', function: { name: c.name, arguments: js.slice(0, 5) } }] } }] })
+          await send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: js.slice(5) } }] } }] })
+        }
+        await send({ choices: [{ index: 0, delta: {}, finish_reason: calls.length ? 'tool_calls' : 'stop' }] })
+        if (body.stream_options) await send({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 10 } })
+        if (!res.destroyed) res.write('data: [DONE]\n\n')
+      }
+      return res.end()
+    }
     if (anthropic) {
       json(200, {
         content: [...(out.text ? [{ type: 'text', text: out.text }] : []), ...calls.map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args }))],

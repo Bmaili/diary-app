@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
 import { checkPin, disableLock, lock, setPin } from '../../lockService'
+import { BIO_REASON, biometricAuth, biometricStatus, type BioStatus } from '../../platform/biometric'
+import { onMounted } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
@@ -33,6 +35,21 @@ const delays = [
   { v: 900, label: '15 分钟' },
 ]
 const syncOn = computed(() => prefs.sync.oss.enabled || prefs.sync.github.enabled)
+
+// 指纹：打开前先验一次指纹，确认这台手机真的能用
+const bio = ref<BioStatus | null>(null)
+const bioMsg = ref('')
+onMounted(async () => (bio.value = await biometricStatus()))
+async function toggleBio(on: boolean) {
+  bioMsg.value = ''
+  if (!on) {
+    prefs.lock.biometric = false
+    return
+  }
+  const r = await biometricAuth('验证指纹', '取消')
+  if (r.ok) prefs.lock.biometric = true
+  else if (r.code !== 10 && r.code !== 13) bioMsg.value = r.message || '没有验证成功'
+}
 
 function toggle(on: boolean) {
   err.value = ''
@@ -112,6 +129,14 @@ async function onPin(pin: string) {
             <div class="desc">多任务界面显示空白。安卓的限制：打开后本 app 也不能截屏和录屏。{{ native ? '' : '（浏览器里无效）' }}</div>
           </div>
           <Switch v-model="prefs.lock.hideInRecents" label="在最近任务里隐藏内容" />
+        </div>
+        <div class="item">
+          <div>
+            <div>指纹解锁</div>
+            <div class="desc">{{ bio && !bio.available ? BIO_REASON[bio.reason] : '解锁时先弹指纹，取消或识别不了时仍可输入 PIN。' }}</div>
+            <div v-if="bioMsg" class="result bad">{{ bioMsg }}</div>
+          </div>
+          <Switch :model-value="prefs.lock.biometric" label="指纹解锁" :disabled="!bio?.available" @update:model-value="toggleBio" />
         </div>
         <button class="item link" @click="change">
           <div><div>修改 PIN</div></div>

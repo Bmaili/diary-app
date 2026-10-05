@@ -17,6 +17,8 @@ export interface SummaryMeta {
   period: string
   generated_at?: string
   model?: string
+  /** 日记太多、分几段读完再合成时的段数（2026-10-04 加入；一次读完时不写） */
+  parts?: number
   source_count?: number
   source_hash?: string
   locked?: boolean
@@ -29,7 +31,7 @@ export interface SummaryDoc {
   extra: Pair[]
 }
 
-const KNOWN = ['type', 'period', 'generated_at', 'model', 'source_count', 'source_hash', 'locked', 'edited_at'] as const
+const KNOWN = ['type', 'period', 'generated_at', 'model', 'parts', 'source_count', 'source_hash', 'locked', 'edited_at'] as const
 
 export const kindOf = (period: string): SummaryKind => (/^\d{4}$/.test(period) ? 'yearly' : 'monthly')
 export const summaryPath = (period: string) => `${ROOT}/summaries/${kindOf(period)}/${period}.md`
@@ -51,6 +53,7 @@ export function parseSummary(raw: string, period: string): SummaryDoc {
   }
   meta.period = String(meta.period ?? period)
   if (meta.source_count != null) meta.source_count = Number(meta.source_count)
+  if (meta.parts != null) meta.parts = Number(meta.parts)
   meta.locked = meta.locked === true || (meta.locked as unknown) === 'true'
   return { meta, body: text.slice(m[0].length).trim(), extra }
 }

@@ -3,7 +3,7 @@ import { reactive } from 'vue'
 import { diaryChanged, enqueue, index, refreshDate, repo, store, today } from './app'
 import { prefs, type LlmProfile } from './prefs'
 import { getSecret } from './platform/secrets'
-import { parseExtraBody, type LlmConfig, type Usage } from './core/llm/client'
+import { AbortedError, parseExtraBody, type LlmConfig, type Usage } from './core/llm/client'
 import { DiaryTools } from './core/llm/tools'
 import { ask, systemPrompt, type Step } from './core/llm/agent'
 import { extractEntry, applyExtraction, runBatch, vocabulary, type BatchState, type Extraction } from './core/llm/extract'
@@ -48,6 +48,7 @@ export function profileConfig(p: LlmProfile, apiKey: string): LlmConfig {
     temperature: typeof p.temperature === 'number' && Number.isFinite(p.temperature) ? p.temperature : undefined,
     timeoutMs: num(p.timeoutSec) ? p.timeoutSec! * 1000 : undefined,
     extraBody: parseExtraBody(p.extraBody),
+    stream: p.stream !== false,
   }
 }
 
@@ -82,6 +83,8 @@ export interface ChatTurn {
   usage?: Usage & { calls: number }
   /** 为了不超出上下文省略过内容 */
   compacted?: boolean
+  /** 用户点了停止（a 里是停止前收到的部分） */
+  stopped?: boolean
 }
 
 export interface Conversation {
@@ -125,7 +128,14 @@ export async function deleteConversation(id: string) {
   await saveChats()
 }
 
-export const asking = reactive({ busy: false, steps: [] as Step[], question: '' })
+/** partial：流式输出中、这一轮已经收到的文字 */
+export const asking = reactive({ busy: false, steps: [] as Step[], question: '', partial: '' })
+let controller: AbortController | null = null
+
+/** 停止正在进行的问答：已经收到的文字留下来 */
+export function stopAsking() {
+  controller?.abort()
+}
 
 export async function askQuestion(q: string): Promise<void> {
   if (asking.busy || !q.trim()) return
@@ -137,7 +147,8 @@ export async function askQuestion(q: string): Promise<void> {
     chats.list.unshift(conv)
     chats.currentId = conv.id
   }
-  Object.assign(asking, { busy: true, steps: [], question: q.trim() })
+  Object.assign(asking, { busy: true, steps: [], question: q.trim(), partial: '' })
+  controller = new AbortController()
   const all = index.all()
   const turn: ChatTurn = { q: q.trim(), a: '', steps: [], dates: [], at: Date.now() }
   try {
@@ -150,15 +161,23 @@ export async function askQuestion(q: string): Promise<void> {
       onStep: (s) => asking.steps.push(s),
       historyTurns: int(prefs.ai.chat.historyTurns, 10, 50, 10),
       maxRounds: int(prefs.ai.chat.maxRounds, 10, 30, 10),
+      onRound: () => (asking.partial = ''),
+      onText: (d) => (asking.partial += d),
+      signal: controller.signal,
     })
     Object.assign(turn, { a: r.answer, steps: r.steps, dates: r.dates, usage: r.usage, ...(r.compacted ? { compacted: true } : {}) })
   } catch (e) {
-    turn.error = (e as Error).message
     turn.steps = [...asking.steps]
+    if (e instanceof AbortedError || controller?.signal.aborted) {
+      turn.stopped = true
+      turn.a = asking.partial.trim()
+      turn.dates = [...new Set([...turn.a.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)].map((m) => m[1]))].sort()
+    } else turn.error = (e as Error).message
   } finally {
     conv.turns.push(turn)
     conv.updatedAt = Date.now()
-    Object.assign(asking, { busy: false, steps: [], question: '' })
+    controller = null
+    Object.assign(asking, { busy: false, steps: [], question: '', partial: '' })
     await saveChats()
   }
 }
@@ -213,7 +232,7 @@ export async function summarize(period: string): Promise<void> {
   try {
     const cfg = await configFor('summary')
     if (/^\d{4}$/.test(period)) await generateYearly(cfg, repo, index, store, period, (m) => (summarizing.message = m))
-    else await generateMonthly(cfg, repo, index, period)
+    else await generateMonthly(cfg, repo, index, period, new Date(), (m) => (summarizing.message = m))
     diaryChanged()
   } finally {
     summarizing.period = ''

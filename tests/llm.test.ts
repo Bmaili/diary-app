@@ -6,9 +6,9 @@ import { parseEntry, setListFieldManually } from '../src/core/entryFile'
 import { addDays } from '../src/core/time'
 import { anthropicUrl, chat, extractJson, openaiUrl, testConfig, type LlmConfig } from '../src/core/llm/client'
 import { DiaryTools } from '../src/core/llm/tools'
-import { ask, systemPrompt } from '../src/core/llm/agent'
+import { ask, estimateTokens, systemPrompt } from '../src/core/llm/agent'
 import { extractAndSave, runBatch, type BatchState } from '../src/core/llm/extract'
-import { generateMonthly, generateYearly } from '../src/core/llm/summarize'
+import { chunkEntries, generateMonthly, generateYearly } from '../src/core/llm/summarize'
 import { readSummary, summaryStatus, writeSummary } from '../src/core/summaries'
 import { mergeValues } from '../src/core/vocab'
 import { NodeStore } from './nodeStore'
@@ -272,6 +272,51 @@ describe('总结（规格 7.4）', () => {
     await writeSummary(s.repo, sum)
     expect(await summaryStatus(s.store, s.index, '2026-09')).toBe('locked')
     expect((await readSummary(s.store, '2026-09'))!.body).toBe('我自己改写的总结')
+  })
+
+  it('一个月的日记放不进上下文时，按周分段写小结再合成，每次请求都不超出', async () => {
+    const s = await setup()
+    // 30 篇，每篇约 1500 字；上下文只有 16000 tokens
+    for (let d = 1; d <= 30; d++) {
+      const date = `2026-09-${String(d).padStart(2, '0')}`
+      await s.repo.saveEntry({ meta: { date, mood: (d % 5) + 1, places: d % 3 ? ['图书馆'] : ['江边公园'] }, body: `${d} 日。${'今天写了很多字。'.repeat(190)}`, extra: [] })
+    }
+    await s.index.load()
+    const steps: string[] = []
+    const sum = await generateMonthly(cfg('openai', { contextTokens: 16000 }), s.repo, s.index, '2026-09', new Date(), (m) => steps.push(m))
+    const n = mock.requests.length
+    expect(n).toBeGreaterThan(2)
+    expect(sum.meta.parts).toBe(n - 1)
+    expect(steps.at(-1)).toBe('把几段合成整月总结')
+    expect(steps[0]).toMatch(/^日记较多，分 \d+ 段读：第 1 段（9 月 1 日–9 月 \d+ 日）$/)
+    for (const r of mock.requests) expect(estimateTokens(JSON.stringify(r.body.messages))).toBeLessThan(16000)
+    // 每段的日期连续、不重不漏
+    const covered = mock.requests.slice(0, -1).flatMap((r) => [...JSON.stringify(r.body.messages).matchAll(/## (2026-09-\d\d)/g)].map((m) => m[1]))
+    expect(covered).toEqual(Array.from({ length: 30 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`))
+    // 合成的那次带上各段小结和代码算的统计
+    const last = (mock.requests.at(-1)!.body.messages as { content: string }[]).at(-1)!.content
+    expect(last).toContain('最常去的地方（天数）：图书馆 20、江边公园 10')
+    expect(last).toContain('### 9 月 1 日–')
+    expect(await s.store.readText('diary/summaries/monthly/2026-09.md')).toMatch(/\nparts: \d+\n/)
+  })
+
+  it('放得下时只请求一次，不写 parts', async () => {
+    const s = await setup()
+    await s.repo.saveEntry({ meta: { date: '2026-09-10' }, body: '九月十日', extra: [] })
+    await s.index.load()
+    const sum = await generateMonthly(cfg('openai'), s.repo, s.index, '2026-09')
+    expect(mock.requests).toHaveLength(1)
+    expect(sum.meta.parts).toBeUndefined()
+  })
+
+  it('分段：整周放得下就按周，单篇太长就截断', () => {
+    const items = ['2026-09-01', '2026-09-02', '2026-09-07', '2026-09-08', '2026-09-09'].map((date) => ({ date, block: `## ${date}\n${'字'.repeat(300)}` }))
+    const chunks = chunkEntries(items, 700)
+    // 9-01、9-02 是同一周（周二、周三），9-07 起是下一周
+    expect(chunks.map((c) => [c.from, c.to])).toEqual([['2026-09-01', '2026-09-02'], ['2026-09-07', '2026-09-08'], ['2026-09-09', '2026-09-09']])
+    const long = chunkEntries([{ date: '2026-09-01', block: '字'.repeat(5000) }], 1000)
+    expect(long[0].blocks[0]).toContain('已截断')
+    expect(estimateTokens(long[0].blocks[0])).toBeLessThanOrEqual(1000)
   })
 
   it('年度总结会先补齐缺少的月度总结', async () => {

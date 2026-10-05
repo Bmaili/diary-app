@@ -59,3 +59,77 @@ export function setHttpImpl(i: HttpImpl) {
 export function http(req: HttpRequest): Promise<HttpResponse> {
   return impl(req)
 }
+
+// ---------- 流式响应（AI 问答逐字显示，2026-10-04 加入） ----------
+
+export interface StreamRequest extends HttpRequest {
+  signal?: AbortSignal
+}
+
+export interface StreamResult {
+  status: number
+  ok: boolean
+  /** 出错（非 2xx）时的响应体 */
+  errorText: string
+}
+
+/** 按行回调响应体（SSE 用）。非 2xx 时不回调，响应体放在 errorText 里。timeoutMs 是两次收到数据之间的最长等待。 */
+export type StreamImpl = (req: StreamRequest, onLine: (line: string) => void) => Promise<StreamResult>
+
+export class AbortedError extends Error {
+  constructor() {
+    super('已停止')
+  }
+}
+
+export const fetchStreamImpl: StreamImpl = async (req, onLine) => {
+  const ctl = new AbortController()
+  const ms = req.timeoutMs ?? 30000
+  let timedOut = false
+  let t = setTimeout(() => ((timedOut = true), ctl.abort()), ms)
+  const bump = () => {
+    clearTimeout(t)
+    t = setTimeout(() => ((timedOut = true), ctl.abort()), ms)
+  }
+  const onAbort = () => ctl.abort()
+  req.signal?.addEventListener('abort', onAbort)
+  try {
+    const res = await fetch(req.url, { method: req.method ?? 'POST', headers: req.headers, body: req.body as BodyInit | undefined, signal: ctl.signal })
+    if (!res.ok) return { status: res.status, ok: false, errorText: await res.text() }
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      bump()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      let i: number
+      while ((i = buf.indexOf('\n')) >= 0) {
+        onLine(buf.slice(0, i).replace(/\r$/, ''))
+        buf = buf.slice(i + 1)
+      }
+    }
+    buf += dec.decode()
+    if (buf) onLine(buf.replace(/\r$/, ''))
+    return { status: res.status, ok: true, errorText: '' }
+  } catch (e) {
+    if (req.signal?.aborted) throw new AbortedError()
+    if (timedOut) throw new NetworkError(`连接超时（${ms / 1000} 秒没有收到数据）`)
+    throw new NetworkError(`网络错误：${(e as Error).message}`)
+  } finally {
+    clearTimeout(t)
+    req.signal?.removeEventListener('abort', onAbort)
+  }
+}
+
+let streamImpl: StreamImpl = fetchStreamImpl
+
+export function setStreamImpl(i: StreamImpl) {
+  streamImpl = i
+}
+
+export function httpStream(req: StreamRequest, onLine: (line: string) => void): Promise<StreamResult> {
+  if (req.signal?.aborted) return Promise.reject(new AbortedError())
+  return streamImpl(req, onLine)
+}

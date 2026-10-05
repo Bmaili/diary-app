@@ -1,5 +1,5 @@
 /** 问答的工具调用循环（规格 7.2）：默认最多 10 轮，发送量按模型的上下文长度控制。 */
-import { chat, DEFAULT_CONTEXT_TOKENS, withInstructions, type ChatMsg, type LlmConfig, type Usage } from './client'
+import { AbortedError, chat, DEFAULT_CONTEXT_TOKENS, withInstructions, type ChatMsg, type LlmConfig, type Usage } from './client'
 import { TOOL_DEFS, type DiaryTools } from './tools'
 
 export interface Step {
@@ -120,6 +120,10 @@ export async function ask(opts: {
   maxRounds?: number
   /** 带上最近几轮问答，默认 10 */
   historyTurns?: number
+  /** 流式输出：每一轮开始时调用 onRound（界面清掉上一轮的半截文字），收到文字片段时调用 onText */
+  onRound?: () => void
+  onText?: (delta: string) => void
+  signal?: AbortSignal
 }): Promise<AskResult> {
   const messages: ChatMsg[] = []
   const turns = opts.historyTurns ?? 10
@@ -146,7 +150,11 @@ export async function ask(opts: {
     const fit = fitContext(messages, budget, historyLen)
     historyLen = fit.history
     compacted ||= fit.changed
-    const r = await chat(opts.cfg, { system: opts.system, messages, tools: last ? undefined : TOOL_DEFS, maxTokens: 2048 })
+    if (opts.signal?.aborted) throw new AbortedError()
+    opts.onRound?.()
+    const r = await chat(opts.cfg, {
+      system: opts.system, messages, tools: last ? undefined : TOOL_DEFS, maxTokens: 2048, onText: opts.onText, signal: opts.signal,
+    })
     calls++
     if (r.usage) {
       usage.input += r.usage.input

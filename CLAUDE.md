@@ -32,7 +32,7 @@
 ## 命令
 
 ```bash
-npm test                     # 单元测试（约 145 项），提交前必须全过
+npm test                     # 单元测试（约 160 项），提交前必须全过
 npm run build                # vue-tsc 类型检查 + vite 构建
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e          # 第 1 阶段端到端（需先 build）
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e:stages   # 其余端到端，截图在 e2e/out/
@@ -98,7 +98,8 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
 - 删除日记（编辑页按钮）+ 最近删除（30 天）。阅读视图单个换行即换行（`src/ui/markdown.ts`）。
 - 编辑页：已写过的日记默认阅读视图（双击或点笔进入编辑）；心情卡片上方是位置和天气（点开编辑框，天气不再点一下就重新获取），下方显示标签/人物/去过的地方，卡片外是操作按钮；插图可选拍照（`capture` 属性 + manifest 里的 `<queries>`）或相册。
 - 动效（`src/ui/motion.ts` + `style.css` 末尾）：View Transitions 页面切换和列表→正文共享元素、滚动驱动的列表入场、日历跟手换月、星座绘制、夜空闪烁和流星。设置里可关（`prefs.ui.motion`），系统“减少动画”时自动关。端到端测试用 `reducedMotion: 'reduce'` 关掉动画再截图；要看动画效果得另外开着动画截图。
-- 写日记提醒、PIN 应用锁。
+- 写日记提醒、PIN 应用锁，可选指纹解锁（`BiometricPlugin.java` + `platform/biometric.ts`，依赖 androidx.biometric 1.1.0；端到端测试用 `window.__biometricMock`）。
+- AI 问答流式输出（`HttpStreamPlugin.java` + `platform/nativeStream.ts`，`core/http.ts` 的 `httpStream`；`client.ts` 里 SSE 解析，服务不支持时自动退回普通请求），可停止。月度总结超出上下文时按周分段再合成（`summarize.ts` 的 `chunkEntries`）。
 - 编辑快捷栏：加粗、列表、编号、待办、引用、时间、插图、撤销；回车续行；阅读视图里可勾选待办。
 - 自动打包发布。
 
@@ -108,11 +109,10 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
   - 锁定是整个字段锁（规格 4.6；现状是手动加一个标签后，AI 就不再补标签），还是改成只保护手动加的那几个词；
   - 只拖了心情、没写正文的日子，要不要也保存（现状不保存）。
 - **需要用户在真机上验证**：
-  - 输入法下回车能否续行、按钮条是否贴住键盘；拍照插图；动效在真机上是否流畅；
+  - 输入法下回车能否续行、按钮条是否贴住键盘；拍照插图；动效在真机上是否流畅；指纹解锁；流式回答和停止；
   - 提醒能否按时弹出、应用锁、定位和附近地点；
   - 真实 OSS / GitHub / AI 服务能否跑通；从加密云端恢复。
 - **没做**：
-  - 指纹解锁、桌面小组件、把日记放到公共目录（SAF）——需要较多原生代码；
+  - 桌面小组件、把日记放到公共目录（SAF）——需要较多原生代码；
   - 清理没有被引用的图片（编辑时删掉图片引用后留下的；删除整篇时会带走这天的图片）；
-  - 问答流式输出（现在等整段回答）；
   - 可选：打包时同时把 APK 上传到 OSS，方便国内下载。

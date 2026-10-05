@@ -6,7 +6,7 @@ import { index, indexVersion, store } from '../../app'
 import { prefs } from '../../prefs'
 import {
   asking, askQuestion, batch, chats, current, deleteConversation, ensureConsent, loadChats, merge, newConversation,
-  pauseBatch, profileFor, startBatch, type ChatTurn,
+  pauseBatch, profileFor, startBatch, stopAsking, type ChatTurn,
 } from '../../aiService'
 import { summaryStatus, type SummaryStatus } from '../../core/summaries'
 import type { ListField } from '../../core/types'
@@ -70,6 +70,10 @@ function scrollDown() {
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
 }
 watch(() => asking.steps.length, () => nextTick(scrollDown))
+// 流式输出时跟着往下滚（已经在底部附近才跟，用户往上翻着看时不打扰）
+watch(() => asking.partial.length, () => {
+  if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 160) nextTick(() => window.scrollTo({ top: document.body.scrollHeight }))
+})
 
 function autosize() {
   const el = input.value
@@ -195,15 +199,18 @@ function toggleSel(v: string) {
         </ul>
         <p v-if="t.error" class="err">没有回答成功：{{ t.error }}</p>
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <div v-else class="prose a" v-html="render(t.a)" />
+        <div v-else-if="t.a" class="prose a" v-html="render(t.a)" />
+        <p v-if="t.stopped" class="usage">你停止了这次回答</p>
         <p v-if="usageText(t)" class="usage">{{ usageText(t) }}</p>
       </article>
       <article v-if="asking.busy" class="turn">
         <p class="q">{{ asking.question }}</p>
         <ul class="steps">
           <li v-for="(s, j) in asking.steps" :key="j">{{ s.summary }}</li>
-          <li class="thinking">正在翻日记……</li>
+          <li v-if="!asking.partial" class="thinking">正在翻日记……</li>
         </ul>
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div v-if="asking.partial" class="prose a live" v-html="render(asking.partial + '<span class=&quot;caret&quot;></span>')" />
       </article>
     </section>
 
@@ -273,7 +280,8 @@ function toggleSel(v: string) {
     <form v-if="tab === 'ask' && hasProfile" class="composer" @submit.prevent="send()">
       <textarea ref="input" v-model="q" rows="1" placeholder="问问你的日记" aria-label="问题" enterkeyhint="send"
         @input="autosize" @keydown.enter.exact.prevent="send()" />
-      <button class="icon-btn sendb" type="submit" aria-label="发送" :disabled="!q.trim() || asking.busy"><Icon name="send" /></button>
+      <button v-if="asking.busy" class="icon-btn sendb stop" type="button" aria-label="停止" @click="stopAsking"><span class="sq"></span></button>
+      <button v-else class="icon-btn sendb" type="submit" aria-label="发送" :disabled="!q.trim()"><Icon name="send" /></button>
     </form>
 
     <Sheet :open="showHistory" title="以前的对话" @close="showHistory = false">
@@ -339,6 +347,10 @@ function toggleSel(v: string) {
 .a :deep(a.dl) { font-family: var(--num); font-size: 1.05em; font-weight: 600; text-decoration: none; padding: 0 3px; border-radius: 4px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
 .err { color: var(--danger); font-size: 14px; }
 .usage { margin: 6px 0 0; font-size: 12px; color: var(--faint); }
+/* 流式输出时末尾一个闪烁的光标 */
+.a.live :deep(.caret) { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--m3); animation: blink 1s steps(2) infinite; }
+.sendb.stop { background: var(--ink); color: var(--bg); animation: pop-in 0.3s var(--spring); }
+.sq { width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
 .composer {
   position: fixed;
   left: 0;

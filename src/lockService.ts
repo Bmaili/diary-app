@@ -10,6 +10,7 @@ import { prefs, savePrefsNow } from './prefs'
 import { getSecret, setSecret } from './platform/secrets'
 import { setPrivacyScreen } from './platform/privacy'
 import { hashPin, lockoutSeconds, verifyPin, type PinRecord } from './core/pin'
+import { biometricAuth, type BioResult } from './platform/biometric'
 
 export const lock = reactive({
   locked: false,
@@ -51,6 +52,7 @@ export async function checkPin(pin: string): Promise<boolean> {
 export async function disableLock(): Promise<void> {
   await setSecret(SECRET, '')
   prefs.lock.enabled = false
+  prefs.lock.biometric = false
   lock.locked = false
   await savePrefsNow()
 }
@@ -68,6 +70,25 @@ export async function unlock(pin: string): Promise<'ok' | 'wrong' | 'wait'> {
   const wait = lockoutSeconds(lock.failures)
   if (wait) lock.until = Date.now() + wait * 1000
   return 'wrong'
+}
+
+/**
+ * 指纹解锁。指纹框是系统界面，有的手机弹出时会让 app 进入后台，所以和选图一样标记为“外部界面”，
+ * 回来时不重新上锁。
+ */
+export async function unlockWithBiometric(): Promise<BioResult> {
+  const done = expectExternal()
+  try {
+    const r = await biometricAuth('解锁日记')
+    if (r.ok) {
+      lock.locked = false
+      lock.failures = 0
+      lock.until = 0
+    }
+    return r
+  } finally {
+    done()
+  }
 }
 
 /** 调起外部界面前调用；返回的函数在外部界面结束后调用，清掉没用上的标记 */

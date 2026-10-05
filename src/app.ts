@@ -6,8 +6,9 @@ import { DiaryIndex } from './core/diaryIndex'
 import { CapacitorStore } from './platform/capStore'
 import { diaryDate } from './core/time'
 import { Capacitor } from '@capacitor/core'
-import { setHttpImpl } from './core/http'
+import { setHttpImpl, setStreamImpl } from './core/http'
 import { nativeHttpImpl } from './platform/nativeHttp'
+import { nativeStreamImpl } from './platform/nativeStream'
 import { loadPrefs } from './prefs'
 import { purgeTrash, trashEntry } from './core/trash'
 
@@ -33,7 +34,10 @@ export function start(): Promise<void> {
       const c = await Preferences.get({ key: 'cutoffHour' })
       if (c.value != null && !Number.isNaN(Number(c.value))) settings.cutoffHour = Number(c.value)
       settings.devMode = (await Preferences.get({ key: 'devMode' })).value === '1'
-      if (Capacitor.isNativePlatform()) setHttpImpl(nativeHttpImpl)
+      if (Capacitor.isNativePlatform()) {
+        setHttpImpl(nativeHttpImpl)
+        setStreamImpl(nativeStreamImpl)
+      }
       await loadPrefs()
       await repo.init()
       await index.load()

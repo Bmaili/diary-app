@@ -6,6 +6,7 @@ import { getSecret, setSecret } from '../../platform/secrets'
 import { DEFAULT_CONTEXT_TOKENS, PRESETS, parseExtraBody, testConfig } from '../../core/llm/client'
 import { profileConfig } from '../../aiService'
 import Icon from '../components/Icon.vue'
+import Switch from '../components/Switch.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +25,7 @@ const f = reactive({
   temperature: existing?.temperature != null ? String(existing.temperature) : '',
   timeoutSec: existing?.timeoutSec != null ? String(existing.timeoutSec) : '',
   extraBody: existing?.extraBody ?? '',
+  stream: existing?.stream !== false,
 })
 const showAdv = ref(!!(existing && (existing.contextTokens || existing.maxOutput || existing.temperature != null || existing.timeoutSec || existing.extraBody)))
 
@@ -100,6 +102,7 @@ async function save() {
   }
   const profile: LlmProfile = { id: f.id, name: f.name.trim(), protocol: f.protocol, baseUrl: f.baseUrl.trim(), model: f.model.trim() }
   for (const [k, v] of Object.entries(adv)) if (v !== undefined) (profile as unknown as Record<string, unknown>)[k] = v
+  if (!f.stream) profile.stream = false
   const i = prefs.ai.profiles.findIndex((p) => p.id === f.id)
   if (i >= 0) {
     // 换了服务地址，需要重新确认是否可以发送日记
@@ -170,6 +173,13 @@ async function remove() {
           <span>超时（秒）</span>
           <input v-model="f.timeoutSec" class="field" inputmode="numeric" placeholder="不填：120，总结 180" />
         </label>
+        <div class="sw-row">
+          <div>
+            <div class="sw-title">问答流式输出</div>
+            <p class="hint">回答边生成边显示。服务不支持时会自动改用普通方式，一般不用关。</p>
+          </div>
+          <Switch v-model="f.stream" label="问答流式输出" />
+        </div>
         <label>
           <span>额外请求参数（JSON）</span>
           <textarea v-model="f.extraBody" class="field code" rows="3" autocapitalize="off" spellcheck="false"
@@ -205,5 +215,8 @@ async function remove() {
 }
 .adv-toggle .muted { font-weight: 400; font-size: 13px; }
 .adv-toggle .chev { margin-left: auto; }
+.sw-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.sw-title { font-size: 13px; font-weight: 600; color: var(--muted); }
+.sw-row .hint { margin: 2px 0 0; }
 .code { min-height: 64px; padding: 8px 12px; font-family: ui-monospace, monospace; font-size: 14px; resize: vertical; }
 </style>
