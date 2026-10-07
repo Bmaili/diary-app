@@ -128,10 +128,6 @@ jobs:
           files: ${{ steps.apk.outputs.file }}
           body: ${{ steps.notes.outputs.text }}
 
-            ---
-            在手机上下载下面的 APK，点开后选择“更新”即可覆盖安装，日记不会丢失。
-            第一次安装时系统会询问是否允许安装未知来源的应用，选允许。
-
       - name: 失败时把日志结尾作为注释显示
         if: failure()
         run: |
