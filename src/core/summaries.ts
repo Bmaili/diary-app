@@ -104,6 +104,8 @@ export type SummaryStatus = 'fresh' | 'stale' | 'locked' | 'locked-stale' | 'mis
 export async function summaryStatus(store: FileStore, index: DiaryIndex, period: string): Promise<SummaryStatus> {
   const s = await readSummary(store, period)
   if (!s) return 'missing'
+  // 以前出错时可能存下过空总结：当作没有，首页会再提示生成
+  if (!s.meta.locked && !s.body.trim()) return 'missing'
   const cur = kindOf(period) === 'monthly' ? await monthSourceHash(index, period) : await yearSourceHash(store, period)
   const stale = !!s.meta.source_hash && s.meta.source_hash !== cur.hash
   if (s.meta.locked) return stale ? 'locked-stale' : 'locked'

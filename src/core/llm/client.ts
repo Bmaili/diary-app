@@ -89,6 +89,22 @@ export interface ChatRequest {
   onText?: (delta: string) => void
   /** 停止生成 */
   signal?: AbortSignal
+  /**
+   * 要求输出一个 JSON 对象（2026-10-07 加入）。服务支持时用约束解码：
+   * OpenAI 兼容协议加 response_format: json_object；Anthropic 协议强制调用一个以 schema 为参数的工具。
+   * 服务不认识这些参数时自动去掉再请求（这次运行里记住）。
+   */
+  json?: JsonSpec
+  /**
+   * none：不许再调用工具（问答最后一轮）。OpenAI 兼容协议直接不带工具定义；
+   * Anthropic 协议的历史消息里有工具调用时必须带工具定义，所以带上并设 tool_choice: none。
+   */
+  toolChoice?: 'auto' | 'none'
+}
+
+export interface JsonSpec {
+  name: string
+  schema: Record<string, unknown>
 }
 
 export interface Usage {
@@ -102,6 +118,8 @@ export interface ChatResult {
   stop: string
   /** 服务返回的 token 用量；有的服务不返回 */
   usage?: Usage
+  /** 返回里有思考过程（推理模型），只用于给出更准确的报错 */
+  thought?: boolean
 }
 
 export class LlmError extends Error {
@@ -197,10 +215,12 @@ function prepareOpenAI(cfg: LlmConfig, req: ChatRequest): Prepared {
     } else messages.push({ role: 'tool', tool_call_id: m.toolCallId, content: m.content })
   }
   const body: Record<string, unknown> = { model: cfg.model, messages }
-  if (req.tools?.length) {
+  // 不许再调用工具时干脆不带工具定义（有的服务不认 tool_choice: none）
+  if (req.tools?.length && req.toolChoice !== 'none') {
     body.tools = req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }))
     body.tool_choice = 'auto'
   }
+  if (req.json && !noJsonMode.has(keyOf(cfg))) body.response_format = { type: 'json_object' }
   const maxTokens = cfg.maxOutput || req.maxTokens
   if (maxTokens) body.max_tokens = maxTokens
   const temperature = cfg.temperature ?? req.temperature
@@ -210,7 +230,10 @@ function prepareOpenAI(cfg: LlmConfig, req: ChatRequest): Prepared {
 }
 
 type OpenAIData = {
-  choices?: { message?: { content?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }; finish_reason?: string }[]
+  choices?: {
+    message?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }
+    finish_reason?: string
+  }[]
   usage?: { prompt_tokens?: number; completion_tokens?: number }
 }
 
@@ -222,9 +245,12 @@ function parseOpenAI(data: OpenAIData): ChatResult {
     return { id: c.id || `call_${i}`, name: c.function?.name ?? '', args: p.args, ...(p.bad ? { badArgs: p.bad } : {}) }
   })
   const u = data.usage
+  const raw = choice.message.content ?? ''
+  const text = stripThink(raw)
   return {
-    text: choice.message.content ?? '', toolCalls, stop: choice.finish_reason ?? '',
+    text, toolCalls, stop: choice.finish_reason ?? '',
     ...(u?.prompt_tokens != null ? { usage: { input: u.prompt_tokens, output: u.completion_tokens ?? 0 } } : {}),
+    ...(choice.message.reasoning_content || choice.message.reasoning || text !== raw ? { thought: true } : {}),
   }
 }
 
@@ -247,7 +273,13 @@ function prepareAnthropic(cfg: LlmConfig, req: ChatRequest): Prepared {
   const body: Record<string, unknown> = {
     model: cfg.model, max_tokens: cfg.maxOutput || req.maxTokens || 4096, system: withInstructions(req.system, cfg.instructions), messages,
   }
-  if (req.tools?.length) body.tools = req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }))
+  const tools = (req.tools ?? []).map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }))
+  if (req.json && !noJsonMode.has(keyOf(cfg))) {
+    // Anthropic 没有 json_object：让模型“调用”一个参数就是结果的工具，参数一定是合法 JSON
+    tools.push({ name: req.json.name, description: '把结果作为参数提交。', input_schema: req.json.schema })
+    body.tool_choice = { type: 'tool', name: req.json.name }
+  } else if (req.toolChoice === 'none' && tools.length) body.tool_choice = { type: 'none' }
+  if (tools.length) body.tools = tools
   const temperature = cfg.temperature ?? req.temperature
   if (temperature != null) body.temperature = temperature
   Object.assign(body, cfg.extraBody)
@@ -269,10 +301,11 @@ function parseAnthropic(data: {
   const blocks = data.content ?? []
   const u = data.usage
   return {
-    text: blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join(''),
+    text: stripThink(blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('')),
     toolCalls: blocks.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id!, name: b.name!, args: parseArgs(b.input).args })),
     stop: data.stop_reason ?? '',
     ...(u?.input_tokens != null ? { usage: { input: anthropicInput(u), output: u.output_tokens ?? 0 } } : {}),
+    ...(blocks.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking') ? { thought: true } : {}),
   }
 }
 
@@ -292,6 +325,8 @@ async function chatOnce(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
 /** 这次运行里发现不支持流式（或不认 stream_options）的服务，之后不再尝试 */
 const noStream = new Set<string>()
 const noStreamOptions = new Set<string>()
+/** 不支持 JSON 约束（response_format 或强制工具调用）的服务 */
+const noJsonMode = new Set<string>()
 const keyOf = (cfg: LlmConfig) => `${cfg.protocol} ${cfg.baseUrl} ${cfg.model}`
 
 /** 流式请求被服务拒绝（参数不认识等），可以退回普通请求 */
@@ -311,10 +346,19 @@ export function sseParser(protocol: 'openai' | 'anthropic', onText?: (d: string)
   const raw: string[] = []
   const oaCalls: { id: string; name: string; args: string }[] = []
   const anBlocks: { type: string; id?: string; name?: string; json: string }[] = []
+  let thought = false
+  /** 原始文字（可能以 <think> 开头）；text 是去掉思考后的部分，只把 text 的增量交给界面 */
+  let full = ''
   const emit = (d: string) => {
     if (!d) return
-    text += d
-    onText?.(d)
+    full += d
+    const visible = stripThink(full, true)
+    if (visible !== full) thought = true
+    if (visible.length > text.length && visible.startsWith(text)) {
+      const delta = visible.slice(text.length)
+      text = visible
+      onText?.(delta)
+    }
   }
   return {
     line(line: string) {
@@ -339,6 +383,7 @@ export function sseParser(protocol: 'openai' | 'anthropic', onText?: (d: string)
         const ch = j.choices?.[0]
         const delta = ch?.delta ?? {}
         if (typeof delta.content === 'string') emit(delta.content)
+        if (delta.reasoning_content || delta.reasoning) thought = true
         for (const tc of delta.tool_calls ?? []) {
           const i = typeof tc.index === 'number' ? tc.index : oaCalls.length
           oaCalls[i] ??= { id: '', name: '', args: '' }
@@ -355,6 +400,7 @@ export function sseParser(protocol: 'openai' | 'anthropic', onText?: (d: string)
             break
           case 'content_block_start':
             anBlocks[j.index] = { type: j.content_block?.type, id: j.content_block?.id, name: j.content_block?.name, json: '' }
+            if (j.content_block?.type === 'thinking' || j.content_block?.type === 'redacted_thinking') thought = true
             if (j.content_block?.type === 'text' && j.content_block.text) emit(j.content_block.text)
             break
           case 'content_block_delta':
@@ -392,7 +438,7 @@ export function sseParser(protocol: 'openai' | 'anthropic', onText?: (d: string)
           const p = parseArgs(b.json || '{}')
           return { id: b.id!, name: b.name!, args: p.args, ...(p.bad ? { badArgs: p.bad } : {}) }
         })
-      return { text, toolCalls, stop, ...(usage ? { usage } : {}) }
+      return { text: stripThink(full), toolCalls, stop, ...(usage ? { usage } : {}), ...(thought ? { thought } : {}) }
     },
   }
 }
@@ -421,7 +467,25 @@ async function chatStream(cfg: LlmConfig, req: ChatRequest, withOptions: boolean
   return parser.result()
 }
 
-export function chat(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
+/** 服务因为 JSON 约束参数（response_format / tool_choice）拒绝请求 */
+function jsonModeRejected(e: unknown): boolean {
+  return e instanceof LlmError && [400, 404, 422].includes(e.status ?? 0)
+}
+
+export async function chat(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
+  if (!req.json || noJsonMode.has(keyOf(cfg))) return chatPlain(cfg, req)
+  try {
+    return await chatPlain(cfg, req)
+  } catch (e) {
+    if (!jsonModeRejected(e)) throw e
+    // 去掉 JSON 约束再试；这次成功了才记住“这个服务不支持”
+    const r = await chatPlain(cfg, { ...req, json: undefined })
+    noJsonMode.add(keyOf(cfg))
+    return r
+  }
+}
+
+function chatPlain(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
   if (!cfg.apiKey) return Promise.reject(new LlmError('还没有填 API Key'))
   if (!cfg.model) return Promise.reject(new LlmError('还没有填模型名'))
   const key = keyOf(cfg)
@@ -452,31 +516,144 @@ export function chat(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
 export function resetStreamMemory() {
   noStream.clear()
   noStreamOptions.clear()
+  noJsonMode.clear()
 }
 
 /** “测试”按钮：带一个工具发请求，确认连得上、并且模型会调用工具（问答必须支持工具调用） */
 export async function testConfig(cfg: LlmConfig): Promise<{ toolCalling: boolean; reply: string }> {
-  const r = await chat({ ...cfg, instructions: undefined }, {
+  const r = await chatText({ ...cfg, instructions: undefined }, {
     system: '你是连接测试助手。',
     messages: [{ role: 'user', content: '请调用 get_time 工具查询当前时间。' }],
     tools: [{ name: 'get_time', description: '返回当前时间', parameters: { type: 'object', properties: {}, required: [] } }],
-    maxTokens: 200,
+    // 推理模型要先思考，给少了会什么都没写就截断
+    maxTokens: 1000,
     timeoutMs: 60000,
   })
   return { toolCalling: r.toolCalls.some((c) => c.name === 'get_time'), reply: r.text }
 }
 
-/** 从模型输出里取出 JSON（容忍 ```json 代码块和前后的说明文字） */
+/**
+ * 去掉开头的 <think>…</think>：有的服务（MiniMax、自己部署的 vLLM 等）把推理模型的思考过程直接放在正文里。
+ * partial：流式过程中用，思考还没结束、或者开头可能是 "<thi" 这样的前缀时先返回空串。
+ */
+export function stripThink(s: string, partial = false): string {
+  const t = s.trimStart()
+  if (t.startsWith('<think>')) {
+    const end = t.indexOf('</think>')
+    return end < 0 ? '' : t.slice(end + 8).trimStart()
+  }
+  if (partial && t && '<think>'.startsWith(t)) return ''
+  return s
+}
+
+/** 从模型输出里取出一个 JSON 对象（容忍思考过程、```json 代码块和前后的说明文字） */
 export function extractJson<T>(text: string): T | null {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)
-  const candidates = [fenced?.[1], text, text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)]
-  for (const c of candidates) {
-    if (!c) continue
+  const t = stripThink(text).trim()
+  const fenced = [...t.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1])
+  const ok = (v: unknown) => v && typeof v === 'object' && !Array.isArray(v)
+  for (const c of [...fenced, t]) {
     try {
-      return JSON.parse(c.trim()) as T
+      const v = JSON.parse(c.trim())
+      if (ok(v)) return v as T
     } catch { /* 试下一个 */ }
   }
+  // 在文字里找第一个能解析的 {...}（按括号配对，跳过字符串里的括号）
+  for (let i = t.indexOf('{'); i >= 0; i = t.indexOf('{', i + 1)) {
+    let depth = 0
+    let inStr = false
+    for (let j = i; j < t.length; j++) {
+      const ch = t[j]
+      if (inStr) {
+        if (ch === '\\') j++
+        else if (ch === '"') inStr = false
+      } else if (ch === '"') inStr = true
+      else if (ch === '{') depth++
+      else if (ch === '}' && --depth === 0) {
+        try {
+          const v = JSON.parse(t.slice(i, j + 1))
+          if (ok(v)) return v as T
+        } catch { /* 继续找 */ }
+        break
+      }
+    }
+  }
   return null
+}
+
+const truncated = (stop: string) => stop === 'length' || stop === 'max_tokens'
+/** 输出被截断后自动加大重试时的上限（太大有的模型会直接拒绝） */
+const RETRY_MAX_OUTPUT = 8000
+
+function emptyError(r: ChatResult, maxTokens: number | undefined): LlmError {
+  if (truncated(r.stop)) {
+    return new LlmError(
+      `模型还没写出内容就到了输出上限（${maxTokens ?? '默认'} tokens）${r.thought ? '，思考过程把额度用完了' : ''}。` +
+        '请在 AI 服务的高级设置里把“最大输出”调大（比如 8000）；推理模型也可以在“额外参数”里关掉思考，或换一个不带思考的模型。',
+    )
+  }
+  return new LlmError(r.thought ? '模型只给出了思考过程，没有给出正文。请重试，或换一个不带思考的模型。' : '模型返回了空内容。请重试，或换一个模型。')
+}
+
+/**
+ * 要正文的请求（总结、看图写说明、问答的回答）：
+ * - 返回空内容时报错，不会悄悄存下一份空总结；
+ * - 推理模型的思考把输出额度用完、正文是空的：没手动设置“最大输出”时，自动把额度加倍重试一次。
+ */
+export async function chatText(cfg: LlmConfig, req: ChatRequest): Promise<ChatResult> {
+  const r = await chat(cfg, req)
+  if (r.text.trim() || r.toolCalls.length) return r
+  const used = cfg.maxOutput || req.maxTokens
+  if (truncated(r.stop) && !cfg.maxOutput && (req.maxTokens ?? 0) < RETRY_MAX_OUTPUT) {
+    const more = Math.min((req.maxTokens || 2000) * 2, RETRY_MAX_OUTPUT)
+    let r2: ChatResult
+    try {
+      r2 = await chat(cfg, { ...req, maxTokens: more })
+    } catch (e) {
+      // 加大额度后被拒（超出了这个模型允许的最大输出）：报原来的问题
+      if (e instanceof LlmError && e.status === 400) throw emptyError(r, used)
+      throw e
+    }
+    if (r2.text.trim() || r2.toolCalls.length) return r2
+    throw emptyError(r2, more)
+  }
+  throw emptyError(r, used)
+}
+
+/**
+ * 要一个 JSON 对象的请求（AI 标注）。
+ * 1. 服务支持时用约束解码（见 ChatRequest.json），不支持自动退回；
+ * 2. 从输出里宽松地取 JSON（去掉思考、代码块、前后说明）；
+ * 3. 还是取不到：把模型的输出发回去，请它只输出 JSON，再试一次；
+ * 4. 仍然失败时，报错里带上模型实际返回的开头，方便判断问题。
+ */
+export async function chatJson<T extends Record<string, unknown>>(cfg: LlmConfig, req: ChatRequest & { json: JsonSpec }): Promise<{ value: T; result: ChatResult }> {
+  const pick = (r: ChatResult): T | null => {
+    const call = r.toolCalls.find((c) => c.name === req.json.name)
+    if (call && !call.badArgs) return call.args as T
+    return extractJson<T>(r.text)
+  }
+  let r = await chatText(cfg, req)
+  let v = pick(r)
+  if (v) return { value: v, result: r }
+  // 写到一半被截断（JSON 不完整）：加大额度重来
+  if (truncated(r.stop) && !cfg.maxOutput && (req.maxTokens ?? 0) < RETRY_MAX_OUTPUT) {
+    r = await chatText(cfg, { ...req, maxTokens: Math.min((req.maxTokens || 2000) * 2, RETRY_MAX_OUTPUT) })
+    v = pick(r)
+    if (v) return { value: v, result: r }
+  }
+  const first = r.text || JSON.stringify(r.toolCalls.map((c) => c.badArgs ?? c.args))
+  const fix = await chatText(cfg, {
+    ...req,
+    messages: [
+      ...req.messages,
+      { role: 'assistant', content: first.slice(0, 4000) },
+      { role: 'user', content: '上面的回复不是要求的 JSON。请只输出那个 JSON 对象本身：不要解释、不要代码块、不要其他文字。' },
+    ],
+  })
+  v = pick(fix)
+  if (v) return { value: v, result: fix }
+  const shown = (stripThink(fix.text) || first).replace(/\s+/g, ' ').trim().slice(0, 80)
+  throw new LlmError(`模型没有按要求返回 JSON${shown ? `（它返回的开头是：“${shown}”）` : ''}。可以换一个模型试试`)
 }
 
 export interface Preset {

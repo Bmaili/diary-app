@@ -106,12 +106,12 @@ try {
   await page.getByRole('button', { name: '写今天' }).click()
   await page.waitForURL(/append=1/)
   await editorReady(page)
-  check('第二次写作出现 ### 22:40 标题', (await ta.inputValue()).endsWith('### 22:40\n\n'))
+  check('第二次写作出现 ### 22:40 标题', (await ta.inputValue()).endsWith('### 22:40\n'))
   await page.keyboard.type('晚上又读了一会儿书。')
   await page.getByRole('button', { name: '返回' }).click()
   await page.waitForURL(BASE + '#/')
   const raw2 = await waitFile(page, '2026-10-04', (r) => r?.includes('晚上又读'))
-  check('追加段落已写入文件', raw2.endsWith('遇到小王。\n\n### 22:40\n\n晚上又读了一会儿书。\n'), JSON.stringify(raw2.slice(-60)))
+  check('追加段落已写入文件', raw2.endsWith('遇到小王。\n\n### 22:40\n晚上又读了一会儿书。\n'), JSON.stringify(raw2.slice(-60)))
 
   // 什么都不写就离开：不留空标题
   await page.clock.setFixedTime(new Date('2026-10-04T23:10:00+08:00'))

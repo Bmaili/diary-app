@@ -92,11 +92,11 @@ describe('同一天再次书写（规格 4.4 第 5 条）', () => {
   it('验收：第二次写作在末尾追加 ### HH:mm 段落', async () => {
     await repo.saveEntry({ meta: { date: '2026-10-04' }, body: '上午写的。', extra: [] })
     const s = await openSession(repo, '2026-10-04', { append: true, now: new Date(2026, 9, 4, 22, 40) })
-    expect(s.initialText).toBe('上午写的。\n\n### 22:40\n\n')
+    expect(s.initialText).toBe('上午写的。\n\n### 22:40\n')
     s.doc.body = bodyFor(s, s.initialText + '晚上又写了一段。')
     await repo.saveEntry(s.doc)
     const text = (await repo.readEntryRaw('2026-10-04'))!
-    expect(text.endsWith('\n\n上午写的。\n\n### 22:40\n\n晚上又写了一段。\n')).toBe(true)
+    expect(text.endsWith('\n\n上午写的。\n\n### 22:40\n晚上又写了一段。\n')).toBe(true)
   })
 
   it('什么都没写就离开，不留下空标题', async () => {

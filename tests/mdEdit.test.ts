@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apply, continueList, insertAt, toggleLines, toggleTask, toggleWrap, type Edit, type EditState } from '../src/core/mdEdit'
+import { apply, continueList, insertAt, insertHeading, toggleLines, toggleTask, toggleWrap, type Edit, type EditState } from '../src/core/mdEdit'
 
 /** 用 | 表示光标，[ ] 之间表示选区 */
 function st(src: string): EditState {
@@ -95,6 +95,15 @@ describe('回车续行', () => {
 describe('其他', () => {
   it('插入时间替换选区', () => {
     expect(run('今天⟦xx⟧', (s) => insertAt(s, '21:30 '))).toBe('今天21:30 |')
+  })
+  it('时间按钮插入 ### HH:mm 标题：单独一行，前面空一行，光标在下一行', () => {
+    const h = (s: EditState) => insertHeading(s, '21:30')
+    expect(run('|', h)).toBe('### 21:30\n|')
+    expect(run('上午写的。|', h)).toBe('上午写的。\n\n### 21:30\n|')
+    expect(run('上午写的。\n|', h)).toBe('上午写的。\n\n### 21:30\n|')
+    expect(run('上午写的。\n\n|', h)).toBe('上午写的。\n\n### 21:30\n|')
+    expect(run('上午|写的。', h)).toBe('上午\n\n### 21:30\n|写的。')
+    expect(run('  \n|', h)).toBe('### 21:30\n|')
   })
   it('勾选待办：按顺序找第 n 个，跳过代码块', () => {
     const t = '- [ ] 买菜\n```\n- [ ] 代码里的\n```\n* [ ] 看星星'

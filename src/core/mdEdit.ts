@@ -163,6 +163,22 @@ export function insertAt(s: EditState, str: string): Edit {
   return { from: s.start, to: s.end, insert: str, selStart: pos, selEnd: pos }
 }
 
+/**
+ * 插入一个三级标题（“时间”按钮插入 `### HH:mm`，和“写今天”追加的段落标题一样）。
+ * 标题单独占一行，前面空一行（在开头时不空），光标放到标题的下一行。
+ * 光标在一行中间时，光标后面的文字移到标题下面。
+ */
+export function insertHeading(s: EditState, title: string): Edit {
+  const { text, start, end } = s
+  const before = text.slice(0, start)
+  const pre = !before.trim() ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
+  // 开头时把前面的空白也换掉
+  const from = before.trim() ? start : 0
+  const insert = `${pre}### ${title}\n`
+  const pos = from + insert.length
+  return { from, to: end, insert, selStart: pos, selEnd: pos }
+}
+
 /** 应用一个编辑（测试用；界面里由 execCommand 完成） */
 export function apply(text: string, e: Edit): string {
   return text.slice(0, e.from) + e.insert + text.slice(e.to)

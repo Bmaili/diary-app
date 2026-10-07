@@ -3,6 +3,7 @@
  */
 import { reactive, watch } from 'vue'
 import { Preferences } from '@capacitor/preferences'
+import type { PromptOverride } from './core/llm/prompts'
 
 export interface LlmProfile {
   id: string
@@ -53,6 +54,13 @@ export const prefs = reactive({
     extract: { concurrency: 2 },
     /** 插图后自动让 AI 看图写一句说明（会把这张图发给 AI 服务），默认关 */
     caption: { auto: false },
+    /**
+     * 改过的系统提示词（2026-10-07 加入），没改的是 null（用默认）。
+     * 键要事先列全：读取设置时只合并已有的键。
+     */
+    prompts: { chat: null, extract: null, monthly: null, monthlyPart: null, yearly: null, caption: null } as Record<
+      'chat' | 'extract' | 'monthly' | 'monthlyPart' | 'yearly' | 'caption', PromptOverride | null
+    >,
   },
   reminder: {
     enabled: false,

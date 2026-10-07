@@ -88,7 +88,7 @@ const STATUS: Record<SummaryStatus, string> = {
     </header>
 
     <div class="body">
-      <p class="status" :class="status">{{ STATUS[status] }}</p>
+      <p class="status" :class="status">{{ doc && status === 'missing' ? '上次生成的内容是空的，请重新生成' : STATUS[status] }}</p>
       <p v-if="doc?.meta.generated_at" class="meta">
         由 {{ doc.meta.model }} 生成于 {{ doc.meta.generated_at.slice(0, 16).replace('T', ' ') }}，依据 {{ doc.meta.source_count }} {{ isYear ? '份月度总结' : '篇日记' }}
       </p>

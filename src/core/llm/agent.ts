@@ -1,6 +1,10 @@
 /** 问答的工具调用循环（规格 7.2）：默认最多 10 轮，发送量按模型的上下文长度控制。 */
-import { AbortedError, chat, DEFAULT_CONTEXT_TOKENS, withInstructions, type ChatMsg, type LlmConfig, type Usage } from './client'
+import { AbortedError, chatText, DEFAULT_CONTEXT_TOKENS, LlmError, withInstructions, type ChatMsg, type LlmConfig, type Usage } from './client'
+
+/** 每一轮的输出上限：推理模型的思考也算在里面，给少了容易什么都没写就截断 */
+const ANSWER_MAX_OUTPUT = 4000
 import { TOOL_DEFS, type DiaryTools } from './tools'
+import { PROMPTS } from './prompts'
 
 export interface Step {
   tool: string
@@ -19,19 +23,9 @@ export interface AskResult {
   compacted?: boolean
 }
 
-export function systemPrompt(today: string, first: string | null, last: string | null, total: number): string {
-  return `你是用户的私人日记助手，帮他回顾和理解自己写下的日记。
-
-今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。
-
-工作方式：
-- 先用工具查，再回答。不要凭印象编造日记里没有的内容。
-- 所有数字（次数、天数、篇数）必须来自工具结果，不要自己数。问“去过几次”“见过几次”时：先用 list_values 找出这个地点或人在元数据里的各种写法，再把这些写法和可能的简称一起交给 count_days，同时匹配元数据和正文。
-- 统计单位是“天”：同一天去两次算一次，回答时说明这一点。
-- 如果 count_days 返回的 unextracted_in_range 大于 0，说明还有日记没做过 AI 抽取，部分结果只来自正文匹配，可能有遗漏或误判，要在回答里提一句。
-- 问几年、一整年这类大跨度的问题时，先用 get_summaries 读总结；缺失的期间再用 search_entries 或 get_entries 补充。
-- 日期写成 YYYY-MM-DD。回答的最后单起一行，以“相关日期：”开头列出引用到的日期（太多时列最有代表性的不超过 20 个）。
-- 用中文回答，简洁、具体，像朋友帮你翻日记，不要说教。`
+/** 问答的系统提示词：可编辑的部分（prompts.ts）后面接上今天的日期和日记概况 */
+export function systemPrompt(today: string, first: string | null, last: string | null, total: number, base: string = PROMPTS.chat.text): string {
+  return `${base.trim()}\n\n今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。`
 }
 
 const DATE_RE = /\b(\d{4}-\d{2}-\d{2})\b/g
@@ -138,7 +132,7 @@ export async function ask(opts: {
   let calls = 0
   let compacted = false
   const rounds = opts.maxRounds ?? 10
-  const maxOut = opts.cfg.maxOutput || 2048
+  const maxOut = opts.cfg.maxOutput || ANSWER_MAX_OUTPUT
   const fixed = estimateTokens(withInstructions(opts.system, opts.cfg.instructions)) + estimateTokens(JSON.stringify(TOOL_DEFS))
   const budget = Math.max(2000, (opts.cfg.contextTokens || DEFAULT_CONTEXT_TOKENS) - maxOut - fixed - 1000)
   const used = () => messages.reduce((a, m) => a + msgTokens(m), 0)
@@ -152,8 +146,17 @@ export async function ask(opts: {
     compacted ||= fit.changed
     if (opts.signal?.aborted) throw new AbortedError()
     opts.onRound?.()
-    const r = await chat(opts.cfg, {
-      system: opts.system, messages, tools: last ? undefined : TOOL_DEFS, maxTokens: 2048, onText: opts.onText, signal: opts.signal,
+    if (last && messages.some((m) => m.role === 'tool')) {
+      messages.push({ role: 'user', content: '已经查了很多轮了。请根据上面已有的结果直接回答，不要再调用工具；查不到的部分如实说明。' })
+    }
+    const req = {
+      system: opts.system, messages, tools: TOOL_DEFS, toolChoice: last ? ('none' as const) : undefined,
+      maxTokens: ANSWER_MAX_OUTPUT, onText: opts.onText, signal: opts.signal,
+    }
+    // 最后一轮：有的服务不认 tool_choice: none，被拒时退回普通请求
+    const r = await chatText(opts.cfg, req).catch((e) => {
+      if (last && e instanceof LlmError && e.status === 400) return chatText(opts.cfg, { ...req, toolChoice: undefined })
+      throw e
     })
     calls++
     if (r.usage) {

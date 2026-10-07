@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
 import { TASK_LABEL, type Task } from '../../aiService'
+import { PROMPT_IDS, PROMPTS, promptState } from '../../core/llm/prompts'
 import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
 
@@ -84,6 +85,20 @@ const desc: Record<Task, string> = {
     </section>
 
     <section>
+      <h2>系统提示词</h2>
+      <p class="sec-hint">每项功能发给 AI 的完整提示词，可以整段改，也能恢复默认。只想补充几句的话，用上面的补充说明就够了：它不受 app 更新默认提示词的影响。</p>
+      <router-link v-for="pid in PROMPT_IDS" :key="pid" :to="`/settings/ai/prompt/${pid}`" class="item link">
+        <div>
+          <div>{{ PROMPTS[pid].label }}</div>
+          <div class="desc" :class="{ changed: promptState(pid, prefs.ai.prompts) !== 'default' }">
+            {{ { default: '默认', custom: '已修改', 'custom-outdated': '已修改 · 默认版本有更新' }[promptState(pid, prefs.ai.prompts)] }}
+          </div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+    </section>
+
+    <section>
       <h2>问答</h2>
       <label class="item">
         <div>
@@ -150,4 +165,6 @@ const desc: Record<Task, string> = {
 }
 .sub-toggle .chev { margin-left: auto; }
 .sel { width: auto; max-width: 40vw; min-height: 38px; padding: 0 8px; }
+.sec-hint { margin: 0 20px 6px; font-size: 12px; line-height: 1.5; color: var(--faint); }
+.desc.changed { color: var(--accent); }
 </style>

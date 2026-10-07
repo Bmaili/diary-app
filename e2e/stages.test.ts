@@ -394,7 +394,7 @@ describe('阶段 3：位置、天气与插图', () => {
 describe('阶段 4：AI', () => {
   /** 一个会用工具的模型：问次数时先查词表再计数；抽取时返回 JSON；总结时返回一段文字 */
   const model: Script = ({ system, turns, tools }) => {
-    if (system.includes('只输出 JSON')) return { text: '{"places":["老王烧烤"],"people":["阿杰"],"tags":["聚餐"]}' }
+    if (system.includes('只输出一个 JSON')) return { text: '{"places":["老王烧烤"],"people":["阿杰"],"tags":["聚餐"]}' }
     if (system.includes('月度日记总结')) return { text: '## 这个月\n你常去老王烧烤，和阿杰聊了很多。' }
     if (tools.includes('get_time')) return { toolCalls: [{ name: 'get_time', args: {} }] }
     const calls = turns.filter((t) => t.role === 'assistant' && t.toolCalls).flatMap((t) => t.toolCalls!)
@@ -726,6 +726,11 @@ describe('核对云端、加密、编辑快捷栏', () => {
     await page.screenshot({ path: OUT + '63-editor-toolbar-dark.png' })
     await page.emulateMedia({ colorScheme: 'light' })
 
+    // 时间按钮：插入 ### HH:mm 标题，单独一行，光标在下一行
+    await page.getByRole('button', { name: '插入时间' }).click()
+    await page.keyboard.type('晚上')
+    expect(await ta.inputValue()).toMatch(/2\. 土星\n\n### \d{2}:\d{2}\n晚上$/)
+
     // 撤销
     const before = await ta.inputValue()
     await page.getByRole('button', { name: '撤销' }).click()
@@ -834,6 +839,18 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     await page.screenshot({ path: OUT + '74-ai-settings-dark.png', fullPage: true })
     await page.emulateMedia({ colorScheme: 'light' })
 
+    // 系统提示词：整段改问答的提示词，状态变成“已修改”，可以恢复默认
+    await page.getByRole('link', { name: /^问答/ }).click()
+    const box = page.getByLabel('系统提示词')
+    await box.fill('你是我的日记助手，回答要押韵。')
+    await page.getByText('你改过这段。').waitFor()
+    await page.screenshot({ path: OUT + '76-prompt.png', fullPage: true })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '76-prompt-dark.png', fullPage: true })
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.getByText('已修改', { exact: true }).waitFor()
+
     await page.goto(BASE + '#/ai')
     await page.getByLabel('问题', { exact: true }).fill('最近在忙什么？')
     await page.getByRole('button', { name: '发送' }).click()
@@ -847,6 +864,13 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     expect(system).toContain('阿杰是我大学室友。')
     expect(system).toContain('回答不超过三句话。')
     expect(system).not.toContain('口气轻松一点。')
+    expect(system.startsWith('你是我的日记助手，回答要押韵。\n\n今天是 ')).toBe(true)
+    expect(system).not.toContain('先用工具查')
+    // 恢复默认（确认框由 newPage 自动接受）
+    await page.goto(BASE + '#/settings/ai/prompt/chat')
+    await page.getByRole('button', { name: '恢复默认' }).click()
+    await page.getByText('现在用的是默认版本。').waitFor()
+    expect(await page.getByLabel('系统提示词').inputValue()).toContain('先用工具查')
     expect(errors).toEqual([])
     await ctx.close()
   })

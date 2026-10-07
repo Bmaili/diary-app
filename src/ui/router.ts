@@ -14,6 +14,7 @@ export const router = createRouter({
     { path: '/settings/sync/:id(oss|github)', component: () => import('./views/BackendConfigView.vue') },
     { path: '/settings/place', component: () => import('./views/PlaceSettingsView.vue') },
     { path: '/settings/ai', component: () => import('./views/AiSettingsView.vue') },
+    { path: '/settings/ai/prompt/:pid', component: () => import('./views/PromptView.vue') },
     { path: '/settings/ai/:id', component: () => import('./views/AiProfileView.vue') },
     { path: '/ai/summary/:period', component: () => import('./views/SummaryView.vue') },
     { path: '/settings/reminder', component: () => import('./views/ReminderSettingsView.vue') },

@@ -6,18 +6,13 @@ import { isoLocal } from '../time'
 import {
   monthSourceHash, readSummary, writeSummary, yearSourceHash, type SummaryDoc,
 } from '../summaries'
-import { chat, DEFAULT_CONTEXT_TOKENS, withInstructions, type LlmConfig } from './client'
+import { chatText, DEFAULT_CONTEXT_TOKENS, withInstructions, type LlmConfig } from './client'
+import { PROMPTS } from './prompts'
 import { estimateTokens } from './agent'
 
 const MOOD = ['很差', '不好', '一般', '不错', '很好']
 
-const MONTH_SYSTEM = `你为用户写一份月度日记总结。用第二人称“你”，300 到 800 字，Markdown 格式，可以用二三级小标题。
-内容包括：这个月的主要经历和变化；常出现的人和地点；情绪的起伏和可能的原因。
-只写日记里有的事，不要编造，不要说教，不要给建议。语气像一位了解你的老朋友在帮你回顾。`
 
-const YEAR_SYSTEM = `你为用户写一份年度日记总结。用第二人称“你”，600 到 1200 字，Markdown 格式，可以用小标题。
-根据各月的月度总结和全年统计，写出这一年的主线、重要的转折、常在一起的人和常去的地方、情绪的整体走势。
-只写材料里有的事，不要编造，不要说教。`
 
 /** 一篇日记在总结输入里的样子：日期、元数据一行、正文 */
 async function entryBlock(repo: DiaryRepo, date: string, fallback: string): Promise<string> {
@@ -34,11 +29,6 @@ async function entryBlock(repo: DiaryRepo, date: string, fallback: string): Prom
   return `## ${date}${meta ? `\n（${meta}）` : ''}\n${doc?.body ?? fallback}`
 }
 
-const PART_SYSTEM = `你在帮用户整理一个月的日记。这个月写得比较多，一次读不完，所以分成几段，这是其中一段日期的原文。
-请为这段时间写一份阶段小结，之后会和其他几段合成整月总结：
-- 200 到 500 字，按时间顺序，用第二人称“你”；
-- 保留具体的事件、人名、地点和日期（写成“M 月 D 日”），以及情绪的起伏和可能的原因；
-- 只写日记里有的事，不要编造，不要评价，不要给建议。`
 
 export function monthStats(index: DiaryIndex, ym: string): string {
   const rows = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7))).filter((r) => !r.aiExclude)
@@ -114,16 +104,25 @@ const md = (d: string) => `${Number(d.slice(5, 7))} 月 ${Number(d.slice(8, 10))
  * 月度总结。整月日记放得进模型的上下文时一次写完；放不进时（2026-10-04 加入）先按周分段写阶段小结，
  * 再把各段小结和代码算出的统计合成整月总结。
  */
+/** 改过的总结提示词（没改的用默认） */
+export type SummaryPrompts = Partial<Record<'monthly' | 'monthlyPart' | 'yearly', string>>
+
+/** 输出上限：推理模型的思考也算在里面 */
+const MONTH_MAX_OUTPUT = 4000
+const PART_MAX_OUTPUT = 3000
+
 export async function generateMonthly(
   cfg: LlmConfig, repo: DiaryRepo, index: DiaryIndex, ym: string, now = new Date(),
-  onProgress?: (msg: string) => void,
+  onProgress?: (msg: string) => void, prompts: SummaryPrompts = {},
 ): Promise<SummaryDoc> {
+  const MONTH_SYSTEM = prompts.monthly ?? PROMPTS.monthly.text
+  const PART_SYSTEM = prompts.monthlyPart ?? PROMPTS.monthlyPart.text
   const month = index.month(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)))
   const rows = month.filter((r) => !r.aiExclude).reverse()
   if (!rows.length) throw new Error(month.length ? `${ym} 的日记都设置了不让 AI 读` : `${ym} 没有日记`)
   const items: { date: string; block: string }[] = []
   for (const r of rows) items.push({ date: r.date, block: await entryBlock(repo, r.date, r.text) })
-  const maxOut = cfg.maxOutput || 2000
+  const maxOut = cfg.maxOutput || MONTH_MAX_OUTPUT
   const ctx = cfg.contextTokens || DEFAULT_CONTEXT_TOKENS
   const budgetFor = (system: string) => Math.max(1500, ctx - maxOut - estimateTokens(withInstructions(system, cfg.instructions)) - 1000)
   const all = items.map((i) => i.block).join('\n\n')
@@ -132,10 +131,10 @@ export async function generateMonthly(
   let text: string
   let parts = 1
   if (estimateTokens(all) + 50 <= budgetFor(MONTH_SYSTEM)) {
-    const r = await chat(cfg, {
+    const r = await chatText(cfg, {
       system: MONTH_SYSTEM,
       messages: [{ role: 'user', content: `这是 ${ym} 的全部 ${rows.length} 篇日记：\n\n${all}` }],
-      maxTokens: 2000,
+      maxTokens: MONTH_MAX_OUTPUT,
       timeoutMs: 180000,
     })
     text = r.text
@@ -145,22 +144,22 @@ export async function generateMonthly(
     const notes: string[] = []
     for (const [i, c] of chunks.entries()) {
       onProgress?.(`日记较多，分 ${chunks.length} 段读：第 ${i + 1} 段（${md(c.from)}–${md(c.to)}）`)
-      const r = await chat(cfg, {
+      const r = await chatText(cfg, {
         system: PART_SYSTEM,
         messages: [{ role: 'user', content: `这是 ${ym} 中 ${c.from} 到 ${c.to} 的 ${c.blocks.length} 篇日记：\n\n${c.blocks.join('\n\n')}` }],
-        maxTokens: 1200,
+        maxTokens: PART_MAX_OUTPUT,
         timeoutMs: 180000,
       })
       notes.push(`### ${md(c.from)}–${md(c.to)}\n${r.text.trim()}`)
     }
     onProgress?.('把几段合成整月总结')
-    const r = await chat(cfg, {
+    const r = await chatText(cfg, {
       system: MONTH_SYSTEM,
       messages: [{
         role: 'user',
         content: `${ym} 的日记较多，已经按日期分成 ${chunks.length} 段写了阶段小结。请根据这些小结和下面的统计，写这个月的总结（不要逐段复述）。\n\n统计：\n${monthStats(index, ym)}\n\n各段小结：\n\n${notes.join('\n\n')}`,
       }],
-      maxTokens: 2000,
+      maxTokens: MONTH_MAX_OUTPUT,
       timeoutMs: 180000,
     })
     text = r.text
@@ -196,16 +195,17 @@ export function yearStats(index: DiaryIndex, year: string) {
 /** 年度总结：先补齐缺少的月度总结，再基于 12 份月度总结和全年统计生成 */
 export async function generateYearly(
   cfg: LlmConfig, repo: DiaryRepo, index: DiaryIndex, store: FileStore, year: string,
-  onProgress?: (msg: string) => void, now = new Date(),
+  onProgress?: (msg: string) => void, now = new Date(), prompts: SummaryPrompts = {},
 ): Promise<SummaryDoc> {
   const months = [...new Set(index.aiRows().filter((r) => r.date.startsWith(year)).map((r) => r.date.slice(0, 7)))].sort()
   if (!months.length) throw new Error(`${year} 年没有日记`)
   const texts: string[] = []
   for (const ym of months) {
     let s = await readSummary(store, ym)
-    if (!s) {
+    // 以前出错时可能存下过空的月度总结，当作没有
+    if (!s || (!s.body.trim() && !s.meta.locked)) {
       onProgress?.(`先生成 ${Number(ym.slice(5))} 月的总结`)
-      s = await generateMonthly(cfg, repo, index, ym, now, (m) => onProgress?.(`${Number(ym.slice(5))} 月：${m}`))
+      s = await generateMonthly(cfg, repo, index, ym, now, (m) => onProgress?.(`${Number(ym.slice(5))} 月：${m}`), prompts)
     }
     texts.push(`## ${ym}\n${s.body}`)
   }
@@ -214,10 +214,10 @@ export async function generateYearly(
 最常去的地方（天数）：${st.topPlaces.map((p) => `${p.value} ${p.days}`).join('、') || '无记录'}
 最常提到的人（天数）：${st.topPeople.map((p) => `${p.value} ${p.days}`).join('、') || '无记录'}`
   onProgress?.(`正在写 ${year} 年的总结`)
-  const r = await chat(cfg, {
-    system: YEAR_SYSTEM,
+  const r = await chatText(cfg, {
+    system: prompts.yearly ?? PROMPTS.yearly.text,
     messages: [{ role: 'user', content: `${year} 年统计：\n${statText}\n\n各月总结：\n\n${texts.join('\n\n')}` }],
-    maxTokens: 3000,
+    maxTokens: MONTH_MAX_OUTPUT,
     timeoutMs: 180000,
   })
   const { hash, count } = await yearSourceHash(store, year)

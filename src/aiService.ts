@@ -9,6 +9,7 @@ import { ask, systemPrompt, type Step } from './core/llm/agent'
 import { extractEntry, runBatch, vocabulary, type BatchState, type Extraction } from './core/llm/extract'
 import { generateMonthly, generateYearly } from './core/llm/summarize'
 import { captionImage } from './core/llm/caption'
+import { promptText, type PromptId } from './core/llm/prompts'
 import { imageForAi } from './imageService'
 import { mergeValues } from './core/vocab'
 import type { ListField } from './core/types'
@@ -33,6 +34,11 @@ export async function configFor(task: Task): Promise<LlmConfig> {
 export function int(v: unknown, min: number, max: number, def: number): number {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : def
+}
+
+/** 某项功能实际用的系统提示词（可编辑部分）：设置里改过就用改过的 */
+export function prompt(id: PromptId): string {
+  return promptText(id, prefs.ai.prompts)
 }
 
 /** 共用的补充说明加上这项功能自己的 */
@@ -160,7 +166,7 @@ export async function askQuestion(q: string): Promise<void> {
       tools,
       question: q.trim(),
       history: conv.turns.filter((t) => !t.error).map((t) => ({ q: t.q, a: t.a })),
-      system: systemPrompt(today(), all[all.length - 1]?.date ?? null, all[0]?.date ?? null, all.length),
+      system: systemPrompt(today(), all[all.length - 1]?.date ?? null, all[0]?.date ?? null, all.length, prompt('chat')),
       onStep: (s) => asking.steps.push(s),
       historyTurns: int(prefs.ai.chat.historyTurns, 10, 50, 10),
       maxRounds: int(prefs.ai.chat.maxRounds, 10, 30, 10),
@@ -190,7 +196,7 @@ export async function askQuestion(q: string): Promise<void> {
 /** 让 AI 看图写一句说明。src 是正文里的图片路径；excerpt 是这篇日记正文（取开头作参考） */
 export async function captionPreview(date: string, src: string, excerpt: string): Promise<string> {
   const cfg = await configFor('caption')
-  return captionImage(cfg, await imageForAi(src), { date, excerpt })
+  return captionImage(cfg, await imageForAi(src), { date, excerpt }, prompt('caption'))
 }
 
 // ---------- 抽取 ----------
@@ -200,7 +206,7 @@ export async function extractPreview(date: string): Promise<{ x: Extraction; mod
   const cfg = await configFor('extract')
   const doc = await repo.readEntry(date)
   if (!doc) throw new Error('这一天还没有保存的日记')
-  return { x: await extractEntry(cfg, doc, vocabulary(index)), model: cfg.model }
+  return { x: await extractEntry(cfg, doc, vocabulary(index), prompt('extract')), model: cfg.model }
 }
 
 export const batch = reactive<BatchState>({ running: false, paused: false, done: 0, total: 0, failed: [] })
@@ -210,7 +216,7 @@ export async function startBatch() {
   const cfg = await configFor('extract')
   const dates = index.needsExtraction().map((r) => r.date)
   await runBatch({
-    cfg, repo, index, dates, state: batch,
+    cfg, repo, index, dates, state: batch, rules: prompt('extract'),
     concurrency: int(prefs.ai.extract.concurrency, 1, 4, 2),
     onSaved: (d) => refreshDate(d),
   })
@@ -226,13 +232,16 @@ export function pauseBatch() {
 export const summarizing = reactive({ period: '', message: '' })
 
 export async function summarize(period: string): Promise<void> {
-  if (summarizing.period || !ensureConsent('summary')) return
+  if (summarizing.period) throw new Error(`正在写 ${summarizing.period} 的总结，等它写完再试`)
+  // 没配服务时 configFor 会报错说明；用户在确认框里点了取消就什么都不做
+  if (profileFor('summary') && !ensureConsent('summary')) return
   summarizing.period = period
   summarizing.message = '正在写总结'
   try {
     const cfg = await configFor('summary')
-    if (/^\d{4}$/.test(period)) await generateYearly(cfg, repo, index, store, period, (m) => (summarizing.message = m))
-    else await generateMonthly(cfg, repo, index, period, new Date(), (m) => (summarizing.message = m))
+    const prompts = { monthly: prompt('monthly'), monthlyPart: prompt('monthlyPart'), yearly: prompt('yearly') }
+    if (/^\d{4}$/.test(period)) await generateYearly(cfg, repo, index, store, period, (m) => (summarizing.message = m), new Date(), prompts)
+    else await generateMonthly(cfg, repo, index, period, new Date(), (m) => (summarizing.message = m), prompts)
     diaryChanged()
   } finally {
     summarizing.period = ''

@@ -12,7 +12,14 @@ export interface Turn {
   toolCallId?: string
 }
 
-export type Script = (ctx: { system: string; turns: Turn[]; tools: string[] }) => { text?: string; toolCalls?: { name: string; args: Record<string, unknown> }[] }
+export type Script = (ctx: { system: string; turns: Turn[]; tools: string[]; body: Record<string, unknown> }) => {
+  text?: string
+  toolCalls?: { name: string; args: Record<string, unknown> }[]
+  /** 推理模型的思考过程（OpenAI 兼容协议的 reasoning_content） */
+  reasoning?: string
+  /** 结束原因，默认 stop / end_turn / tool_calls；'length' 表示到了输出上限 */
+  finish?: 'length'
+}
 
 export interface LlmMock {
   port: number
@@ -81,7 +88,7 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
       }
     }
     const tools = (body.tools ?? []).map((t: { name?: string; function?: { name: string } }) => t.name ?? t.function!.name)
-    const out = mock.script({ system, turns, tools })
+    const out = mock.script({ system, turns, tools, body })
     const calls = (out.toolCalls ?? []).map((c) => ({ ...c, id: `call_${++n}` }))
     const mode = mock.streamMode ?? 'sse'
     if (body.stream && mode === 'reject') return json(400, { error: { message: 'stream is not supported' } })
@@ -110,16 +117,17 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
           await send({ type: 'content_block_delta', index: i, delta: { type: 'input_json_delta', partial_json: js.slice(5) } }, 'content_block_delta')
           await send({ type: 'content_block_stop', index: i++ }, 'content_block_stop')
         }
-        await send({ type: 'message_delta', delta: { stop_reason: calls.length ? 'tool_use' : 'end_turn' }, usage: { output_tokens: 10 } }, 'message_delta')
+        await send({ type: 'message_delta', delta: { stop_reason: out.finish ? 'max_tokens' : calls.length ? 'tool_use' : 'end_turn' }, usage: { output_tokens: 10 } }, 'message_delta')
         await send({ type: 'message_stop' }, 'message_stop')
       } else {
+        if (out.reasoning) await send({ choices: [{ index: 0, delta: { reasoning_content: out.reasoning } }] })
         for (const p of pieces) await send({ choices: [{ index: 0, delta: { content: p } }] })
         for (const [i, c] of calls.entries()) {
           const js = JSON.stringify(c.args)
           await send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: c.id, type: 'function', function: { name: c.name, arguments: js.slice(0, 5) } }] } }] })
           await send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: js.slice(5) } }] } }] })
         }
-        await send({ choices: [{ index: 0, delta: {}, finish_reason: calls.length ? 'tool_calls' : 'stop' }] })
+        await send({ choices: [{ index: 0, delta: {}, finish_reason: out.finish ?? (calls.length ? 'tool_calls' : 'stop') }] })
         if (body.stream_options) await send({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 10 } })
         if (!res.destroyed) res.write('data: [DONE]\n\n')
       }
@@ -127,8 +135,12 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
     }
     if (anthropic) {
       json(200, {
-        content: [...(out.text ? [{ type: 'text', text: out.text }] : []), ...calls.map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args }))],
-        stop_reason: calls.length ? 'tool_use' : 'end_turn',
+        content: [
+          ...(out.reasoning ? [{ type: 'thinking', thinking: out.reasoning }] : []),
+          ...(out.text ? [{ type: 'text', text: out.text }] : []),
+          ...calls.map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args })),
+        ],
+        stop_reason: out.finish ? 'max_tokens' : calls.length ? 'tool_use' : 'end_turn',
         usage: { input_tokens: 100, output_tokens: 10 },
       })
     } else {
@@ -137,9 +149,10 @@ export async function startLlmMock(script: Script, opts: { key?: string } = {}):
           message: {
             role: 'assistant',
             content: out.text ?? null,
+            ...(out.reasoning ? { reasoning_content: out.reasoning } : {}),
             ...(calls.length ? { tool_calls: calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } })) } : {}),
           },
-          finish_reason: calls.length ? 'tool_calls' : 'stop',
+          finish_reason: out.finish ?? (calls.length ? 'tool_calls' : 'stop'),
         }],
         usage: { prompt_tokens: 100, completion_tokens: 10 },
       })

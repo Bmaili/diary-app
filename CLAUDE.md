@@ -32,7 +32,7 @@
 ## 命令
 
 ```bash
-npm test                     # 单元测试（约 177 项），提交前必须全过
+npm test                     # 单元测试（约 195 项），提交前必须全过
 npm run build                # vue-tsc 类型检查（开了 noUnusedLocals/Parameters）+ vite 构建
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e          # 第 1 阶段端到端（需先 build）
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npm run e2e:stages   # 其余端到端，截图在 e2e/out/
@@ -63,7 +63,9 @@ src/core/            与平台无关、有单元测试的逻辑
                      oss.ts（V4 签名）github.ts（一次同步一个 commit）
                      restore.ts crypto.ts（age 加密）remote.ts
   geo/               坐标转换、高德 Web 服务、和风天气 / Open-Meteo
-  llm/               client.ts（OpenAI 兼容与 Anthropic 两种协议）
+  llm/               client.ts（OpenAI 兼容与 Anthropic 两种协议；chatText 要正文：空输出报错、截断自动加倍重试；
+                     chatJson 要 JSON：约束解码 → 宽松解析 → 请它重写；去掉 <think>）
+                     prompts.ts（各功能系统提示词：可编辑部分 + 代码附加的固定部分，用户改过的存 prefs.ai.prompts）
                      tools.ts agent.ts（工具调用问答，计数在代码里做；按上下文长度压缩发送量）
                      extract.ts summarize.ts
   mdEdit.ts          编辑快捷按钮与列表续行
@@ -104,13 +106,13 @@ android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用�
 - 核对云端：每周自动加手动，云端缺失或改动的文件会补传。
 - 云端加密：每个后端单独开关，默认关闭；age 格式。
 - 位置与天气：高德附近地点；插图。
-- AI：问答、抽取（标注）、月度和年度总结、词表合并、补充说明（共用 + 分功能）、服务高级设置（上下文长度、最大输出、温度、超时、额外参数）、token 用量显示。
+- AI：问答、抽取（标注）、月度和年度总结、词表合并、补充说明（共用 + 分功能）、可整段修改的系统提示词（`PromptView.vue`，可恢复默认，默认更新时提示）、服务高级设置（上下文长度、最大输出、温度、超时、额外参数）、token 用量显示。改默认提示词时注意：用户改过的版本不会跟着变，程序依赖的格式要求放 `fixed`（代码附加），不要放进可编辑部分。
 - 删除日记（编辑页顶栏按钮）+ 最近删除（30 天）。编辑页顶栏还有“不让 AI 读”的开关（删除和编辑按钮之间）。阅读视图单个换行即换行（`src/ui/markdown.ts`）。
 - 编辑页：已写过的日记默认阅读视图（双击或点笔进入编辑）；心情卡片上方是位置和天气（点开编辑框，天气不再点一下就重新获取），下方显示标签/人物/去过的地方，卡片外是操作按钮；插图可选拍照（`capture` 属性 + manifest 里的 `<queries>`）或相册。
 - 动效（`src/ui/motion.ts` + `style.css` 末尾）：View Transitions 页面切换和列表→正文共享元素、列表第一次进屏浮现（`v-reveal`）、日历跟手换月、梅枝开花、首页飘落花瓣。设置里可关（`prefs.ui.motion`），系统“减少动画”时自动关。端到端测试用 `reducedMotion: 'reduce'` 关掉动画再截图；要看动画效果得另外开着动画截图。
 - 写日记提醒、PIN 应用锁，可选指纹解锁（`BiometricPlugin.java` + `platform/biometric.ts`，依赖 androidx.biometric 1.1.0；端到端测试用 `window.__biometricMock`）。
 - AI 问答流式输出（`HttpStreamPlugin.java` + `platform/nativeStream.ts`，`core/http.ts` 的 `httpStream`；`client.ts` 里 SSE 解析，服务不支持时自动退回普通请求），可停止。月度总结超出上下文时按周分段再合成（`summarize.ts` 的 `chunkEntries`）。
-- 编辑快捷栏：加粗、列表、编号、待办、引用、时间、插图、撤销；回车续行；阅读视图里可勾选待办。
+- 编辑快捷栏：加粗、列表、编号、待办、引用、时间（插入 `### HH:mm` 标题）、插图、撤销；“写今天”追加的标题下面不空行；回车续行；阅读视图里可勾选待办。
 - 自动打包发布。
 
 ## 还没定的事 / 待办

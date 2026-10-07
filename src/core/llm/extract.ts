@@ -10,7 +10,8 @@ import type { DiaryRepo } from '../repo'
 import type { ListField } from '../types'
 import { LIST_FIELDS } from '../types'
 import { isoLocal } from '../time'
-import { chat, extractJson, type LlmConfig } from './client'
+import { chatJson, type LlmConfig } from './client'
+import { EXTRACT_FORMAT, PROMPTS } from './prompts'
 
 export type Extraction = Record<ListField, string[]>
 
@@ -22,21 +23,24 @@ export function vocabulary(index: DiaryIndex, n = 200): Extraction {
   }
 }
 
-const SYSTEM = `你从用户的一篇日记里抽取三类信息，只输出 JSON，不要任何解释：
-{"places": [...], "people": [...], "tags": [...]}
-
-- places：这一天实际去过的具体地方（店名、地名、场所），不包括只是提到或计划去的。
-- people：日记里提到的具体的人（名字、称呼）。不要包括“我”。
-- tags：1 到 3 个概括这一天的主题词，例如 工作、运动、读书、聚餐、旅行。
-- 已有词表里有同一个地方或人的写法时，必须用已有写法，例如已有“老王烧烤”，日记写“去老王那吃烧烤”就填“老王烧烤”。
-- 没有就给空数组。`
+/** 抽取结果的 JSON 结构（约束解码用） */
+const SCHEMA = {
+  type: 'object',
+  properties: {
+    places: { type: 'array', items: { type: 'string' } },
+    people: { type: 'array', items: { type: 'string' } },
+    tags: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['places', 'people', 'tags'],
+}
 
 function clean(v: unknown): string[] {
   if (!Array.isArray(v)) return []
   return [...new Set(v.map((x) => String(x).trim()).filter((x) => x && x.length <= 40))].slice(0, 20)
 }
 
-export async function extractEntry(cfg: LlmConfig, doc: EntryDoc, vocab: Extraction): Promise<Extraction> {
+/** rules：可编辑的提示词（设置里改过就传改过的），输出格式由代码接在后面 */
+export async function extractEntry(cfg: LlmConfig, doc: EntryDoc, vocab: Extraction, rules: string = PROMPTS.extract.text): Promise<Extraction> {
   const user = `已有词表：
 地点：${vocab.places.join('、') || '（无）'}
 人物：${vocab.people.join('、') || '（无）'}
@@ -44,9 +48,14 @@ export async function extractEntry(cfg: LlmConfig, doc: EntryDoc, vocab: Extract
 
 日记（${doc.meta.date}）：
 ${doc.body}`
-  const r = await chat(cfg, { system: SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 600, temperature: 0 })
-  const j = extractJson<Record<string, unknown>>(r.text)
-  if (!j) throw new Error('模型没有按要求返回 JSON')
+  const { value: j } = await chatJson<Record<string, unknown>>(cfg, {
+    system: `${rules.trim()}\n\n${EXTRACT_FORMAT}`,
+    messages: [{ role: 'user', content: user }],
+    // 推理模型的思考也算在输出里，给少了会在写出 JSON 前就截断
+    maxTokens: 2000,
+    temperature: 0,
+    json: { name: 'save_extraction', schema: SCHEMA },
+  })
   return { places: clean(j.places), people: clean(j.people), tags: clean(j.tags) }
 }
 
@@ -64,10 +73,10 @@ export function applyExtraction(doc: EntryDoc, x: Extraction, model: string, now
   return written
 }
 
-export async function extractAndSave(cfg: LlmConfig, repo: DiaryRepo, index: DiaryIndex, date: string, now = new Date()): Promise<ListField[]> {
+export async function extractAndSave(cfg: LlmConfig, repo: DiaryRepo, index: DiaryIndex, date: string, now = new Date(), rules?: string): Promise<ListField[]> {
   const doc = await repo.readEntry(date)
   if (!doc) return []
-  const x = await extractEntry(cfg, doc, vocabulary(index))
+  const x = await extractEntry(cfg, doc, vocabulary(index), rules)
   const written = applyExtraction(doc, x, cfg.model, now)
   await repo.saveEntry(doc, now, { touchUpdated: false })
   return written
@@ -86,6 +95,8 @@ export interface BatchState {
  */
 export async function runBatch(opts: {
   cfg: LlmConfig
+  /** 改过的抽取提示词 */
+  rules?: string
   repo: DiaryRepo
   index: DiaryIndex
   dates: string[]
@@ -104,7 +115,7 @@ export async function runBatch(opts: {
     while (next < opts.dates.length && !state.paused) {
       const date = opts.dates[next++]
       try {
-        await extractAndSave(opts.cfg, opts.repo, opts.index, date)
+        await extractAndSave(opts.cfg, opts.repo, opts.index, date, new Date(), opts.rules)
         await opts.onSaved(date)
       } catch (e) {
         state.failed.push({ date, error: (e as Error).message })

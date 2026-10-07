@@ -4,7 +4,7 @@
 import { ref, type Ref } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
-import { continueList, insertAt, toggleLines, toggleWrap, type Edit } from '../../core/mdEdit'
+import { continueList, insertHeading, toggleLines, toggleWrap, type Edit } from '../../core/mdEdit'
 import { hhmm } from '../../core/time'
 import type { ToolAction } from '../components/EditorToolbar.vue'
 
@@ -72,7 +72,7 @@ export function useTextarea(text: Ref<string>, readOnly: Ref<boolean>, onImage: 
       case 'number':
       case 'todo':
       case 'quote': return applyEdit(toggleLines(state(), a))
-      case 'time': return applyEdit(insertAt(state(), `${hhmm(new Date())} `))
+      case 'time': return applyEdit(insertHeading(state(), hhmm(new Date())))
       case 'image': return onImage()
       case 'undo':
         el.focus()

@@ -1,6 +1,6 @@
 /**
  * 一次编辑会话的规则（规格 4.4 第 5 条、5.2）。
- * - 从“写今天”进入且当天已有内容：在末尾追加 `### HH:mm` 标题，光标放在其后。
+ * - 从“写今天”进入且当天已有内容：在末尾追加 `### HH:mm` 标题，光标放在标题的下一行（2026-10-07 起标题和正文之间不空行）。
  * - 什么都没写就离开：不保留这个空标题。
  */
 import type { EntryDoc } from './entryFile'
@@ -41,7 +41,7 @@ export async function openSession(
   doc ??= { meta: { date }, body: '', extra: [] }
   const originalBody = doc.body
   if (opts.append && existed && hasContent(originalBody)) {
-    const initialText = `${originalBody}\n\n### ${hhmm(opts.now ?? new Date())}\n\n`
+    const initialText = `${originalBody.trimEnd()}\n\n### ${hhmm(opts.now ?? new Date())}\n`
     return { date, doc, originalBody, initialText, appended: true, existed }
   }
   return { date, doc, originalBody, initialText: originalBody, appended: false, existed }
