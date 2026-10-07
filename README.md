@@ -1,15 +1,22 @@
 # 浮生记
 
+> 浮生若梦，落笔为记
+
 一个安卓日记 app：日记就是手机上的普通 Markdown 文件，可选同步到阿里云 OSS 或 GitHub 私有仓库，可以接入任意大模型，对全部日记提问、写月度和年度总结。界面是“宣纸水墨”风格，带农历、节气、法定节假日和每日诗词。
 
 全部代码由 AI 编写。你可以直接下载打包好的 APK，也可以 fork 之后让 AI 按你的想法继续改，推送后 GitHub 会自动打包。
 
 <p>
-  <img src="docs/screenshots/home-dark.jpg" width="200" alt="首页（深色）">
-  <img src="docs/screenshots/editor.jpg" width="200" alt="写日记">
-  <img src="docs/screenshots/calendar-dark.jpg" width="200" alt="日历（深色）">
-  <img src="docs/screenshots/ai.jpg" width="200" alt="AI 问答">
+  <img src="docs/screenshots/home.jpg" width="190" alt="首页：梅枝、每日诗词和日记列表">
+  <img src="docs/screenshots/entry.jpg" width="190" alt="一篇日记：心情、天气、标签和人物">
+  <img src="docs/screenshots/calendar-dark.jpg" width="190" alt="日历（深色）：心情、农历和节假日">
 </p>
+<p>
+  <img src="docs/screenshots/ai.jpg" width="190" alt="AI 问答：多轮查日记后给出带表格的回答，日期可点开">
+  <img src="docs/screenshots/summary.jpg" width="190" alt="AI 写的月度总结">
+</p>
+
+截图里的日记是虚构的示例。
 
 ## 特点
 

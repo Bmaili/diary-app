@@ -16,6 +16,7 @@ import Switch from '../components/Switch.vue'
 import { prefs } from '../../prefs'
 import { enabled, syncState, BACKENDS } from '../../syncService'
 import { expectExternal } from '../../lockService'
+import { SLOGAN } from '../../appInfo'
 import { holidaySourceChanged, holidayStatus, refreshHolidays } from '../../holidayService'
 
 const router = useRouter()
@@ -275,7 +276,7 @@ const syncLine = computed(() => {
       <h2>后台运行</h2>
       <p class="desc pad">
         OPPO、vivo、一加的系统会清理后台的 app。这个 app 在你打开它、离开编辑页时同步，所以不开自启动也能正常备份。
-        如果想让失败的同步在后台多重试几次，可以在系统设置的“应用管理 → 日记 → 耗电管理”里允许后台运行。
+        如果想让失败的同步在后台多重试几次，可以在系统设置的“应用管理 → 浮生记 → 耗电管理”里允许后台运行。
       </p>
     </section>
 
@@ -300,6 +301,16 @@ const syncLine = computed(() => {
         </div>
         <button class="text-btn danger" :disabled="!!busy || !stats.test" @click="doClearTest">清除</button>
       </div>
+    </section>
+
+    <section>
+      <router-link to="/settings/about" class="item link">
+        <div>
+          <div>关于浮生记</div>
+          <div class="desc">{{ SLOGAN }} · 版本 {{ appVersion }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
     </section>
 
     <p class="version" @click="tapVersion">浮生记 {{ appVersion }}，共 {{ stats.total }} 篇</p>

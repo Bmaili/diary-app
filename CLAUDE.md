@@ -79,6 +79,7 @@ src/platform/        Capacitor 适配：capStore（浏览器里文本要规范�
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream
 src/*Service.ts      应用层：sync、place、image、ai、lock、reminder、daily、holiday、launch
                      （界面读农历要用 holidayService 的 `lunar()`，节假日数据更新后才会刷新）
+src/appInfo.ts       应用名、slogan、作者邮箱、仓库地址、致谢列表（关于页用）
 src/app.ts           全局：store/repo/index、串行写入队列 enqueue、onStarted/onDiaryChanged 钩子
 src/prefs.ts         不含密钥的设置（响应式，自动保存；读取时只合并已有的键，新增对象型设置要把键列全）
 src/ui/              views/ 各页面，components/，style.css（主题）settings.css
@@ -88,7 +89,7 @@ tests/               单元测试；tests/mocks/ 下是 OSS、GitHub、LLM 的�
 e2e/                 端到端测试
 android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用阿里云镜像）
 design/              图标源图 icon-enso.svg（各密度 PNG 由它渲染）
-docs/screenshots/    README 用的截图
+docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日记和模拟模型拍出（e2e/out/readme-*.png），缩到 390 宽转 JPEG
 ```
 
 ## 设计语言：“宣纸水墨”
