@@ -102,16 +102,20 @@ jobs:
           ls -l "$out"
 
       - name: 整理更新说明
+        id: notes
         if: steps.sign.outputs.signed == 'true'
         run: |
           # 提交说明去掉 Claude-Session / Co-Authored-By 这类附注行
           {
+            echo 'text<<NOTES_EOF'
             git log -1 --format=%B | grep -v -E '^(Claude-Session|Co-Authored-By):' || true
             echo
             echo '---'
             echo '在手机上下载下面的 APK，点开后选择“更新”即可覆盖安装，日记不会丢失。'
             echo '第一次安装时系统会询问是否允许安装未知来源的应用，选允许。'
-          } > "$RUNNER_TEMP/notes.md"
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+          git log -1 --format=%B | head -3
 
       - name: 发布到 Releases
         if: steps.sign.outputs.signed == 'true'
@@ -122,7 +126,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           make_latest: true
           files: ${{ steps.apk.outputs.file }}
-          body_path: ${{ runner.temp }}/notes.md
+          body: ${{ steps.notes.outputs.text }}
 
             ---
             在手机上下载下面的 APK，点开后选择“更新”即可覆盖安装，日记不会丢失。
