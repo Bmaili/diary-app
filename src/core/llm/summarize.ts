@@ -1,4 +1,4 @@
-/** 月度与年度总结（规格 7.4）。 */
+/** 月度与年度总结（规格 7.5）。 */
 import type { DiaryIndex } from '../diaryIndex'
 import type { DiaryRepo } from '../repo'
 import type { FileStore } from '../types'

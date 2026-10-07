@@ -1,5 +1,5 @@
 /**
- * GitHub 私有仓库（规格 6.3）。一次同步 = 一个 commit，用 Git Data API：
+ * GitHub 私有仓库（规格 6.4）。一次同步 = 一个 commit，用 Git Data API：
  * 读分支 ref → 为改动的文件建 blob → 基于当前 tree 建新 tree（删除的文件 sha 为 null）→ 建 commit → 更新 ref。
  */
 import JSZip from 'jszip'

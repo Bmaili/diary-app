@@ -1,5 +1,5 @@
 /**
- * 阿里云 OSS（规格 6.2），使用 V4 签名（OSS4-HMAC-SHA256）。
+ * 阿里云 OSS（规格 6.3），使用 V4 签名（OSS4-HMAC-SHA256）。
  * 签名算法与阿里云官方 SDK ali-oss 的 authorizationV4 逐字节一致（见 tests/oss.test.ts）。
  */
 import { hex, hmacSha256, sha256Hex, uriEncode } from '../bytes'

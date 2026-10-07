@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** OSS / GitHub 的配置表单（规格 6.2、6.3）。密钥只存在本机加密存储。 */
+/** OSS / GitHub 的配置表单（规格 6.3、6.3）。密钥只存在本机加密存储。 */
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefs, savePrefsNow } from '../../prefs'

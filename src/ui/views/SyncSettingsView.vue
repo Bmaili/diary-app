@@ -28,7 +28,7 @@ async function toggle(id: BackendId, on: boolean) {
     router.push(`/settings/sync/${id}`)
     return
   }
-  // 首次启用且云端已有数据：先建议恢复（规格 6.5 第 5 条）
+  // 首次启用且云端已有数据：先建议恢复（规格 6.6 第 5 条）
   if (await manifestEmpty(id)) {
     try {
       const p = await preview(id)

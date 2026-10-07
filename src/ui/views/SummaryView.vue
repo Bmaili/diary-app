@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 一份总结（规格 7.4、4.6）：查看、生成、手动编辑（编辑后自动锁定）、解锁后重新生成。 */
+/** 一份总结（规格 7.5、4.6）：查看、生成、手动编辑（编辑后自动锁定）、解锁后重新生成。 */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '../markdown'

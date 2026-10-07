@@ -207,7 +207,7 @@ describe('同步到 GitHub', () => {
   })
 })
 
-describe('从云端恢复（规格 6.5）', () => {
+describe('从云端恢复（规格 6.6）', () => {
   const TOKEN = 'github_pat_test'
   beforeEach(async () => {
     oss.objects.clear()

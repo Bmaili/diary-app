@@ -1,5 +1,5 @@
 /**
- * 问答工具（规格 7.2）。模型负责选词和表述，计数、去重、合并全部在这里用代码完成。
+ * 问答工具（规格 7.3）。模型负责选词和表述，计数、去重、合并全部在这里用代码完成。
  */
 import type { DiaryIndex } from '../diaryIndex'
 import type { DiaryRepo } from '../repo'

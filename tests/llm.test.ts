@@ -169,7 +169,7 @@ describe('验收：计数测试集（规格阶段 4）', () => {
   })
 })
 
-describe('抽取（规格 7.3）', () => {
+describe('抽取（规格 7.4）', () => {
   const model: Script = ({ turns }) => {
     const text = turns.at(-1)!.text!
     expect(text).toContain('已有词表')
@@ -241,7 +241,7 @@ describe('抽取（规格 7.3）', () => {
   })
 })
 
-describe('总结（规格 7.4）', () => {
+describe('总结（规格 7.5）', () => {
   beforeEach(async () => {
     mock = await startLlmMock(({ turns }) => ({ text: `总结：${turns.at(-1)!.text!.slice(0, 20)}` }))
   })

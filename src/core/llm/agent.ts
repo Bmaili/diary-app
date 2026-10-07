@@ -1,4 +1,4 @@
-/** 问答的工具调用循环（规格 7.2）：默认最多 10 轮，发送量按模型的上下文长度控制。 */
+/** 问答的工具调用循环（规格 7.3）：默认最多 10 轮，发送量按模型的上下文长度控制。 */
 import { AbortedError, chatText, DEFAULT_CONTEXT_TOKENS, LlmError, withInstructions, type ChatMsg, type LlmConfig, type Usage } from './client'
 
 /** 每一轮的输出上限：推理模型的思考也算在里面，给少了容易什么都没写就截断 */
@@ -58,7 +58,7 @@ function msgTokens(m: ChatMsg): number {
 export const OMITTED = '{"omitted":"这是较早的查询结果，为了不超出上下文已省略。需要的话用更小的范围重新调用工具。"}'
 
 /**
- * 让消息总量不超过预算（规格 7.2，2026-10-04 加入）。依次：
+ * 让消息总量不超过预算（规格 7.3，2026-10-04 加入）。依次：
  * 1. 从最早的开始，把模型已经看过的工具结果换成一句“已省略”（工具消息本身要保留，协议要求每个调用都有结果）；
  * 2. 丢掉最早的历史问答；
  * 3. 还超就截断最长的那条工具结果。

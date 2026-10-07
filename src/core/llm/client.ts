@@ -1,6 +1,6 @@
 /**
  * LLM 客户端（规格 7.1）：同一套接口对接 OpenAI 兼容协议（DeepSeek、通义千问、Kimi、智谱、OpenAI 等）与 Anthropic 协议。
- * 两种协议的工具调用格式不同（规格 10.3）：
+ * 两种协议的工具调用格式不同（规格 9）：
  * - OpenAI：assistant 消息带 tool_calls，arguments 是 JSON 字符串；结果用 role=tool 的消息回传。
  * - Anthropic：assistant 内容块里有 tool_use（input 是对象）；结果放在 user 消息的 tool_result 块里。
  */

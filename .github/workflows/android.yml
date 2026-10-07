@@ -1,5 +1,5 @@
 # 每次推送到 main：跑单元测试 → 构建网页 → 打包签名的 APK → 发布到 Releases，手机上下载覆盖安装即可。
-# 需要在仓库 Settings → Secrets and variables → Actions 里添加 4 个 secret（见 README“自动打包”一节）。
+# 需要在仓库 Settings → Secrets and variables → Actions 里添加 4 个 secret（见 README“Fork 后打包自己的版本”一节）。
 # 没有 secret 时只检查能否编译，不发布（没签名的 APK 装不上）。
 name: Android APK
 
@@ -9,6 +9,8 @@ on:
     paths-ignore:
       - '**.md'
       - 'e2e/**'
+      - 'docs/**'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
@@ -99,17 +101,28 @@ jobs:
           echo "file=$out" >> "$GITHUB_OUTPUT"
           ls -l "$out"
 
+      - name: 整理更新说明
+        if: steps.sign.outputs.signed == 'true'
+        run: |
+          # 提交说明去掉 Claude-Session / Co-Authored-By 这类附注行
+          {
+            git log -1 --format=%B | grep -v -E '^(Claude-Session|Co-Authored-By):' || true
+            echo
+            echo '---'
+            echo '在手机上下载下面的 APK，点开后选择“更新”即可覆盖安装，日记不会丢失。'
+            echo '第一次安装时系统会询问是否允许安装未知来源的应用，选允许。'
+          } > "$RUNNER_TEMP/notes.md"
+
       - name: 发布到 Releases
         if: steps.sign.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
-          name: 日记 ${{ env.VERSION_NAME }}
+          name: 浮生记 ${{ env.VERSION_NAME }}
           target_commitish: ${{ github.sha }}
           make_latest: true
           files: ${{ steps.apk.outputs.file }}
-          body: |
-            ${{ github.event.head_commit.message }}
+          body_path: ${{ runner.temp }}/notes.md
 
             ---
             在手机上下载下面的 APK，点开后选择“更新”即可覆盖安装，日记不会丢失。

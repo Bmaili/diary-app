@@ -158,7 +158,7 @@ const lunar = computed(() => lunarDay(todayStr.value))
 watch([todayStr, () => prefs.daily.mode], () => void loadDaily(todayStr.value), { immediate: true })
 onActivated(refreshNow)
 
-// 上个月有日记但还没有总结时提示生成；1 月还提示上一年的年度总结（规格 7.4）
+// 上个月有日记但还没有总结时提示生成；1 月还提示上一年的年度总结（规格 7.5）
 const prompts = ref<{ period: string; label: string }[]>([])
 async function checkPrompts() {
   if (!profileFor('summary')) {

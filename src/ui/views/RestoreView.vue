@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 从云端恢复（规格 6.5）：选来源 → 看看云端有什么 → 确认 → 下载 → 结果 */
+/** 从云端恢复（规格 6.6）：选来源 → 看看云端有什么 → 确认 → 下载 → 结果 */
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefs } from '../../prefs'

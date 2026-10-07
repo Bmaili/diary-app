@@ -211,7 +211,7 @@ export class DiaryIndex {
     return hits
   }
 
-  /** 还没抽取过、或抽取后又改过的日记（规格 7.3） */
+  /** 还没抽取过、或抽取后又改过的日记（规格 7.4） */
   needsExtraction(): IndexRow[] {
     return this.all().filter((r) => !r.error && !r.aiExclude && needsExtraction(r))
   }

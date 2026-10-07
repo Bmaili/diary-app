@@ -1,4 +1,4 @@
-/** 编辑页的 AI 标注（单篇抽取，规格 7.3：先显示结果，确认后才写入） */
+/** 编辑页的 AI 标注（单篇抽取，规格 7.4：先显示结果，确认后才写入） */
 import { computed, reactive, type Ref } from 'vue'
 import { diaryChanged, enqueue, refreshDate, repo } from '../../app'
 import { ensureConsent, extractPreview, profileFor } from '../../aiService'
