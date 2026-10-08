@@ -20,10 +20,15 @@ import { addDays, daysBetween, parseYmd } from '../../core/time'
 defineOptions({ name: 'HomeView' })
 
 const router = useRouter()
+/**
+ * 进场动画只在第一次打开首页时播放。首页是 keep-alive 的：从别的页面回来时，DOM 被重新插回页面，
+ * CSS 动画会全部重播（梅枝重画、几十朵花重开、各块重新浮现），中低端手机上返回时会卡一下。
+ */
+const intro = ref(true)
+onMounted(() => setTimeout(() => (intro.value = false), 2200))
 const PAGE = 60
 const limit = ref(PAGE)
 const todayStr = ref(today())
-const hour = ref(new Date().getHours())
 
 const rows = computed(() => {
   void indexVersion.value
@@ -152,7 +157,6 @@ function onVisible() {
 }
 function refreshNow() {
   todayStr.value = today()
-  hour.value = new Date().getHours()
 }
 const lunar = computed(() => lunarDay(todayStr.value))
 watch([todayStr, () => prefs.daily.mode], () => void loadDaily(todayStr.value), { immediate: true })
@@ -176,7 +180,8 @@ async function checkPrompts() {
   if (m === 1 && index.all().some((r) => r.date.startsWith(String(y - 1))) && !(await readSummary(store, String(y - 1)))) {
     out.push({ period: String(y - 1), label: `生成 ${y - 1} 年的年度总结` })
   }
-  prompts.value = out
+  // 没变化就不赋值：每次回到首页都会检查一遍，换成新数组会让整个首页重新渲染
+  if (JSON.stringify(out) !== JSON.stringify(prompts.value)) prompts.value = out
 }
 watch([indexVersion, todayStr], () => void checkPrompts(), { immediate: true })
 onActivated(() => void checkPrompts())
@@ -188,7 +193,7 @@ const memoryDateLabel = (d: string) => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page" :class="{ intro }">
     <header class="topbar">
       <h1 class="date">
         <span class="num big">{{ titleDate.m }}.{{ String(titleDate.d).padStart(2, '0') }}</span>
@@ -207,7 +212,7 @@ const memoryDateLabel = (d: string) => {
         <span>{{ almanac(todayStr) }}</span>
         <span v-if="dayNo" class="day-no">记录的第 <span class="num">{{ dayNo }}</span> 天</span>
       </p>
-      <PlumBranch v-if="rows.length" :days="ribbon" :today="todayStr" class="stars" />
+      <PlumBranch v-if="rows.length" :days="ribbon" :today="todayStr" :intro="intro" class="stars" />
       <p class="muted sub">{{ subline }}</p>
     </section>
 
@@ -296,7 +301,8 @@ const memoryDateLabel = (d: string) => {
 .day-no { margin-left: auto; }
 .today-seal { align-self: center; margin-left: 2px; }
 /* 每日诗词：竖线引出，楷体 */
-.poem { margin: 0 16px 14px; padding: 12px 16px 6px 18px; border-left: 2px solid var(--accent); animation: rise-in 0.5s var(--ease-out) 0.1s backwards; }
+.poem { margin: 0 16px 14px; padding: 12px 16px 6px 18px; border-left: 2px solid var(--accent); }
+.intro .poem { animation: rise-in 0.5s var(--ease-out) 0.1s backwards; }
 .verse { margin: 0; font-family: var(--kai); font-size: 18px; line-height: 1.75; letter-spacing: 0.06em; color: var(--ink); }
 .cite { margin: 4px 0 0; text-align: right; font-size: 13px; color: var(--muted); }
 .poem-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
@@ -402,22 +408,18 @@ const memoryDateLabel = (d: string) => {
   box-shadow: 0 10px 24px -10px rgba(18, 24, 52, 0.6);
 }
 .fab svg { width: 20px; height: 20px; flex: none; transition: transform 0.4s var(--spring); }
-.fab { gap: 0; transition: padding 0.35s var(--spring), transform 0.18s var(--spring); animation: pop-in 0.5s var(--spring) 0.2s backwards; }
+.fab { gap: 0; transition: padding 0.35s var(--spring), transform 0.18s var(--spring); }
+.intro .fab { animation: pop-in 0.5s var(--spring) 0.2s backwards; }
 .fab-label { display: inline-block; max-width: 4em; margin-left: 8px; overflow: hidden; white-space: nowrap; transition: max-width 0.35s var(--spring), opacity 0.2s, margin 0.35s; }
 .fab.mini { padding: 0 18px; }
 .fab.mini .fab-label { max-width: 0; margin-left: 0; opacity: 0; }
 .fab.mini svg { transform: rotate(-12deg) scale(1.1); }
-/* 首页顶部依次浮现 */
-.hello, .prompts, .memories { animation: rise-in 0.5s var(--ease-out) backwards; }
-.prompts { animation-delay: 0.08s; }
-.memories { animation-delay: 0.14s; }
-/* 那年今日：滑动时两边的卡片缩小变淡，中间的放大 */
-@supports (animation-timeline: view()) {
-  .mem { animation: mem-focus linear both; animation-timeline: view(inline); }
-  @keyframes mem-focus {
-    0% { transform: scale(0.88); opacity: 0.5; }
-    40%, 60% { transform: scale(1); opacity: 1; }
-    100% { transform: scale(0.88); opacity: 0.5; }
-  }
-}
+/* 首页顶部依次浮现（只在第一次打开时） */
+.intro .hello, .intro .prompts, .intro .memories { animation: rise-in 0.5s var(--ease-out) backwards; }
+.intro .prompts { animation-delay: 0.08s; }
+.intro .memories { animation-delay: 0.14s; }
+/*
+ * 那年今日不再用跟随滑动的缩放动画（animation-timeline: view()）：
+ * 每张卡片都随滑动重算缩放和透明度，安卓 WebView 上横滑会卡。现在只是普通的吸附滑动。
+ */
 </style>

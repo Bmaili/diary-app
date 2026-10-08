@@ -96,7 +96,7 @@ async function newPage(opts: { geo?: boolean } = {}): Promise<{ ctx: BrowserCont
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()))
   await page.goto(BASE)
-  await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && !document.body.innerText.includes('正在读取日记'))
+  await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && document.querySelector('.shell'))
   // 测试里不等“停笔 2 分钟”，离开编辑页就同步
   await page.evaluate(() => ((window as unknown as { __diary: { prefs: { sync: { quietMin: number } } } }).__diary.prefs.sync.quietMin = 0))
   return { ctx, page, errors }
@@ -425,7 +425,7 @@ describe('阶段 4：AI', () => {
       }
     })
     await page.reload()
-    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    await page.waitForFunction(() => document.querySelector('.shell'))
 
     // 添加服务
     await page.goto(BASE + '#/ai')
@@ -592,7 +592,7 @@ describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
     await typePin(page, '2580')
     await page.getByRole('switch', { name: '启用应用锁' }).and(page.locator('[aria-checked="false"]')).waitFor()
     await page.reload()
-    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    await page.waitForFunction(() => document.querySelector('.shell'))
     expect(await page.getByText('日记已上锁').count()).toBe(0)
     expect(errors).toEqual([])
     await ctx.close()
@@ -612,7 +612,7 @@ describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
     await page.waitForTimeout(600)
     await page.screenshot({ path: OUT + '54-ai-notes.png', fullPage: true })
     await page.reload()
-    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    await page.waitForFunction(() => document.querySelector('.shell'))
     expect(await page.getByPlaceholder(/小雨是我女朋友/).inputValue()).toBe('阿杰是我大学室友。')
     expect(errors).toEqual([])
     await ctx.close()
@@ -895,7 +895,7 @@ describe('指纹解锁、月度总结分段', () => {
       }
     })
     await page.reload()
-    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    await page.waitForFunction(() => document.querySelector('.shell'))
     await writeToday(page, '指纹测试的一天。')
     await page.goto(BASE + '#/settings/lock')
     await page.getByRole('switch', { name: '启用应用锁' }).click()

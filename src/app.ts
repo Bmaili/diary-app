@@ -24,6 +24,9 @@ export const settings = reactive({
 /** 索引每次变化时递增，视图据此重新计算 */
 export const indexVersion = ref(0)
 export const ready = ref(false)
+/** 建索引的进度（要读的文件多时，启动画面和设置里显示） */
+export const indexProgress = reactive({ done: 0, total: 0 })
+const onIndexProgress = (done: number, total: number) => Object.assign(indexProgress, { done, total })
 export const loadError = ref<string | null>(null)
 
 let started: Promise<void> | null = null
@@ -40,7 +43,8 @@ export function start(): Promise<void> {
       }
       await loadPrefs()
       await repo.init()
-      await index.load()
+      await index.load({ onProgress: onIndexProgress })
+      Object.assign(indexProgress, { done: 0, total: 0 })
       indexVersion.value++
       ready.value = true
       void purgeTrash(store).catch(() => {})
@@ -103,15 +107,13 @@ export async function deleteEntryToTrash(date: string): Promise<void> {
 export async function refreshDate(date: string) {
   await index.refresh(date)
   indexVersion.value++
-  scheduleCacheSave()
 }
 
-/** 索引缓存延迟 5 秒写盘；app 切到后台时立即写。缓存只是加速启动用，丢了也会自动重建。 */
-let cacheTimer: ReturnType<typeof setTimeout> | undefined
-function scheduleCacheSave() {
-  clearTimeout(cacheTimer)
-  cacheTimer = setTimeout(() => void enqueue(() => index.saveCacheIfDirty()), 5000)
-}
+/**
+ * 索引缓存只在 app 切到后台时写盘。整份缓存要序列化成一个大 JSON（几千篇时有几 MB），
+ * 在前台写会让界面卡一下（以前改完日记 5 秒后写，常常正好碰上在首页滑动）。
+ * 缓存只是加速启动用：没写成也没关系，下次启动会按文件修改时间补上改过的几篇。
+ */
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') void enqueue(() => index.saveCacheIfDirty())
 })
@@ -120,7 +122,11 @@ document.addEventListener('visibilitychange', () => {
 ;(window as unknown as { __diary: unknown }).__diary = { repo, index, settings }
 
 export async function reloadIndex(full = false) {
-  if (full) await index.rebuild()
-  else await index.load()
+  try {
+    if (full) await index.rebuild({ onProgress: onIndexProgress })
+    else await index.load({ onProgress: onIndexProgress })
+  } finally {
+    Object.assign(indexProgress, { done: 0, total: 0 })
+  }
   indexVersion.value++
 }

@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
-import { loadError, ready, start } from '../app'
+import { indexProgress, loadError, ready, start } from '../app'
 import Icon from './components/Icon.vue'
 import LockScreen from './components/LockScreen.vue'
 import { lock } from '../lockService'
@@ -53,7 +53,9 @@ onMounted(() => {
     <p>打开日记文件夹失败：{{ loadError }}</p>
   </div>
   <div v-else-if="!ready" class="boot" aria-busy="true">
-    <p class="muted">正在读取日记…</p>
+    <p class="muted">{{ indexProgress.total > 50 ? `正在整理日记索引 ${indexProgress.done} / ${indexProgress.total}` : '正在读取日记…' }}</p>
+    <div v-if="indexProgress.total > 50" class="boot-bar"><i :style="{ width: `${(indexProgress.done / indexProgress.total) * 100}%` }"></i></div>
+    <p v-if="indexProgress.total > 50" class="muted boot-hint">只在第一次打开、从云端恢复或升级后需要整理一次。</p>
   </div>
   <template v-else>
     <div v-if="tab === 'home'" class="petals" aria-hidden="true">
@@ -82,11 +84,18 @@ onMounted(() => {
 .shell { display: contents; }
 .boot {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   padding: 24px;
   text-align: center;
 }
+.boot p { margin: 0; }
+.boot-bar { width: min(240px, 70vw); height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.boot-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+.boot-hint { font-size: 12px; }
 .nav {
   position: fixed;
   left: 0;

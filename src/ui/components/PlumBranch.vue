@@ -4,10 +4,14 @@
  * 写了日记的日子开一朵花，花色是心情，心情越好花越大；没写的日子只是枝上的一个小花苞。
  * 花在枝上的位置由日期决定，所以每天的样子是固定的。今天用朱砂圈出来。
  */
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 
 interface Day { date: string; has: boolean; mood: number }
-const props = defineProps<{ days: Day[]; today: string }>()
+/** intro：首页第一次出现时画枝、开花；之后从别的页面回来不再重播，只有新开的花有动画 */
+const props = withDefaults(defineProps<{ days: Day[]; today: string; intro?: boolean }>(), { intro: true })
+
+/** 已经开过（播过动画）的花 */
+const shown = reactive(new Set(props.days.filter((d) => d.has).map((d) => d.date)))
 
 const W = 350
 const H = 76
@@ -43,12 +47,13 @@ const petals = [0, 1, 2, 3, 4].map((k) => (k * 72 * Math.PI) / 180)
 </script>
 
 <template>
-  <svg :viewBox="`0 0 ${W} ${H}`" class="plum" aria-hidden="true">
+  <svg :viewBox="`0 0 ${W} ${H}`" class="plum" :class="{ intro }" aria-hidden="true">
     <path :d="branch" pathLength="1" class="branch" />
     <template v-for="(f, i) in flowers" :key="f.date">
       <line v-if="f.twig" :x1="f.x - 3" :y1="f.by" :x2="f.x" :y2="f.y" pathLength="1" class="twig"
         :style="{ animationDelay: `${0.4 + i * 0.02}s` }" />
-      <g v-if="f.has" :class="`mood-${f.mood}`" class="bloom"
+      <g v-if="f.has" :class="[`mood-${f.mood}`, { fresh: !shown.has(f.date) }]" class="bloom"
+        @animationend="shown.add(f.date)"
         :style="{ animationDelay: `${0.5 + i * 0.03}s`, transformOrigin: `${f.x}px ${f.y}px` }">
         <g :transform="`translate(${f.x} ${f.y}) rotate(${f.rot})`">
           <circle v-for="(a, k) in petals" :key="k" :cx="Math.cos(a) * f.r * 0.85" :cy="Math.sin(a) * f.r * 0.85" :r="f.r * 0.62" class="petal" />
@@ -65,16 +70,18 @@ const petals = [0, 1, 2, 3, 4].map((k) => (k * 72 * Math.PI) / 180)
 .plum { display: block; width: 100%; height: auto; overflow: visible; }
 .branch {
   fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.82;
-  stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  stroke-dasharray: 1; stroke-dashoffset: 0;
 }
-.twig { stroke: var(--ink); stroke-width: 1.2; stroke-linecap: round; opacity: 0.7; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.4s ease-out forwards; }
+.twig { stroke: var(--ink); stroke-width: 1.2; stroke-linecap: round; opacity: 0.7; stroke-dasharray: 1; stroke-dashoffset: 0; }
+.intro .branch { stroke-dashoffset: 1; animation: draw 1.1s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.intro .twig { stroke-dashoffset: 1; animation: draw 0.4s ease-out forwards; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 .petal { fill: var(--mc); opacity: 0.92; }
 .heart { fill: var(--ink); opacity: 0.45; }
 .bud { fill: var(--ink); opacity: 0.35; }
 .today { fill: none; stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 2.5 2; }
-/* 花一朵朵开出来 */
-.bloom { animation: bloom 0.6s var(--spring, ease-out) backwards; }
+/* 花一朵朵开出来；之后新写的那天开一朵 */
+.intro .bloom, .bloom.fresh { animation: bloom 0.6s var(--spring, ease-out) backwards; }
 @keyframes bloom { from { opacity: 0; transform: scale(0) rotate(-60deg); } }
 .no-motion .branch, .no-motion .twig { stroke-dashoffset: 0; }
 </style>

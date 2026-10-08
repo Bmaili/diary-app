@@ -9,6 +9,8 @@ import { DiaryRepo, entryPath, type EntryFile } from './repo'
 
 export const INDEX_CACHE = 'cache/index.json'
 const CACHE_VERSION = 4
+/** 建索引时同时读几个文件 */
+const LOAD_CONCURRENCY = 8
 
 export async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
@@ -86,8 +88,12 @@ export class DiaryIndex {
     return this.rows.size
   }
 
-  /** 读取缓存，然后与 diary/ 中的文件逐一比对，只重新解析有变化的文件。返回重新解析的文件数。 */
-  async load(): Promise<number> {
+  /**
+   * 读取缓存，然后与 diary/ 中的文件逐一比对，只重新解析有变化的文件。返回重新解析的文件数。
+   * 要读的文件多时（没有缓存、从云端恢复后）并发读取，并通过 onProgress 报告进度：
+   * 真机上每读一个文件都要经过一次插件通道，一篇一篇串行读，几千篇要几十秒。
+   */
+  async load(opts: { onProgress?: (done: number, total: number) => void } = {}): Promise<number> {
     this.rows.clear()
     this.sorted = null
     const cacheText = await this.store.readText(INDEX_CACHE).catch(() => null)
@@ -101,16 +107,33 @@ export class DiaryIndex {
     }
     const files = await this.repo.listEntryFiles()
     const seen = new Set<string>()
-    let changed = 0
+    const todo: EntryFile[] = []
     for (const f of files) {
       seen.add(f.date)
       const cached = this.rows.get(f.date)
-      if (cached && cached.path === f.path && cached.mtime === f.mtime && cached.size === f.size) continue
-      const raw = await this.store.readText(f.path)
-      if (raw == null) continue
-      this.rows.set(f.date, await rowFromRaw(f, raw))
-      changed++
+      if (!(cached && cached.path === f.path && cached.mtime === f.mtime && cached.size === f.size)) todo.push(f)
     }
+    let changed = 0
+    let done = 0
+    let next = 0
+    let lastReport = 0
+    const worker = async () => {
+      while (next < todo.length) {
+        const f = todo[next++]
+        const raw = await this.store.readText(f.path)
+        if (raw != null) {
+          this.rows.set(f.date, await rowFromRaw(f, raw))
+          changed++
+        }
+        done++
+        // 每 50 篇报告一次，免得界面频繁刷新
+        if (opts.onProgress && (done - lastReport >= 50 || done === todo.length)) {
+          lastReport = done
+          opts.onProgress(done, todo.length)
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(LOAD_CONCURRENCY, todo.length) }, worker))
     for (const d of Array.from(this.rows.keys())) {
       if (!seen.has(d)) {
         this.rows.delete(d)
@@ -122,9 +145,9 @@ export class DiaryIndex {
   }
 
   /** 设置里的“重建索引”：删掉缓存，从文件完整重建。 */
-  async rebuild(): Promise<void> {
+  async rebuild(opts: { onProgress?: (done: number, total: number) => void } = {}): Promise<void> {
     await this.store.remove(INDEX_CACHE).catch(() => {})
-    await this.load()
+    await this.load(opts)
   }
 
   async saveCache(): Promise<void> {
@@ -206,7 +229,7 @@ export class DiaryIndex {
         const metaLower = [...r.tags, ...r.people, ...r.places, r.locationName ?? ''].join('\n').toLowerCase()
         if (!terms.every((t) => textLower.includes(t) || metaLower.includes(t))) continue
       }
-      hits.push({ row: r, snippet: makeSnippet(r.text, terms) })
+      hits.push(lazyHit(r, terms))
     }
     return hits
   }
@@ -227,6 +250,18 @@ export class DiaryIndex {
 
   brokenRows(): IndexRow[] {
     return this.all().filter((r) => r.error)
+  }
+}
+
+/** 命中片段用到时才生成：搜索结果可能有几千条，页面上一次只显示 50 条 */
+function lazyHit(row: IndexRow, terms: string[]): SearchHit {
+  let seg: Segment[] | null = null
+  return {
+    row,
+    get snippet() {
+      seg ??= makeSnippet(row.text, terms)
+      return seg
+    },
   }
 }
 

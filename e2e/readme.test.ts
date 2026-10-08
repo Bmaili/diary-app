@@ -118,7 +118,7 @@ async function open(): Promise<{ page: Page; errors: string[]; close: () => Prom
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('dialog', (d) => d.accept())
   await page.goto(BASE)
-  await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && !document.body.innerText.includes('正在读取日记'))
+  await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && document.querySelector('.shell'))
   return { page, errors, close: () => ctx.close() }
 }
 
@@ -143,7 +143,7 @@ describe('README 截图与关于页', () => {
       for (const [p, t] of files) await d.repo.store.writeText(p, t)
     }, seeds.map((s) => [`diary/entries/${s.date.slice(0, 4)}/${s.date}.md`, fileOf(s)] as [string, string]))
     await page.reload()
-    await page.waitForFunction(() => !document.body.innerText.includes('正在读取日记'))
+    await page.waitForFunction(() => document.querySelector('.shell'))
 
     await page.goto(BASE + '#/settings/ai/new')
     await page.getByRole('combobox').first().selectOption('DeepSeek')

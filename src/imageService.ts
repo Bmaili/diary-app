@@ -76,8 +76,6 @@ export async function saveImage(date: string, bytes: Uint8Array): Promise<string
   return `![](../../attachments/${year}/${name})`
 }
 
-const cache = new Map<string, string>()
-
 /** 正文里的相对路径 → 仓库里的路径 */
 function repoPath(src: string): string {
   return decodeURI(`${ROOT}/${src.replace(/^\.\.\/\.\.\//, '')}`)
@@ -91,29 +89,59 @@ export async function imageForAi(src: string): Promise<ImagePart> {
   return { mime: 'image/jpeg', data: toBase64(small) }
 }
 
-/** 一张图的 data URL（说明框里显示用） */
-export async function imageUrl(src: string): Promise<string> {
-  if (!cache.has(src)) {
-    const b64 = await store.readBase64(repoPath(src))
-    if (b64) cache.set(src, `data:image/jpeg;base64,${b64}`)
+/**
+ * 显示图片用的地址（2026-10-08 起）。
+ * 真机：用 Capacitor.convertFileSrc 让 WebView 直接读文件，不经过插件通道传 base64，也不在 JS 里留副本
+ * （以前每看过一张图就在内存里存一份 base64，翻看的图越多内存越高）。地址后面带上修改时间，
+ * 删掉日记后同名的新图不会显示成旧图。
+ * 浏览器调试：文件在 IndexedDB 里，只能用 data URL，最多缓存最近的 24 张。
+ */
+const WEB_CACHE_MAX = 24
+const webCache = new Map<string, string>()
+let rootUri: string | null = null
+
+async function displayUrl(src: string): Promise<string> {
+  const path = repoPath(src)
+  if (Capacitor.isNativePlatform()) {
+    const st = await store.stat(path)
+    if (!st) return ''
+    rootUri ??= (await Filesystem.getUri({ path: ROOT, directory: Directory.Data })).uri.replace(/\/+$/, '')
+    return `${Capacitor.convertFileSrc(`${rootUri}/${path.slice(ROOT.length + 1)}`)}?v=${st.mtime}`
   }
-  return cache.get(src) ?? ''
+  const hit = webCache.get(src)
+  if (hit) {
+    // 最近用过的挪到最后，淘汰时从最前面删
+    webCache.delete(src)
+    webCache.set(src, hit)
+    return hit
+  }
+  const b64 = await store.readBase64(path)
+  if (!b64) return ''
+  const url = `data:image/jpeg;base64,${b64}`
+  webCache.set(src, url)
+  while (webCache.size > WEB_CACHE_MAX) webCache.delete(webCache.keys().next().value!)
+  return url
 }
 
-/** 阅读视图里把相对路径的图片换成 data URL */
+/** 一张图的显示地址（说明框里用） */
+export function imageUrl(src: string): Promise<string> {
+  return displayUrl(src)
+}
+
+/** 阅读视图里把相对路径的图片换成可显示的地址 */
 export async function resolveImages(html: string): Promise<string> {
   const srcs = new Set<string>()
   html.replace(/<img[^>]+src="(\.\.\/\.\.\/attachments\/[^"]+)"/g, (_, s: string) => {
     srcs.add(s)
     return ''
   })
+  const urls = new Map<string, string>()
   for (const s of srcs) {
-    if (cache.has(s)) continue
-    const b64 = await store.readBase64(repoPath(s))
-    if (b64) cache.set(s, `data:image/jpeg;base64,${b64}`)
+    const u = await displayUrl(s).catch(() => '')
+    if (u) urls.set(s, u)
   }
   // data-src 记下原来的路径，点图片改说明时用
   return html.replace(/(<img[^>]+src=")(\.\.\/\.\.\/attachments\/[^"]+)(")/g, (m, a: string, s: string, b: string) =>
-    cache.has(s) ? `${a}${cache.get(s)}${b} data-src="${s}"` : m,
+    urls.has(s) ? `${a}${urls.get(s)}${b} data-src="${s}"` : m,
   )
 }

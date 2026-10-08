@@ -108,6 +108,14 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 不要用 `background-attachment: fixed`：滚动时每帧都要重绘纸纹。
 - 不要给列表的每一条挂常驻动画：滚动驱动动画会让每一条成为独立图层（实测 200 多个图层，滚动卡顿）。进场动画用 `v-reveal`（`ui/reveal.ts`），只跑一次。
 - 会横向位移的元素，外面要套一层 `overflow: hidden`：否则页面会临时变宽，安卓 WebView 会挪动底部导航。
+- keep-alive 的页面（首页、日历、搜索、AI）从别的页面回来时，DOM 会被重新插回页面，**CSS 动画会全部重播**。进场动画要只在第一次播（首页用 `.intro` 类，`PlumBranch` 用 `intro` 属性，之后只有新开的花有动画）。
+- 首页的日记条目用 `content-visibility: auto`：屏幕外的条目不排版、不绘制，回到首页时不用把几百条全部重排。
+- 回到页面时会触发的计算，结果没变就不要重新赋值（例如首页的总结提示），否则整页重新渲染。
+- 阅读视图的图片在真机上用 `Capacitor.convertFileSrc` 直接读文件，不要再把图片转成 base64 存在 JS 里。
+- 大文件（导出 zip）要边读边写（`core/zipWriter.ts` + `platform/exportShare.ts` 的 `openExport`），不要在内存里拼出整个文件再通过插件通道传给原生端：图片多了会因内存不足闪退。
+- 索引缓存只在切到后台时写盘（见 `app.ts`），不要在前台定时写。
+- 端到端测试等 app 就绪用 `document.querySelector('.shell')`；启动画面的文字会变成索引进度。
+- 性能剖析的做法：Playwright + CDP 的 `Emulation.setCPUThrottlingRate`（4 倍降速）加 3650 篇测试日记，记录 longtask、rAF 帧间隔和 trace 里的 Layout / Paint；无头 Chromium 体现不出安卓上的合成与光栅开销，横滑类问题以真机为准。
 
 ## AI 功能的约定
 

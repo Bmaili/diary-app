@@ -4,13 +4,13 @@ import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import {
-  diaryChanged, enqueue, index, indexVersion, reloadIndex, repo, setCutoffHour, setDevMode, settings, store, today,
+  diaryChanged, enqueue, index, indexProgress, indexVersion, reloadIndex, repo, setCutoffHour, setDevMode, settings, store, today,
 } from '../../app'
 import { listTrash } from '../../core/trash'
 import { exportDiaryZip, zipFileName } from '../../core/exportZip'
 import { generateTestEntries } from '../../core/testData'
 import { README_MD } from '../../core/readme'
-import { shareFile } from '../../platform/exportShare'
+import { openExport } from '../../platform/exportShare'
 import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
 import { prefs } from '../../prefs'
@@ -46,16 +46,21 @@ async function run(key: string, fn: () => Promise<string>) {
   }
 }
 
+/** 导出进度：已打包的文件数 / 总数 */
+const exportProgress = ref({ done: 0, total: 0 })
 const doExport = () =>
   run('export', async () => {
-    const bytes = await exportDiaryZip(repo)
+    exportProgress.value = { done: 0, total: 0 }
+    const target = await openExport(zipFileName())
+    const r = await exportDiaryZip(repo, target.sink, (done, total) => (exportProgress.value = { done, total }))
     const done = expectExternal()
     try {
-      await shareFile(zipFileName(), bytes)
+      await target.finish()
     } finally {
       done()
     }
-    return `已打包 ${index.size} 篇日记（${(bytes.length / 1024).toFixed(0)} KB）`
+    const size = r.bytes >= 1 << 20 ? `${(r.bytes / (1 << 20)).toFixed(1)} MB` : `${(r.bytes / 1024).toFixed(0)} KB`
+    return `已打包 ${index.size} 篇日记、共 ${r.files} 个文件（${size}）`
   })
 
 const doRebuild = () =>
@@ -233,7 +238,9 @@ const syncLine = computed(() => {
           <div class="desc">整个日记文件夹，可以用 Obsidian、Typora 或任何文本编辑器打开。</div>
           <div v-if="msg.export" class="result">{{ msg.export }}</div>
         </div>
-        <button class="text-btn" :disabled="!!busy" @click="doExport">{{ busy === 'export' ? '打包中' : '导出' }}</button>
+        <button class="text-btn" :disabled="!!busy" @click="doExport">
+          {{ busy === 'export' ? (exportProgress.total ? `${exportProgress.done}/${exportProgress.total}` : '打包中') : '导出' }}
+        </button>
       </div>
       <div class="item">
         <div>
@@ -241,7 +248,9 @@ const syncLine = computed(() => {
           <div class="desc">列表、日历或搜索结果和文件对不上时使用。日记文件不会被改动。</div>
           <div v-if="msg.rebuild" class="result">{{ msg.rebuild }}</div>
         </div>
-        <button class="text-btn" :disabled="!!busy" @click="doRebuild">{{ busy === 'rebuild' ? '重建中' : '重建' }}</button>
+        <button class="text-btn" :disabled="!!busy" @click="doRebuild">
+          {{ busy === 'rebuild' ? (indexProgress.total ? `${indexProgress.done}/${indexProgress.total}` : '重建中') : '重建' }}
+        </button>
       </div>
       <router-link to="/settings/trash" class="item link">
         <div>

@@ -3,6 +3,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
+import { indexProgress } from '../../app'
 import { BACKENDS, canDecrypt, preview, restore, restoreState, type BackendId } from '../../syncService'
 import type { RestorePreview } from '../../core/sync/restore'
 import Icon from '../components/Icon.vue'
@@ -82,7 +83,7 @@ async function go() {
             <input v-if="needPass" v-model="pass" class="field pass" type="password" autocomplete="off" aria-label="同步加密密码" placeholder="同步加密密码" />
           </template>
           <button v-if="!restoreState.result" class="solid-btn" :disabled="restoreState.running || (needPass && !pass)" @click="go">
-            {{ restoreState.running ? (restoreState.total ? `下载中 ${restoreState.done}/${restoreState.total}` : needPass ? '正在解开密钥…' : '连接中…') : '开始恢复' }}
+            {{ restoreState.running ? (indexProgress.total ? `整理索引 ${indexProgress.done}/${indexProgress.total}` : restoreState.total ? `下载中 ${restoreState.done}/${restoreState.total}` : needPass ? '正在解开密钥…' : '连接中…') : '开始恢复' }}
           </button>
         </template>
       </div>

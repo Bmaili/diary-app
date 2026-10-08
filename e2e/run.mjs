@@ -233,10 +233,22 @@ try {
   const before = await p2.evaluate(() => window.__diary.index.search({ q: '电影' }).map((h) => h.row.date).join())
   await p2.evaluate(() => window.__diary.repo.store.remove('cache/index.json'))
   await p2.reload()
-  await p2.waitForFunction(() => window.__diary && !document.body.innerText.includes('正在读取日记'), null, { timeout: 300000 })
+  await p2.waitForFunction(() => window.__diary && document.querySelector('.shell'), null, { timeout: 300000 })
   const after = await p2.evaluate(() => window.__diary.index.search({ q: '电影' }).map((h) => h.row.date).join())
   check('删除索引缓存后重建，搜索结果不变', before === after && before.length > 0,
     `前 ${before.split(',').length} 篇，后 ${after.split(',').length} 篇`)
+
+  // 有缓存时的启动：到首页出现（3650 篇）
+  {
+    const times = []
+    for (let i = 0; i < 3; i++) {
+      const t0 = Date.now()
+      await p2.reload()
+      await p2.waitForFunction(() => window.__diary && document.querySelector('.shell'), null, { timeout: 300000 })
+      times.push(Date.now() - t0)
+    }
+    console.log(`      有缓存时启动到界面出现：${times.join(' / ')} ms`)
+  }
 
   // ---------- 8. 界面：首页、那年今日、日历、搜索 ----------
   await p2.goto(BASE + '#/')

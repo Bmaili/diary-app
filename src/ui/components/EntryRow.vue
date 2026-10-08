@@ -36,6 +36,9 @@ const places = computed(() => [...new Set([props.row.locationName, ...props.row.
 <style scoped>
 .row {
   position: relative;
+  /* 屏幕外的条目跳过排版和绘制：首页从别的页面回来时，几百条不用全部重新排版 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
   display: grid;
   grid-template-columns: 52px 1fr;
   gap: 14px;
