@@ -11,7 +11,8 @@ import { App as CapApp } from '@capacitor/app'
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
 import { deleteEntryToTrash, enqueue, refreshDate, repo, today } from '../../app'
 import { syncAfterEdit, syncOnHide } from '../../syncService'
-import { bodyFor, openSession, type EditSession } from '../../core/session'
+import { bodyFor, openSession, revertedRaw, type EditSession } from '../../core/session'
+import { entryPath } from '../../core/repo'
 import { hasContent } from '../../core/entryFile'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'empty' | 'error'
@@ -67,7 +68,16 @@ export function useEntrySession(date: string) {
       status.value = 'saving'
       try {
         s.doc.body = body
-        await repo.saveEntry(s.doc)
+        const reverted = revertedRaw(s, body)
+        if (reverted) {
+          // 改回了打开时的样子：写回原文件（连 updated 也是原来的），同步时不会再上传
+          const m = reverted.original.meta
+          if (m.updated == null) delete s.doc.meta.updated
+          else s.doc.meta.updated = m.updated
+          if (m.created == null) delete s.doc.meta.created
+          else s.doc.meta.created = m.created
+          await repo.writeAtomic(entryPath(date), reverted.raw)
+        } else await repo.saveEntry(s.doc)
         savedBody = body
         metaDirty = false
         s.existed = true

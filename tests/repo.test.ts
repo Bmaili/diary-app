@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { DiaryRepo, entryPath, FORMAT_JSON, TMP } from '../src/core/repo'
 import { parseEntry } from '../src/core/entryFile'
-import { bodyFor, openSession } from '../src/core/session'
+import { bodyFor, openSession, revertedRaw } from '../src/core/session'
 import { README_MD } from '../src/core/readme'
 import { NodeStore } from './nodeStore'
 
@@ -112,6 +112,28 @@ describe('同一天再次书写（规格 4.4 第 5 条）', () => {
     await repo.saveEntry({ meta: { date: '2026-10-04' }, body: 'x', extra: [] })
     const b = await openSession(repo, '2026-10-04', { append: false })
     expect(b.initialText).toBe('x')
+  })
+
+  it('改了又改回去：识别出来，写回原文件后一字不差（不会再同步）', async () => {
+    await repo.saveEntry({ meta: { date: '2026-10-04', mood: 3 }, body: '上午写的。', extra: [] }, new Date(2026, 9, 4, 9, 0))
+    const raw = (await repo.readEntryRaw('2026-10-04'))!
+    const s = await openSession(repo, '2026-10-04', { append: false })
+    expect(s.originalRaw).toBe(raw)
+    // 中途保存过一次（updated 变了）
+    s.doc.body = '上午写的。又加了一句。'
+    await repo.saveEntry(s.doc, new Date(2026, 9, 4, 22, 0))
+    expect(await repo.readEntryRaw('2026-10-04')).not.toBe(raw)
+    // 正文改回原样：认得出来，返回原文
+    expect(revertedRaw(s, '上午写的。')?.raw).toBe(raw)
+    expect(revertedRaw(s, '上午写的。！')).toBeNull()
+    // 心情改了就不算；再改回来又算
+    s.doc.meta.mood = 4
+    expect(revertedRaw(s, '上午写的。')).toBeNull()
+    s.doc.meta.mood = 3
+    expect(revertedRaw(s, '上午写的。')?.original.meta.updated).toBe(parseEntry(raw).meta.updated)
+    // 新的一天没有原文，不适用
+    const fresh = await openSession(repo, '2026-10-05', { append: false })
+    expect(revertedRaw(fresh, 'x')).toBeNull()
   })
 
   it('无法解析的文件以只读方式打开，不会被改写', async () => {

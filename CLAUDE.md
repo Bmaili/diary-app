@@ -115,6 +115,8 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 大文件（导出 zip）要边读边写（`core/zipWriter.ts` + `platform/exportShare.ts` 的 `openExport`），不要在内存里拼出整个文件再通过插件通道传给原生端：图片多了会因内存不足闪退。
 - 索引缓存只在切到后台时写盘（见 `app.ts`），不要在前台定时写。
 - 端到端测试等 app 就绪用 `document.querySelector('.shell')`；启动画面的文字会变成索引进度。
+- View Transitions 的页面动画要 `animation-fill-mode: both`（切换要等所有动画结束才收尾，不停住的话旧页面会弹回来闪一下）；滑出屏幕的页面带的阴影要在最后淡掉，否则停在屏幕边上再突然消失。逐帧检查的做法：CDP `Animation.setPlaybackRate` 放慢 10 倍 + `Page.startScreencast` 录帧，看屏幕边缘的亮度有没有突变。
+- 编辑会话记着打开时的原文（`session.originalRaw`）：改回原样时写回原文（`revertedRaw`），文件一字不差，同步不会再传。
 - 性能剖析的做法：Playwright + CDP 的 `Emulation.setCPUThrottlingRate`（4 倍降速）加 3650 篇测试日记，记录 longtask、rAF 帧间隔和 trace 里的 Layout / Paint；无头 Chromium 体现不出安卓上的合成与光栅开销，横滑类问题以真机为准。
 
 ## AI 功能的约定

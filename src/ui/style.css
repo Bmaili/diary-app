@@ -249,6 +249,11 @@ button { cursor: pointer; }
 ::view-transition-old(root), ::view-transition-new(root) {
   animation-duration: 0.34s;
   animation-timing-function: var(--ease-out);
+  /*
+   * 停在结束的位置：切换动画要等所有动画（例如导航条 0.42 秒才浮上来）都结束才收尾，
+   * 不停住的话，滑出去的旧页面会在这几十毫秒里弹回原位盖住屏幕，看起来闪一下。
+   */
+  animation-fill-mode: both;
   mix-blend-mode: normal;
 }
 html[data-vt='push']::view-transition-old(root) { animation-name: vt-push-out; }
@@ -262,8 +267,20 @@ html[data-vt='tab-back']::view-transition-new(root) { animation: 0.3s var(--ease
 html[data-vt='fade']::view-transition-old(root) { animation: 0.2s both vt-fade; }
 html[data-vt='fade']::view-transition-new(root) { animation: 0.25s both reverse vt-fade; }
 @keyframes vt-push-out { to { transform: translateX(-28%); filter: brightness(0.7); } }
-@keyframes vt-push-in { from { transform: translateX(100%); box-shadow: -20px 0 40px rgba(0, 0, 0, 0.18); } }
-@keyframes vt-pop-out { to { transform: translateX(100%); box-shadow: -20px 0 40px rgba(0, 0, 0, 0.18); } }
+/*
+ * 新页面左边缘带一道阴影，显得是叠在上面的。阴影在页面贴着屏幕右边时要淡掉：
+ * 以前返回时旧页面滑到最右边减速，阴影在屏幕右边停留一会儿再突然消失，看起来右侧闪一下。
+ */
+@keyframes vt-push-in {
+  from { transform: translateX(100%); box-shadow: -20px 0 40px rgba(0, 0, 0, 0); }
+  40% { box-shadow: -20px 0 40px rgba(0, 0, 0, 0.18); }
+  to { box-shadow: -20px 0 40px rgba(0, 0, 0, 0.18); }
+}
+@keyframes vt-pop-out {
+  from { box-shadow: -20px 0 40px rgba(0, 0, 0, 0.18); }
+  55% { box-shadow: -20px 0 40px rgba(0, 0, 0, 0.18); }
+  to { transform: translateX(100%); box-shadow: -20px 0 40px rgba(0, 0, 0, 0); }
+}
 @keyframes vt-pop-in { from { transform: translateX(-28%); filter: brightness(0.7); } }
 @keyframes vt-fade-left { to { opacity: 0; transform: translateX(-24px); } }
 @keyframes vt-fade-right { to { opacity: 0; transform: translateX(24px); } }

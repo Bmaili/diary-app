@@ -159,6 +159,21 @@ describe('阶段 2：同步与恢复', () => {
     expect(ok).toBe(true)
     await page.locator('a[aria-label="已同步"]').waitFor({ timeout: 10000 })
     await page.screenshot({ path: OUT + '21-home-synced.png' })
+
+    // 改了又改回去：文件写回原样，不再上传
+    const puts = () => oss.requests.filter((r) => r.method === 'PUT' && r.key.includes('/entries/')).length
+    const before = puts()
+    await page.locator('.row').first().click()
+    await page.getByRole('button', { name: '编辑' }).click()
+    await page.keyboard.press('End')
+    await page.keyboard.type('临时加的一句')
+    await page.waitForTimeout(1500)
+    for (let i = 0; i < '临时加的一句'.length; i++) await page.keyboard.press('Backspace')
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.waitForURL(BASE + '#/')
+    await page.waitForTimeout(2500)
+    expect(puts()).toBe(before)
+    await page.locator('a[aria-label="已同步"]').waitFor({ timeout: 10000 })
     await page.goto(BASE + '#/settings/sync')
     await page.getByText(/^已同步/).first().waitFor()
     await page.screenshot({ path: OUT + '22-sync-settings.png' })
