@@ -7,6 +7,7 @@ import { initSync } from './syncService'
 import { initLock } from './lockService'
 import { initReminder } from './reminderService'
 import { initHolidays } from './holidayService'
+import { initUpdate } from './updateService'
 import { applyMotionClass, installTransitions } from './ui/motion'
 import { prefs } from './prefs'
 import { watch } from 'vue'
@@ -15,6 +16,7 @@ initSync()
 initLock()
 initReminder()
 initHolidays()
+initUpdate()
 
 installTransitions(router)
 watch(() => prefs.ui.motion, applyMotionClass, { immediate: true })

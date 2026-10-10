@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PrivacyScreenPlugin.class);
         registerPlugin(HttpStreamPlugin.class);
         registerPlugin(BiometricPlugin.class);
+        registerPlugin(AppUpdatePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

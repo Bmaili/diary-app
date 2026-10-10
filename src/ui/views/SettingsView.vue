@@ -18,6 +18,7 @@ import { enabled, syncState, BACKENDS } from '../../syncService'
 import { expectExternal } from '../../lockService'
 import { SLOGAN } from '../../appInfo'
 import { holidaySourceChanged, holidayStatus, refreshHolidays } from '../../holidayService'
+import { showBadge, updateState } from '../../updateService'
 
 const router = useRouter()
 const busy = ref('')
@@ -252,6 +253,13 @@ const syncLine = computed(() => {
           {{ busy === 'rebuild' ? (indexProgress.total ? `${indexProgress.done}/${indexProgress.total}` : '重建中') : '重建' }}
         </button>
       </div>
+      <router-link to="/settings/transfer" class="item link">
+        <div>
+          <div>导入导出设置</div>
+          <div class="desc">换手机时，把 AI、同步、位置等设置一次带过去。文件用密码加密。</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
       <router-link to="/settings/trash" class="item link">
         <div>
           <div>最近删除</div>
@@ -315,8 +323,8 @@ const syncLine = computed(() => {
     <section>
       <router-link to="/settings/about" class="item link">
         <div>
-          <div>关于浮生记</div>
-          <div class="desc">{{ SLOGAN }} · 版本 {{ appVersion }}</div>
+          <div>关于浮生记<span v-if="showBadge" class="dot" aria-label="有新版本" /></div>
+          <div class="desc">{{ showBadge ? `有新版本 ${updateState.latest?.version}` : `${SLOGAN} · 版本 ${appVersion}` }}</div>
         </div>
         <Icon name="right" class="chev" />
       </router-link>
@@ -336,5 +344,6 @@ const syncLine = computed(() => {
 .gen { display: flex; align-items: center; gap: 4px; }
 .num-in { width: 76px; min-height: 38px; padding: 0 8px; }
 .danger { color: var(--danger); }
+.dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--accent); vertical-align: 0.45em; }
 .version { margin: 32px 16px 0; text-align: center; font-size: 12px; color: var(--faint); user-select: none; }
 </style>

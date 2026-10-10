@@ -18,6 +18,7 @@
 - 签名文件**不在仓库里**，CI 从仓库 secrets 读取：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`（`diary`）、`ANDROID_KEY_PASSWORD`。**绝不能换签名**：换了只能卸载重装，而卸载会删掉手机上的全部日记。
 - versionCode = 100 + 构建序号，versionName = 1.0.<构建序号>，设置页底部显示版本（Vite `__APP_VERSION__`）。
 - Release 说明取自提交说明（会去掉 `Claude-Session:` 行），所以提交说明的第一行要写成用户能看懂的更新内容。
+- app 内更新（`updateService.ts`）读 `releases/latest`：标签必须是 `v1.0.N`，安装包名以 `.apk` 结尾（不带 `unsigned`），更新内容取说明里 `---` 之前的部分。改 workflow 的发布步骤时别破坏这几点，否则用户收不到更新提示。
 - 在没有 Android SDK 的云端环境里：
   - 不能在本地打安卓包。Java 改动只能用桩类编译检查，最终以 CI 结果为准。
   - 用 `https://api.github.com/repos/<owner>/<repo>/commits/<sha>/check-runs` 查看构建是否成功；`.../check-runs/<id>/annotations` 看失败原因（workflow 失败时会把日志结尾写成 error 注释）。
@@ -26,7 +27,7 @@
 ## 技术栈
 
 - 网页技术 + Capacitor 8 打包。Vue 3 + TypeScript + Vite + Vue Router（hash 模式）。
-- 插件：filesystem、preferences、app、share、keyboard、haptics、network、local-notifications；自写的原生插件 `PrivacyScreenPlugin`（FLAG_SECURE）、`HttpStreamPlugin`（SSE 流式）、`BiometricPlugin`（指纹，androidx.biometric 1.1.0），在 `MainActivity` 里于 `super.onCreate` 之前注册。
+- 插件：filesystem、preferences、app、share、keyboard、haptics、network、local-notifications；自写的原生插件 `PrivacyScreenPlugin`（FLAG_SECURE）、`HttpStreamPlugin`（SSE 流式）、`BiometricPlugin`（指纹，androidx.biometric 1.1.0）、`AppUpdatePlugin`（应用内更新：下载、核对 sha256 / 包名 / 版本 / 签名、调起系统安装界面），在 `MainActivity` 里于 `super.onCreate` 之前注册。Capacitor 的 `PluginCall.getLong` 对 JS 传来的整数会返回默认值，取数字用 `getInt` / `getDouble`。
 - 主要依赖：yaml（Document API，保留未知字段）、marked + DOMPurify、JSZip、age-encryption、lunar-javascript。
 - 测试：vitest（单元测试）、Playwright（端到端测试，手机尺寸 Chromium）。
 
@@ -74,11 +75,13 @@ src/core/            与平台无关、有单元测试的逻辑
   mdEdit.ts          编辑快捷按钮与列表续行
   pin.ts reminder.ts lunar.ts（农历节气）holidays.ts（法定节假日：内置 + 联网覆盖）poems.ts（内置诗词）
   summaries.ts vocab.ts trash.ts（最近删除）imageCaption.ts launch.ts（桌面快捷方式链接）
+  update.ts（解析 Releases、比较版本）settingsBundle.ts（设置导出文件：age 密码加密的 JSON）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream
-src/*Service.ts      应用层：sync、place、image、ai、lock、reminder、daily、holiday、launch
+src/*Service.ts      应用层：sync、place、image、ai、lock、reminder、daily、holiday、launch、update（应用内更新）
                      （界面读农历要用 holidayService 的 `lunar()`，节假日数据更新后才会刷新）
+src/settingsTransfer.ts  导入导出设置：按类收集 prefs 和密钥、导入时整类覆盖（换了 Bucket / 仓库的同步后端先关着）
 src/appInfo.ts       应用名、slogan、作者邮箱、仓库地址、致谢列表（关于页用）
 src/app.ts           全局：store/repo/index、串行写入队列 enqueue、onStarted/onDiaryChanged 钩子
 src/prefs.ts         不含密钥的设置（响应式，自动保存；读取时只合并已有的键，新增对象型设置要把键列全）
@@ -147,3 +150,4 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 已有的图片还不能批量让 AI 写说明。
 - 锁定是整个字段锁：手动改过标签后，AI 就不再补标签。是否改成只保护手动加的那几个词，还没定。
 - 只拖了心情、没写正文的日子不保存。
+- 应用内更新从 GitHub 下载安装包，国内网络可能很慢或下不动；以后可以加一个国内镜像。

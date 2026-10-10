@@ -90,13 +90,18 @@ export const prefs = reactive({
     /** 动态效果（页面切换、列表入场、日历跟手滑动等）；系统开了“减少动画”时也会关掉 */
     motion: true,
   },
+  update: {
+    /** 自动检查新版本（2026-10-10 加入）：每天最多一次，有新版只在设置里显示红点 */
+    auto: true,
+  },
   /** 已显示过的一次性提示 */
   seen: [] as string[],
 })
 
 const KEY = 'prefs.v2'
 
-function merge(target: Record<string, unknown>, src: Record<string, unknown>) {
+/** 把 src 合并进 target：只认 target 里已有的键（导入设置也用它） */
+export function merge(target: Record<string, unknown>, src: Record<string, unknown>) {
   for (const [k, v] of Object.entries(src)) {
     if (v && typeof v === 'object' && !Array.isArray(v) && target[k] && typeof target[k] === 'object' && !Array.isArray(target[k])) {
       merge(target[k] as Record<string, unknown>, v as Record<string, unknown>)

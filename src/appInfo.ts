@@ -1,9 +1,11 @@
 /** 关于页、README 里用到的应用信息 */
 export const APP_NAME = '浮生记'
-export const SLOGAN = '浮生若梦，落笔为记'
+export const SLOGAN = '浮生如寄，字有归处'
 export const AUTHOR_EMAIL = 'solidity9527@gmail.com'
 export const REPO_URL = 'https://github.com/Bmaili/diary-app'
 export const RELEASES_URL = `${REPO_URL}/releases/latest`
+/** 查最新版本的接口（应用内更新用） */
+export const RELEASES_API = `${REPO_URL.replace('https://github.com/', 'https://api.github.com/repos/')}/releases/latest`
 export const LICENSE_NAME = 'MIT'
 
 /** 用到的开源项目和服务 */

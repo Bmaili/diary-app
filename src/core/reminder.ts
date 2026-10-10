@@ -17,18 +17,26 @@ export interface PlannedReminder {
   body: string
 }
 
-const LINES = [
+export const LINES = [
   '哪怕一句话，也是今天的一页。',
   '给今天落一笔。',
   '今日之事，今日记之。',
   '片言只语，也是光阴。',
   '一句话就够，纸不嫌短。',
+  '片言只语，皆是浮生。',
+  '浮生如寄，字有归处。',
+  '浮生非梦，字字为凭。',
+  '浮生几何，一笔一记。',
+  '浮生琐碎，皆可成章。',
+  '浮生有痕，一页一记。',
 ]
 
 export function reminderText(date: string): { title: string; body: string } {
   const l = lunarDay(date)
-  const n = Number(date.replace(/-/g, ''))
-  const line = LINES[n % LINES.length]
+  // 按日期打散：每天固定一句（重排通知时不会变），相邻几天又不按顺序轮换
+  let h = 2166136261
+  for (const c of date) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
+  const line = LINES[(h >>> 0) % LINES.length]
   const day = l.festival ? `今天${l.festival}` : l.jieqi ? `今天${l.jieqi}` : `今天${l.full}`
   return { title: '写一句今天的日记', body: `${day}。${line}` }
 }

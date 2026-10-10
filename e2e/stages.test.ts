@@ -973,3 +973,111 @@ describe('每日诗词、不让 AI 读', () => {
     await ctx.close()
   })
 })
+
+describe('应用内更新、导入导出设置', () => {
+  it('检查到新版本：关于页显示更新内容，设置里只有一个红点；点“暂不”后红点消失', async () => {
+    const { ctx, page, errors } = await newPage()
+    // 比 wire() 里转发 GitHub 的规则后注册，优先生效
+    await ctx.route(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/releases\/latest$/, (r) => r.fulfill({
+      status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tag_name: 'v1.0.16', html_url: 'https://github.com/Bmaili/diary-app/releases/tag/v1.0.16', published_at: '2026-10-10T08:00:00Z',
+        body: '应用内更新：在 app 里下载新版，不用再跳到网页\n\n- 新增导入导出设置\n- 关于页换了介绍\n\n---\n在手机上下载下面的 APK……',
+        assets: [{ name: 'diary-1.0.16.apk', browser_download_url: 'https://github.com/x/diary-1.0.16.apk', size: 13416761, digest: 'sha256:' + 'a'.repeat(64) }],
+      }),
+    }))
+    await page.goto(BASE + '#/settings')
+    await page.getByText('关于浮生记').waitFor()
+    expect(await page.locator('.dot').count()).toBe(0)
+
+    await page.goto(BASE + '#/settings/about')
+    await page.getByRole('button', { name: '检查', exact: true }).click()
+    await page.getByText('新版本 1.0.16').first().waitFor()
+    await page.getByText('新增导入导出设置').waitFor()
+    expect(await page.getByText('在手机上下载下面的 APK').count()).toBe(0)
+    await page.getByRole('button', { name: '更新', exact: true }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: OUT + '90-about-update.png' })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '90-about-update-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({ path: OUT + '91-about-top.png' })
+
+    await page.goto(BASE + '#/settings')
+    await page.locator('.dot').waitFor()
+    await page.getByText('有新版本 1.0.16').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: OUT + '92-settings-badge.png' })
+
+    await page.goto(BASE + '#/settings/about')
+    await page.getByRole('button', { name: '暂不' }).click()
+    await page.getByText('已选择暂不更新').waitFor()
+    expect(await page.locator('.upd').count()).toBe(0)
+    await page.goto(BASE + '#/settings')
+    await page.getByText('关于浮生记').waitFor()
+    expect(await page.locator('.dot').count()).toBe(0)
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+
+  it('导出设置要设密码；另一台手机输对密码才能导入，密钥也带过去了', async () => {
+    const a = await newPage()
+    await a.page.goto(BASE + '#/settings/sync/oss')
+    await a.page.getByPlaceholder('oss-cn-hangzhou.aliyuncs.com').fill('oss-cn-hangzhou.aliyuncs.com')
+    await a.page.getByPlaceholder('my-diary').fill(OSS.bucket)
+    await a.page.getByLabel('AccessKey ID').fill(OSS.id)
+    await a.page.getByLabel('AccessKey Secret').fill(OSS.secret)
+    await a.page.getByRole('button', { name: '保存' }).click()
+    await a.page.waitForURL(/#\/settings\/sync$/)
+    await a.page.evaluate(() => {
+      const p = (window as unknown as { __diary: { prefs: { place: { autoLocate: boolean }; reminder: { time: string } } } }).__diary.prefs
+      p.place.autoLocate = false
+      p.reminder.time = '21:30'
+    })
+    await a.page.goto(BASE + '#/settings/transfer')
+    await a.page.getByText('已配置 阿里云 OSS').waitFor()
+    await a.page.getByRole('button', { name: '导出', exact: true }).last().click()
+    await a.page.getByText('密码至少 10 个字符').waitFor()
+    await a.page.getByLabel('密码', { exact: true }).fill('my settings pw')
+    await a.page.getByLabel('再输一次密码').fill('my settings pw')
+    await a.page.screenshot({ path: OUT + '93-transfer-export.png' })
+    await a.page.emulateMedia({ colorScheme: 'dark' })
+    await a.page.screenshot({ path: OUT + '93-transfer-export-dark.png' })
+    await a.page.emulateMedia({ colorScheme: 'light' })
+    const [dl] = await Promise.all([a.page.waitForEvent('download'), a.page.getByRole('button', { name: '导出', exact: true }).last().click()])
+    const file = OUT + 'settings-test.age'
+    await dl.saveAs(file)
+    expect(dl.suggestedFilename()).toMatch(/^diary-settings-\d{8}\.age$/)
+    await a.page.getByText(/已导出 4 类设置/).waitFor()
+    expect(a.errors).toEqual([])
+    await a.ctx.close()
+
+    const b = await newPage()
+    await b.page.goto(BASE + '#/settings/transfer')
+    await b.page.getByRole('tab', { name: '导入' }).click()
+    const [chooser] = await Promise.all([b.page.waitForEvent('filechooser'), b.page.getByRole('button', { name: '选择设置文件' }).click()])
+    await chooser.setFiles(file)
+    await b.page.getByLabel('导出时设置的密码').fill('wrong password')
+    await b.page.getByRole('button', { name: '打开' }).click()
+    await b.page.getByText('密码不对').waitFor({ timeout: 20000 })
+    await b.page.getByLabel('导出时设置的密码').fill('my settings pw')
+    await b.page.getByRole('button', { name: '打开' }).click()
+    await b.page.getByText('阿里云 OSS', { exact: true }).waitFor({ timeout: 20000 })
+    await b.page.screenshot({ path: OUT + '94-transfer-import.png' })
+    await b.page.emulateMedia({ colorScheme: 'dark' })
+    await b.page.screenshot({ path: OUT + '94-transfer-import-dark.png' })
+    await b.page.emulateMedia({ colorScheme: 'light' })
+    await b.page.getByRole('button', { name: '导入', exact: true }).last().click()
+    await b.page.getByText(/已导入：/).waitFor()
+    const p = await b.page.evaluate(() => {
+      const x = (window as unknown as { __diary: { prefs: { sync: { oss: { bucket: string; enabled: boolean } }; place: { autoLocate: boolean }; reminder: { time: string } } } }).__diary.prefs
+      return { bucket: x.sync.oss.bucket, enabled: x.sync.oss.enabled, autoLocate: x.place.autoLocate, time: x.reminder.time }
+    })
+    expect(p).toEqual({ bucket: OSS.bucket, enabled: false, autoLocate: false, time: '21:30' })
+    // AccessKey Secret 也导进来了：直接测试连接能通过
+    await b.page.goto(BASE + '#/settings/sync/oss')
+    await b.page.getByRole('button', { name: '测试连接' }).click()
+    await b.page.getByText('连接成功').waitFor()
+    expect(b.errors).toEqual([])
+    await b.ctx.close()
+  })
+})

@@ -25,13 +25,13 @@ export interface ExportTarget {
  * 以前是在内存里拼出整个 zip、再整体转成 base64 交给原生端，图片多了会因内存不足闪退。
  * 浏览器：收集成 Blob 后下载。
  */
-export async function openExport(name: string, mime = 'application/zip'): Promise<ExportTarget> {
+export async function openExport(name: string, mime = 'application/zip', dialogTitle = '保存或发送日记备份'): Promise<ExportTarget> {
   if (Capacitor.isNativePlatform()) {
-    // 上次导出的包已经分享出去了，清掉，免得缓存目录越积越大
+    // 上次导出的包（日记 zip、设置文件）已经分享出去了，清掉，免得缓存目录越积越大
     try {
       const old = await Filesystem.readdir({ path: '', directory: Directory.Cache })
       for (const f of old.files) {
-        if (/^diary-.*\.zip$/.test(f.name)) await Filesystem.deleteFile({ path: f.name, directory: Directory.Cache }).catch(() => {})
+        if (/^diary-.*\.(zip|age)$/.test(f.name)) await Filesystem.deleteFile({ path: f.name, directory: Directory.Cache }).catch(() => {})
       }
     } catch { /* 缓存目录读不了就算了 */ }
     await Filesystem.writeFile({ path: name, data: '', directory: Directory.Cache })
@@ -60,7 +60,7 @@ export async function openExport(name: string, mime = 'application/zip'): Promis
       async finish() {
         await flush()
         const { uri } = await Filesystem.getUri({ path: name, directory: Directory.Cache })
-        await Share.share({ title: name, files: [uri], dialogTitle: '保存或发送日记备份' })
+        await Share.share({ title: name, files: [uri], dialogTitle })
       },
     }
   }

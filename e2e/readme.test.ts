@@ -189,7 +189,7 @@ describe('README 截图与关于页', () => {
     const { page, errors, close } = await open()
     await page.goto(BASE + '#/settings')
     await page.getByRole('link', { name: /关于浮生记/ }).click()
-    await page.getByText('浮生若梦，落笔为记').waitFor()
+    await page.getByText('浮生如寄，字有归处').waitFor()
     await page.getByText('solidity9527@gmail.com').waitFor()
     await page.getByText('github.com/Bmaili/diary-app').waitFor()
     await page.waitForFunction(() => (document.querySelector('.logo') as HTMLImageElement)?.complete)
