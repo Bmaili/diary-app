@@ -74,10 +74,11 @@ describe('提醒排程', () => {
     expect(planReminders({ ...base, now: new Date(), today: '2026-10-04', time: 'abc', written: () => false })).toEqual([])
   })
 
-  it('文案带农历、节气和节日', () => {
+  it('文案带农历；节气、节日当天用点明这一天的句子，不再重复前缀', () => {
     expect(reminderText('2026-10-05').body).toMatch(/^今天农历八月廿五。/)
-    expect(reminderText('2026-10-08').body).toMatch(/^今天寒露。/)
-    expect(reminderText('2026-10-18').body).toMatch(/^今天重阳。/)
+    expect(reminderText('2026-10-08').body).toBe('寒露，添件衣服，写一句。')
+    expect(reminderText('2026-10-18').body).toMatch(/重阳/)
+    expect(reminderText('2026-10-18').body).not.toMatch(/^今天重阳。/)
   })
 })
 

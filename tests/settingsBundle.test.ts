@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Encrypter } from 'age-encryption'
 import { decryptBundle, encryptBundle, looksLikeBundle, settingsFileName, type SettingsBundle } from '../src/core/settingsBundle'
-import { LINES, reminderText } from '../src/core/reminder'
 
 const bundle: SettingsBundle = {
   app: 'diary-app',
@@ -57,18 +56,5 @@ describe('设置导入导出：文件', () => {
 
   it('不设密码不能导出', async () => {
     await expect(encryptBundle(bundle, '')).rejects.toThrow()
-  })
-})
-
-describe('写日记提醒的句子', () => {
-  it('同一天总是同一句，一段时间里各句都会出现', () => {
-    expect(reminderText('2026-11-03').body).toBe(reminderText('2026-11-03').body)
-    const seen = new Set<string>()
-    for (let d = 1; d <= 28; d++) for (const m of ['01', '02', '03', '04', '05', '06']) {
-      const body = reminderText(`2027-${m}-${String(d).padStart(2, '0')}`).body
-      seen.add(LINES.find((l) => body.endsWith(l))!)
-    }
-    expect(seen.size).toBe(LINES.length)
-    expect(LINES).toContain('浮生如寄，字有归处。')
   })
 })

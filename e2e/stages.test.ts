@@ -613,12 +613,13 @@ describe('阶段 5：提醒、应用锁、AI 补充说明', () => {
     await ctx.close()
   })
 
-  it('提醒设置页显示带月相的通知预览；AI 补充说明会保存', async () => {
+  it('提醒设置页显示通知预览；AI 补充说明会保存', async () => {
     const { ctx, page, errors } = await newPage()
     await page.goto(BASE + '#/settings')
     await page.getByRole('link', { name: /写日记提醒/ }).click()
     await page.getByText('写一句今天的日记').waitFor()
-    expect(await page.locator('.n-body').innerText()).toMatch(/^今天/)
+    // 普通日子是“今天农历……。”加一句；节日、节气、初一十五当天那一句自己点明日子，不加前缀
+    expect(await page.locator('.n-body').innerText()).toMatch(/^(今天.+。.+|.*(初一|新月|十五|十六|月圆|[春夏秋冬]|节|除夕|元旦|国庆|重阳|端午|七夕|中秋|腊八|元宵).*)[。？]$/)
     await page.getByText('提醒只在手机上有效').waitFor()
     await page.screenshot({ path: OUT + '53-reminder.png' })
 

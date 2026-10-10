@@ -5,6 +5,7 @@
  */
 import { addDays } from './time'
 import { lunarDay } from './lunar'
+import { pickHint } from './hints'
 
 export const REMINDER_BASE_ID = 7000
 export const REMINDER_DAYS = 14
@@ -17,28 +18,16 @@ export interface PlannedReminder {
   body: string
 }
 
-export const LINES = [
-  '哪怕一句话，也是今天的一页。',
-  '给今天落一笔。',
-  '今日之事，今日记之。',
-  '片言只语，也是光阴。',
-  '一句话就够，纸不嫌短。',
-  '片言只语，皆是浮生。',
-  '浮生如寄，字有归处。',
-  '浮生非梦，字字为凭。',
-  '浮生几何，一笔一记。',
-  '浮生琐碎，皆可成章。',
-  '浮生有痕，一页一记。',
-]
-
-export function reminderText(date: string): { title: string; body: string } {
+/**
+ * 通知正文：先说今天是什么日子，再接一句（句库见 hints.ts）。
+ * 那一句本身点明了节日或节气时，不再加前缀，免得“今天寒露。寒露，……”重复。
+ * @param hour 通知发出的钟点：“灯下”“月色”这类句子只在夜里的提醒里出现
+ */
+export function reminderText(date: string, hour = 22, cutoffHour = 4): { title: string; body: string } {
   const l = lunarDay(date)
-  // 按日期打散：每天固定一句（重排通知时不会变），相邻几天又不按顺序轮换
-  let h = 2166136261
-  for (const c of date) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
-  const line = LINES[(h >>> 0) % LINES.length]
+  const h = pickHint({ date, hour, cutoffHour, forNotice: true })
   const day = l.festival ? `今天${l.festival}` : l.jieqi ? `今天${l.jieqi}` : `今天${l.full}`
-  return { title: '写一句今天的日记', body: `${day}。${line}` }
+  return { title: '写一句今天的日记', body: h.namesDay ? h.text : `${day}。${h.text}` }
 }
 
 /**
@@ -66,7 +55,7 @@ export function planReminders(opts: {
     const [y, mo, d] = date.split('-').map(Number)
     const at = new Date(y, mo - 1, d + (hh < opts.cutoffHour ? 1 : 0), hh, mm, 0, 0)
     if (at.getTime() <= opts.now.getTime() + 30_000) continue
-    out.push({ id: REMINDER_BASE_ID + i, date, at, ...reminderText(date) })
+    out.push({ id: REMINDER_BASE_ID + i, date, at, ...reminderText(date, hh, opts.cutoffHour) })
   }
   return out
 }

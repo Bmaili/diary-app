@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { index, indexVersion, today } from '../../app'
+import { index, indexVersion, settings, today } from '../../app'
 import type { IndexRow } from '../../core/types'
 import EntryRow from '../components/EntryRow.vue'
 import Icon from '../components/Icon.vue'
@@ -16,6 +16,7 @@ import { profileFor } from '../../aiService'
 import { readSummary } from '../../core/summaries'
 import { store } from '../../app'
 import { addDays, daysBetween, parseYmd } from '../../core/time'
+import { pickHint } from '../../core/hints'
 
 defineOptions({ name: 'HomeView' })
 
@@ -29,6 +30,8 @@ onMounted(() => setTimeout(() => (intro.value = false), 2200))
 const PAGE = 60
 const limit = ref(PAGE)
 const todayStr = ref(today())
+/** 现在几点（选提示句用）：回到首页、从后台回来时刷新 */
+const nowHour = ref(new Date().getHours())
 
 const rows = computed(() => {
   void indexVersion.value
@@ -76,8 +79,26 @@ const subline = computed(() => {
   const parts: string[] = []
   if (s.streak >= 2) parts.push(`已经连续写了 ${s.streak} 天`)
   parts.push(`这个月写了 ${s.monthCount} 篇`)
-  if (!s.wroteToday) parts.push('今天还没写')
   return parts.join('，') + '。'
+})
+
+/**
+ * 统计行下面的一句小提示（句库见 core/hints.ts）：按时段、节令和日记状态挑，同一天同一时段固定一句。
+ * 还没有日记时不显示（统计行已经在邀请写第一篇）。
+ */
+const hint = computed(() => {
+  const all = rows.value
+  if (!all.length) return ''
+  const t = todayStr.value
+  const s = stats.value
+  const year = Number(t.slice(0, 4))
+  const mem = memories.value
+  const yearsAgo = mem.length ? Math.min(...mem.map((m) => year - Number(m.date.slice(0, 4)))) : 0
+  const prev = all.find((r) => r.date < t)
+  return pickHint({
+    date: t, hour: nowHour.value, cutoffHour: settings.cutoffHour,
+    wrote: s.wroteToday, streak: s.streak, yearsAgo, gapDays: prev ? daysBetween(prev.date, t) : 0,
+  }).text
 })
 
 /** 最近 30 天的心情条，最左边是 29 天前，最右边是今天 */
@@ -157,6 +178,7 @@ function onVisible() {
 }
 function refreshNow() {
   todayStr.value = today()
+  nowHour.value = new Date().getHours()
 }
 const lunar = computed(() => lunarDay(todayStr.value))
 watch([todayStr, () => prefs.daily.mode], () => void loadDaily(todayStr.value), { immediate: true })
@@ -214,17 +236,17 @@ const memoryDateLabel = (d: string) => {
       </p>
       <PlumBranch v-if="rows.length" :days="ribbon" :today="todayStr" :intro="intro" class="stars" />
       <p class="muted sub">{{ subline }}</p>
+      <p v-if="hint" class="hint-line">{{ hint }}</p>
     </section>
 
     <section v-if="prefs.daily.mode !== 'off' && daily.text" class="poem" aria-label="每日诗词">
       <Transition name="poem" mode="out-in">
         <div :key="daily.text" class="poem-body">
           <p class="verse">{{ daily.text }}</p>
-          <p class="cite">—— {{ daily.author }}<template v-if="daily.title">《{{ daily.title }}》</template></p>
         </div>
       </Transition>
       <div class="poem-foot">
-        <span class="reason">{{ daily.reason }}</span>
+        <span class="cite"><span v-if="daily.reason" class="reason">{{ daily.reason }}</span>{{ daily.author }}<template v-if="daily.title">《{{ daily.title }}》</template></span>
         <button class="text-btn swap" :disabled="daily.busy" @click="nextPoem">{{ daily.busy ? '取诗中' : '换一首' }}</button>
       </div>
     </section>
@@ -295,23 +317,25 @@ const memoryDateLabel = (d: string) => {
 .date { display: flex; align-items: baseline; gap: 10px; margin-left: 12px !important; }
 .date .big { font-size: 34px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; }
 .date .wk { font-size: 15px; font-weight: 600; color: var(--muted); }
-.hello { padding: 0 20px 14px; }
+.hello { padding: 0 20px 10px; }
 .sky-line { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; color: var(--muted); }
 .sky-line .num { font-size: 16px; color: var(--ink); }
 .day-no { margin-left: auto; }
 .today-seal { align-self: center; margin-left: 2px; }
 /* 每日诗词：竖线引出，楷体 */
-.poem { margin: 0 16px 14px; padding: 12px 16px 6px 18px; border-left: 2px solid var(--accent); }
+.poem { margin: 0 16px 12px; padding: 4px 12px 0 14px; border-left: 2px solid var(--accent); }
 .intro .poem { animation: rise-in 0.5s var(--ease-out) 0.1s backwards; }
-.verse { margin: 0; font-family: var(--kai); font-size: 18px; line-height: 1.75; letter-spacing: 0.06em; color: var(--ink); }
-.cite { margin: 4px 0 0; text-align: right; font-size: 13px; color: var(--muted); }
-.poem-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
-.reason { font-size: 12px; color: var(--accent); letter-spacing: 0.1em; }
-.swap { min-height: 32px; padding: 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.verse { margin: 0; font-family: var(--kai); font-size: 16px; line-height: 1.65; letter-spacing: 0.05em; color: var(--ink); }
+/* 出处、节令标签和“换一首”放在同一行，诗词这一块只占两三行高 */
+.poem-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cite { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.reason { margin-right: 8px; color: var(--accent); letter-spacing: 0.1em; }
+.swap { flex: none; min-height: 30px; padding: 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
 .poem-enter-active, .poem-leave-active { transition: opacity 0.35s, filter 0.35s, transform 0.35s; }
 .poem-enter-from, .poem-leave-to { opacity: 0; filter: blur(3px); transform: translateY(4px); }
 .stars { margin: 2px 0 4px; }
 .sub { margin: 0; font-size: 14px; }
+.hint-line { margin: 3px 0 0; font-family: var(--kai); font-size: 15px; line-height: 1.6; letter-spacing: 0.04em; color: var(--ink); opacity: 0.8; }
 .prompts { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
 .prompt {
   display: flex;

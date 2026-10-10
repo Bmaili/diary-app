@@ -76,6 +76,7 @@ src/core/            与平台无关、有单元测试的逻辑
   pin.ts reminder.ts lunar.ts（农历节气）holidays.ts（法定节假日：内置 + 联网覆盖）poems.ts（内置诗词）
   summaries.ts vocab.ts trash.ts（最近删除）imageCaption.ts launch.ts（桌面快捷方式链接）
   update.ts（解析 Releases、比较版本）settingsBundle.ts（设置导出文件：age 密码加密的 JSON）
+  hints.ts（首页小提示和提醒通知共用的句库：按时段、节令、日记状态挑一句）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream
@@ -101,7 +102,7 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 心情用中国传统色，从冷暗到暖亮：玄青、黛蓝、天青、竹青、杏黄（`--m1`…`--m5`）。不要用红色表示好心情，红色容易被读成生气。深色心情块上用浅色字，见 `.mood-N` 的 `--onm` 和 `mood.ts` 的 `inkOn`。成功和开关用竹青 `--m4`。
 - 字体用手机自带的宋体（`--serif`），诗句用楷体（`--kai`），数字用衬线体（`--num`）。不内置字体，免得安装包变大。
 - 首页最近 30 天画成一枝梅花（`PlumBranch.vue`）；日历每天显示农历，节气和节日用朱红；首页有每日诗词。
-- 不要引入星空、星座、月相、宇宙类意象。
+- 意象走古典文艺：明月、星河、灯下、茶、梅这类可以用；不要科幻宇宙、星座占卜这类现代意象。
 - 新界面沿用 `style.css` 里的颜色变量和组件（Switch、Sheet、Icon 等），不要引入新的视觉风格。
 - 应用图标是宣纸底上的水墨圆相加朱印“记”；改图标要从 `design/icon-enso.svg` 重新渲染各密度 PNG（自适应图标的前景层，加一张纸纹背景位图）。
 
