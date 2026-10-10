@@ -217,6 +217,13 @@ const syncLine = computed(() => {
       </label>
       <div class="item">
         <div>
+          <div>首页提示引用我的日记</div>
+          <div class="desc">梅枝下面那句小提示，偶尔会说起你写过的日子，比如“一年前的今天，你在江边公园”。只用心情不错、没有设“不让 AI 读”的日记，全部在手机上计算。</div>
+        </div>
+        <Switch v-model="prefs.ui.diaryHints" label="首页提示引用我的日记" />
+      </div>
+      <div class="item">
+        <div>
           <div>节假日联网更新</div>
           <div class="desc">{{ holidayDesc }}<button v-if="prefs.calendar.holidayOnline && !holidayStatus.busy" class="link" @click="refreshHolidays(true)">现在更新</button></div>
         </div>

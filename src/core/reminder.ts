@@ -20,12 +20,15 @@ export interface PlannedReminder {
 
 /**
  * 通知正文：先说今天是什么日子，再接一句（句库见 hints.ts）。
- * 那一句本身点明了节日或节气时，不再加前缀，免得“今天寒露。寒露，……”重复。
- * @param hour 通知发出的钟点：“灯下”“月色”这类句子只在夜里的提醒里出现
+ * 那一句本身点明了节日、节气或交节时刻时，不再加前缀，免得“今天寒露。寒露，……”重复。
+ * 通知会显示在锁屏上，所以不引用日记内容。
+ * @param at 通知发出的时刻：“灯下”“月色”这类句子只在夜里的提醒里出现；不传按当天 22:00
  */
-export function reminderText(date: string, hour = 22, cutoffHour = 4): { title: string; body: string } {
+export function reminderText(date: string, at?: Date, cutoffHour = 4): { title: string; body: string } {
   const l = lunarDay(date)
-  const h = pickHint({ date, hour, cutoffHour, forNotice: true })
+  const [y, m, d] = date.split('-').map(Number)
+  const now = at ?? new Date(y, m - 1, d, 22, 0, 0)
+  const h = pickHint({ date, now, cutoffHour, forNotice: true })
   const day = l.festival ? `今天${l.festival}` : l.jieqi ? `今天${l.jieqi}` : `今天${l.full}`
   return { title: '写一句今天的日记', body: h.namesDay ? h.text : `${day}。${h.text}` }
 }
@@ -55,7 +58,7 @@ export function planReminders(opts: {
     const [y, mo, d] = date.split('-').map(Number)
     const at = new Date(y, mo - 1, d + (hh < opts.cutoffHour ? 1 : 0), hh, mm, 0, 0)
     if (at.getTime() <= opts.now.getTime() + 30_000) continue
-    out.push({ id: REMINDER_BASE_ID + i, date, at, ...reminderText(date, hh, opts.cutoffHour) })
+    out.push({ id: REMINDER_BASE_ID + i, date, at, ...reminderText(date, at, opts.cutoffHour) })
   }
   return out
 }

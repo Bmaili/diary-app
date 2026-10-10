@@ -76,3 +76,19 @@ export function seasonOf(term: string): Season {
   const i = Math.max(0, ORDER.indexOf(term))
   return (['spring', 'summer', 'autumn', 'winter'] as const)[Math.floor(i / 6)]
 }
+
+/** 七十二候（2026-10-10 加入）：今天在哪一候，以及这一候的物候原文，例如 { hou: '寒露三候', text: '菊有黄花' } */
+export function pentad(date: string): { hou: string; text: string } {
+  const [y, m, d] = date.split('-').map(Number)
+  const l = Solar.fromYmd(y, m, d).getLunar()
+  return { hou: l.getHou().replace(' ', ''), text: l.getWuHou() }
+}
+
+/** 此刻之后的下一个节气和它交节的精确时刻（本地时间） */
+export function nextJieqi(now: Date): { name: string; at: Date } {
+  const s = Solar.fromYmdHms(now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds())
+  // wholeDay=false：按精确时刻比较，交节当天、交节之前仍然返回今天这个节气
+  const j = s.getLunar().getNextJieQi(false)
+  const t = j.getSolar()
+  return { name: j.getName(), at: new Date(t.getYear(), t.getMonth() - 1, t.getDay(), t.getHour(), t.getMinute(), t.getSecond()) }
+}

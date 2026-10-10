@@ -12,6 +12,15 @@ const CACHE_VERSION = 4
 /** 建索引时同时读几个文件 */
 const LOAD_CONCURRENCY = 8
 
+/** 正文有几段：每个 `### HH:mm` 标题算一段，标题前面有字的话也算一段 */
+export function countSections(body: string): number {
+  const re = /^#{1,6}[ \t]+\d{1,2}:\d{2}[ \t]*$/gm
+  const heads = body.match(re)?.length ?? 0
+  const first = body.search(re)
+  const lead = (first < 0 ? body : body.slice(0, first)).trim()
+  return heads + (lead ? 1 : 0)
+}
+
 export async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('')
@@ -43,6 +52,7 @@ export async function rowFromRaw(f: EntryFile, raw: string): Promise<IndexRow> {
       people: m.people ?? [],
       places: m.places ?? [],
       text: plainText(doc.body),
+      sections: countSections(doc.body),
       ...(m.ai?.extracted_at ? { extractedAt: String(m.ai.extracted_at) } : {}),
       ...(m.locked?.length ? { locked: m.locked } : {}),
       ...(test ? { test: true } : {}),

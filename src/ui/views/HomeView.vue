@@ -16,7 +16,9 @@ import { profileFor } from '../../aiService'
 import { readSummary } from '../../core/summaries'
 import { store } from '../../app'
 import { addDays, daysBetween, parseYmd } from '../../core/time'
-import { pickHint } from '../../core/hints'
+import { pickHint, slotOf } from '../../core/hints'
+import { diaryFacts } from '../../core/diaryFacts'
+import { hintSeed, refreshHintSeed } from '../../hintService'
 
 defineOptions({ name: 'HomeView' })
 
@@ -30,8 +32,8 @@ onMounted(() => setTimeout(() => (intro.value = false), 2200))
 const PAGE = 60
 const limit = ref(PAGE)
 const todayStr = ref(today())
-/** 现在几点（选提示句用）：回到首页、从后台回来时刷新 */
-const nowHour = ref(new Date().getHours())
+/** 现在（选提示句用）：回到首页、从后台回来时刷新 */
+const nowTs = ref(Date.now())
 
 const rows = computed(() => {
   void indexVersion.value
@@ -83,21 +85,23 @@ const subline = computed(() => {
 })
 
 /**
- * 统计行下面的一句小提示（句库见 core/hints.ts）：按时段、节令和日记状态挑，同一天同一时段固定一句。
+ * 统计行下面的一句小提示（句库见 core/hints.ts，换句节奏见 hintService.ts）。
  * 还没有日记时不显示（统计行已经在邀请写第一篇）。
  */
+const facts = computed(() => {
+  void indexVersion.value
+  return prefs.ui.diaryHints ? diaryFacts(index.all(), todayStr.value) : { personal: [], afterWrite: [] }
+})
 const hint = computed(() => {
   const all = rows.value
-  if (!all.length) return ''
+  if (!all.length || !hintSeed.value) return ''
   const t = todayStr.value
   const s = stats.value
-  const year = Number(t.slice(0, 4))
-  const mem = memories.value
-  const yearsAgo = mem.length ? Math.min(...mem.map((m) => year - Number(m.date.slice(0, 4)))) : 0
   const prev = all.find((r) => r.date < t)
   return pickHint({
-    date: t, hour: nowHour.value, cutoffHour: settings.cutoffHour,
-    wrote: s.wroteToday, streak: s.streak, yearsAgo, gapDays: prev ? daysBetween(prev.date, t) : 0,
+    date: t, now: new Date(nowTs.value), cutoffHour: settings.cutoffHour, seed: hintSeed.value,
+    wrote: s.wroteToday, streak: s.streak, gapDays: prev ? daysBetween(prev.date, t) : 0,
+    personal: facts.value.personal, afterWrite: facts.value.afterWrite,
   }).text
 })
 
@@ -174,15 +178,19 @@ watch(sentinel, (el) => el && io?.observe(el))
 
 // 跨过凌晨切换时刻、或从后台回来时，刷新“今天”
 function onVisible() {
-  if (!document.hidden) refreshNow()
+  if (!document.hidden) refreshNow(true)
 }
-function refreshNow() {
+/** @param resumed 从后台回来（小提示隔 30 分钟可以换句）；切页面回来时不算 */
+function refreshNow(resumed = false) {
   todayStr.value = today()
-  nowHour.value = new Date().getHours()
+  nowTs.value = Date.now()
+  refreshHintSeed(todayStr.value, slotOf(new Date().getHours(), settings.cutoffHour), resumed)
 }
+// 打开 app 时算一次“回来”
+refreshNow(true)
 const lunar = computed(() => lunarDay(todayStr.value))
 watch([todayStr, () => prefs.daily.mode], () => void loadDaily(todayStr.value), { immediate: true })
-onActivated(refreshNow)
+onActivated(() => refreshNow(false))
 
 // 上个月有日记但还没有总结时提示生成；1 月还提示上一年的年度总结（规格 7.5）
 const prompts = ref<{ period: string; label: string }[]>([])

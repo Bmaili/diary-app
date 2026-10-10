@@ -76,12 +76,14 @@ src/core/            与平台无关、有单元测试的逻辑
   pin.ts reminder.ts lunar.ts（农历节气）holidays.ts（法定节假日：内置 + 联网覆盖）poems.ts（内置诗词）
   summaries.ts vocab.ts trash.ts（最近删除）imageCaption.ts launch.ts（桌面快捷方式链接）
   update.ts（解析 Releases、比较版本）settingsBundle.ts（设置导出文件：age 密码加密的 JSON）
-  hints.ts（首页小提示和提醒通知共用的句库：按时段、节令、日记状态挑一句）
+  hints.ts（首页小提示和提醒通知共用的句库：七十二候、时辰、交节、节日节气、彩蛋，分层抽取）
+  diaryFacts.ts（首页小提示里引用日记的句子：只用心情 ≥3、非 ai_exclude 的日记）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream
 src/*Service.ts      应用层：sync、place、image、ai、lock、reminder、daily、holiday、launch、update（应用内更新）
                      （界面读农历要用 holidayService 的 `lunar()`，节假日数据更新后才会刷新）
+src/hintService.ts   首页小提示的换句节奏（回来时隔 30 分钟或跨时段换句，切页面不换）
 src/settingsTransfer.ts  导入导出设置：按类收集 prefs 和密钥、导入时整类覆盖（换了 Bucket / 仓库的同步后端先关着）
 src/appInfo.ts       应用名、slogan、作者邮箱、仓库地址、致谢列表（关于页用）
 src/app.ts           全局：store/repo/index、串行写入队列 enqueue、onStarted/onDiaryChanged 钩子

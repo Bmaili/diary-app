@@ -10,7 +10,12 @@ import Switch from '../components/Switch.vue'
 
 const router = useRouter()
 const msg = ref('')
-const preview = computed(() => reminderText(today(), Number(prefs.reminder.time.split(':')[0]) || 0, settings.cutoffHour))
+const preview = computed(() => {
+  const [h, m] = prefs.reminder.time.split(':').map(Number)
+  const at = new Date()
+  at.setHours(h || 0, m || 0, 0, 0)
+  return reminderText(today(), at, settings.cutoffHour)
+})
 const lateNight = computed(() => Number(prefs.reminder.time.split(':')[0]) < settings.cutoffHour)
 
 async function toggle(on: boolean) {

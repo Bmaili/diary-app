@@ -94,6 +94,8 @@ export interface IndexRow {
   locked?: string[]
   /** 正文纯文本（去掉 Markdown 标记），用于搜索和摘要 */
   text: string
+  /** 正文有几段（同一天每次再写会追加一个 `### HH:mm` 段落）；老缓存里没有 */
+  sections?: number
   /** 测试数据标记，便于一键清除 */
   test?: boolean
   /** 不让 AI 读（front matter 的 ai_exclude） */

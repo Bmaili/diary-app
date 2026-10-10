@@ -11,7 +11,7 @@ export const PARTS: { id: PartId; label: string; desc: string }[] = [
   { id: 'ai', label: 'AI 服务', desc: '服务列表和 API Key、各功能用哪个服务、补充说明、改过的提示词' },
   { id: 'sync', label: '同步与备份', desc: 'OSS、GitHub 的配置和密钥，自动同步的设置，云端加密的密钥' },
   { id: 'place', label: '位置与天气', desc: '自动定位、高德 key、天气服务、默认城市' },
-  { id: 'misc', label: '日记与提醒', desc: '写日记提醒、一天从几点开始、每日诗词、节假日、动态效果、自动检查更新' },
+  { id: 'misc', label: '日记与提醒', desc: '写日记提醒、一天从几点开始、每日诗词、节假日、动态效果、首页提示、自动检查更新' },
 ]
 
 export interface BundlePart {

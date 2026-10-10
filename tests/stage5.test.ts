@@ -75,10 +75,13 @@ describe('提醒排程', () => {
   })
 
   it('文案带农历；节气、节日当天用点明这一天的句子，不再重复前缀', () => {
-    expect(reminderText('2026-10-05').body).toMatch(/^今天农历八月廿五。/)
-    expect(reminderText('2026-10-08').body).toBe('寒露，添件衣服，写一句。')
-    expect(reminderText('2026-10-18').body).toMatch(/重阳/)
-    expect(reminderText('2026-10-18').body).not.toMatch(/^今天重阳。/)
+    // 10 月 14 日离节气、节日都远：一定带“今天农历……。”的前缀
+    expect(reminderText('2026-10-14').body).toMatch(/^今天农历九月初五。/)
+    // 寒露当天：要么是寒露的句子（不带前缀），要么是带前缀的时辰、七十二候
+    const b = reminderText('2026-10-08').body
+    expect(b).not.toMatch(/^今天寒露。寒露/)
+    expect(b).toMatch(/^寒露|^今天寒露。/)
+    expect(reminderText('2026-10-18').body).not.toMatch(/^今天重阳。重阳/)
   })
 })
 
