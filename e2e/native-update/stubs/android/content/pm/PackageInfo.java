@@ -1,0 +1,1 @@
+package android.content.pm; public class PackageInfo { public String packageName; public int versionCode; public Signature[] signatures; public SigningInfo signingInfo; public long getLongVersionCode(){return 0;} }

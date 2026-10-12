@@ -3,6 +3,8 @@
  * - 自动检查：只在手机上、设置里开着（默认开）时，启动和回到前台时检查，两次至少隔一天。
  *   有新版只在“设置 → 关于浮生记”那一行显示红点，别的页面不打扰。点“暂不”后这个版本不再显示红点。
  * - 用户点“更新”才下载（原生插件，带进度、可取消），下完核对 sha256 和签名，再调起系统安装界面。
+ * - 断点续传（2026-10-12）：失败、取消、app 被关掉后，下了一半的文件留着，下次接着下；
+ *   换了版本（或同一版本的安装包变了）就作废，从头下。断线时原生端悄悄重试一次。
  *   覆盖安装会保留日记；签名不一致的安装包在 app 里就拦下，不会交给系统。
  * - 浏览器里（开发预览）不自动检查；手动检查后点“更新”打开 Releases 网页。
  * 检查结果存在 Preferences（diary/ 之外）。
@@ -11,7 +13,7 @@ import { computed, reactive } from 'vue'
 import { App as CapApp } from '@capacitor/app'
 import { Preferences } from '@capacitor/preferences'
 import { http } from './core/http'
-import { AUTO_CHECK_MS, isNewer, parseRelease, type ReleaseInfo } from './core/update'
+import { AUTO_CHECK_MS, formatSize, isNewer, parseRelease, resumeOffset, type ReleaseInfo } from './core/update'
 import { RELEASES_API, RELEASES_URL } from './appInfo'
 import { enqueue, index, onStarted } from './app'
 import { prefs } from './prefs'
@@ -36,6 +38,8 @@ export const updateState = reactive({
   path: '',
   /** 下载、安装过程中的提示或错误 */
   note: '',
+  /** 上次下了一半、可以接着下的字节数（0 表示没有） */
+  resumable: 0,
 })
 
 export const hasUpdate = computed(() => !!updateState.latest && isNewer(updateState.latest.version, currentVersion))
@@ -59,6 +63,8 @@ export async function checkUpdate(manual = true): Promise<void> {
     // 换了一个更新的版本：之前下载好的旧安装包作废
     if (updateState.latest?.version !== latest.version && updateState.phase === 'ready') resetDownload()
     updateState.latest = latest
+    // 下了一半的不是这个版本（或这个版本的安装包换了）：作废
+    if (updateState.phase === 'idle') void refreshPartial()
     updateState.lastCheck = Date.now()
     updateState.error = ''
     await save()
@@ -94,6 +100,20 @@ export function openReleasePage() {
 
 let progressListening = false
 
+/**
+ * 核对下了一半的文件：还是要下的这个版本就记下进度（关于页显示“继续下载”），否则删掉。
+ * 已经装上了这个版本（或更新的）时也删掉。只在没有进行中的下载、也没有等着安装的安装包时调用。
+ */
+async function refreshPartial(): Promise<void> {
+  if (!inAppUpdateSupported) return
+  const latest = updateState.latest
+  const p = await AppUpdate.partial().catch(() => null)
+  const keep = latest && isNewer(latest.version, currentVersion) ? resumeOffset(p, latest.version, latest.apk) : 0
+  updateState.resumable = keep
+  // 不能续传时整个目录清掉（也包括上次下完却没装的安装包）
+  if (!keep) await AppUpdate.clean().catch(() => {})
+}
+
 export async function startDownload(): Promise<void> {
   const latest = updateState.latest
   if (!latest || updateState.phase !== 'idle') return
@@ -107,15 +127,23 @@ export async function startDownload(): Promise<void> {
       if (updateState.phase === 'downloading') Object.assign(updateState, { done: e.done, total: e.total })
     })
   }
-  Object.assign(updateState, { phase: 'downloading', done: 0, total: latest.apk.size, note: '' })
+  const offset = resumeOffset(await AppUpdate.partial().catch(() => null), latest.version, latest.apk)
+  Object.assign(updateState, { phase: 'downloading', done: offset, total: latest.apk.size, note: '' })
   try {
-    const r = await AppUpdate.download({ url: latest.apk.url, sha256: latest.apk.sha256, size: latest.apk.size })
-    Object.assign(updateState, { phase: 'ready', path: r.path })
+    const r = await AppUpdate.download({
+      url: latest.apk.url, sha256: latest.apk.sha256, size: latest.apk.size, version: latest.version, offset,
+    })
+    Object.assign(updateState, { phase: 'ready', path: r.path, resumable: 0 })
     await installUpdate()
   } catch (e) {
     const err = e as { message?: string; code?: string }
     resetDownload()
-    updateState.note = err.code === 'CANCELLED' ? '' : `下载失败：${err.message ?? String(e)}`
+    // 下了一半的留着：再点“继续下载”接着下
+    await refreshPartial()
+    const kept = updateState.resumable ? `已下载 ${formatSize(updateState.resumable)} / ${formatSize(latest.apk.size)}，再点“继续下载”会接着下` : ''
+    updateState.note = err.code === 'CANCELLED'
+      ? kept
+      : `下载失败：${err.message ?? String(e)}${kept ? `。${kept}` : ''}`
   }
 }
 
@@ -162,8 +190,8 @@ export function initUpdate() {
         Object.assign(updateState, { lastCheck: Number(s.lastCheck) || 0, latest: s.latest ?? null, dismissed: s.dismissed ?? '' })
       }
     } catch { /* 坏了就当没检查过 */ }
-    // 已经装上了新版（或者缓存里还留着上次下载的安装包）：清掉
-    if (inAppUpdateSupported) void AppUpdate.clean().catch(() => {})
+    // 已经装上了新版、或者下了一半的不是要下的版本：清掉；还是要下的这一版就留着接着下
+    void refreshPartial()
     autoCheck()
   })
   if (inAppUpdateSupported) void CapApp.addListener('resume', autoCheck)

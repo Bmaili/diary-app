@@ -95,7 +95,7 @@ function open(url: string) {
           </template>
           <template v-else>
             <button class="text-btn" @click="later">暂不</button>
-            <button class="solid-btn" @click="startDownload">更新</button>
+            <button class="solid-btn" @click="startDownload">{{ u.resumable ? '继续下载' : '更新' }}</button>
           </template>
         </div>
         <p v-if="u.note" class="upd-note">{{ u.note }}</p>

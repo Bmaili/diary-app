@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanNotes, formatSize, isNewer, parseRelease, versionParts } from '../src/core/update'
+import { cleanNotes, formatSize, isNewer, parseRelease, resumeOffset, versionParts } from '../src/core/update'
 
 describe('应用内更新：版本比较', () => {
   it('按数字逐段比较', () => {
@@ -53,5 +53,29 @@ describe('应用内更新：解析 Releases 接口', () => {
   it('文件大小', () => {
     expect(formatSize(13416761)).toBe('12.8 MB')
     expect(formatSize(2048)).toBe('2 KB')
+  })
+})
+
+describe('断点续传：能不能接着上次下', () => {
+  const apk = { name: 'diary-1.0.12.apk', url: 'https://x/diary-1.0.12.apk', size: 4_000_000, sha256: 'AbC123' }
+  const part = { version: '1.0.12', sha256: 'abc123', size: 4_000_000, bytes: 1_500_000 }
+  it('版本、大小、sha256 都一致且没下完：从断点接着下', () => {
+    expect(resumeOffset(part, '1.0.12', apk)).toBe(1_500_000)
+  })
+  it('11 下了一半，12 发布了：从头下', () => {
+    expect(resumeOffset({ ...part, version: '1.0.11' }, '1.0.12', apk)).toBe(0)
+  })
+  it('同一个版本号但安装包变了（sha256 或大小不同）：从头下', () => {
+    expect(resumeOffset({ ...part, sha256: 'ffff' }, '1.0.12', apk)).toBe(0)
+    expect(resumeOffset({ ...part, size: 3_999_999 }, '1.0.12', apk)).toBe(0)
+  })
+  it('没有 sha256 认不准；没有半截文件、已经下完、记录坏了：都从头下', () => {
+    expect(resumeOffset(part, '1.0.12', { ...apk, sha256: '' })).toBe(0)
+    expect(resumeOffset({ ...part, sha256: '' }, '1.0.12', apk)).toBe(0)
+    expect(resumeOffset(null, '1.0.12', apk)).toBe(0)
+    expect(resumeOffset({}, '1.0.12', apk)).toBe(0)
+    expect(resumeOffset({ ...part, bytes: 4_000_000 }, '1.0.12', apk)).toBe(0)
+    expect(resumeOffset({ ...part, bytes: 0 }, '1.0.12', apk)).toBe(0)
+    expect(resumeOffset(part, '1.0.12', null)).toBe(0)
   })
 })

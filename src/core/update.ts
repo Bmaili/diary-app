@@ -14,6 +14,27 @@ export interface ReleaseInfo {
   apk: { name: string; url: string; size: number; sha256: string } | null
 }
 
+/** 下到一半的安装包（原生插件 partial() 返回的）：版本、大小、sha256，已经下了多少字节 */
+export interface PartialDownload {
+  version?: string
+  sha256?: string
+  size?: number
+  bytes?: number
+}
+
+/**
+ * 能不能接着上次下（2026-10-12 加入断点续传）：半截文件的版本、大小、sha256 都和要下的这个一致，
+ * 而且还没下完，才返回已下载的字节数；否则返回 0（从头下）。
+ * 例如 1.0.11 下了一半没装，1.0.12 发布了：版本不同，从头下 1.0.12。
+ * 没有 sha256 时认不准是不是同一个文件，也从头下。
+ */
+export function resumeOffset(p: PartialDownload | null | undefined, version: string, apk: ReleaseInfo['apk']): number {
+  if (!p || !apk || !apk.sha256 || !p.sha256) return 0
+  if (p.version !== version || p.size !== apk.size || p.sha256.toLowerCase() !== apk.sha256.toLowerCase()) return 0
+  const b = Number(p.bytes) || 0
+  return b > 0 && b < apk.size ? b : 0
+}
+
 /** 两次自动检查至少隔这么久 */
 export const AUTO_CHECK_MS = 24 * 3600 * 1000
 

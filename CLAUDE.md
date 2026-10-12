@@ -19,6 +19,7 @@
 - versionCode = 100 + 构建序号，versionName = 1.0.<构建序号>，设置页底部显示版本（Vite `__APP_VERSION__`）。
 - Release 说明取自提交说明（会去掉 `Claude-Session:` 行），所以提交说明的第一行要写成用户能看懂的更新内容。
 - app 内更新（`updateService.ts`）读 `releases/latest`：标签必须是 `v1.0.N`，安装包名以 `.apk` 结尾（不带 `unsigned`），更新内容取说明里 `---` 之前的部分。改 workflow 的发布步骤时别破坏这几点，否则用户收不到更新提示。
+- app 内更新支持断点续传（见 SPEC 5.11），续传靠 sha256 认文件：发布时要保留 GitHub 给的 `digest`。更新代码要等装上之后的下一版才在真机上跑，改 `AppUpdatePlugin.java` 后要跑 `bash e2e/native-update/run.sh`（桩类编译 + 本地 HTTPS 服务器，覆盖断线重试、续传、换版本、不支持分段、sha256 不对、404）全过再推送。
 - 在没有 Android SDK 的云端环境里：
   - 不能在本地打安卓包。Java 改动只能用桩类编译检查，最终以 CI 结果为准。
   - 用 `https://api.github.com/repos/<owner>/<repo>/commits/<sha>/check-runs` 查看构建是否成功；`.../check-runs/<id>/annotations` 看失败原因（workflow 失败时会把日志结尾写成 error 注释）。
@@ -95,7 +96,7 @@ src/ui/              views/ 各页面，components/，style.css（主题）setti
                      components/ImageViewer.vue（全屏看图）AnswerChart.vue（问答图表，手写 SVG）
                      backStack.ts（安卓返回键先关覆盖层）
 tests/               单元测试；tests/mocks/ 下是 OSS、GitHub、LLM 的本地模拟服务器
-e2e/                 端到端测试
+e2e/                 端到端测试；native-update/ 是应用内更新原生下载逻辑的测试（桩类 + 本地 HTTPS 服务器）
 android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用阿里云镜像）
 design/              图标源图 icon-enso.svg（各密度 PNG 由它渲染）
 docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日记和模拟模型拍出（e2e/out/readme-*.png），缩到 390 宽转 JPEG
@@ -110,6 +111,7 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 意象走古典文艺：明月、星河、灯下、茶、梅这类可以用；不要科幻宇宙、星座占卜这类现代意象。
 - 新界面沿用 `style.css` 里的颜色变量和组件（Switch、Sheet、Icon 等），不要引入新的视觉风格。
 - 应用图标是宣纸底上的水墨圆相加朱印“记”；改图标要从 `design/icon-enso.svg` 重新渲染各密度 PNG（自适应图标的前景层，加一张纸纹背景位图）。
+- 启动图 `res/drawable*/splash.webp` 用 WebP（质量 92，11 张合计不到 0.1 MB）。以前的 PNG 有纸纹噪点压不下去，占了安装包 12.8 MB 里的 9.4 MB。重新生成启动图（例如用 Capacitor 的资源工具）时会输出 PNG，要再转成 WebP 并删掉 PNG（同名的 png 和 webp 并存会打包失败）。
 
 ## 性能与动效
 

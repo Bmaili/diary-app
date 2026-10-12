@@ -1,0 +1,1 @@
+package android.content; public class Intent { public static final String ACTION_VIEW="v"; public static final int FLAG_GRANT_READ_URI_PERMISSION=1, FLAG_ACTIVITY_NEW_TASK=2; public Intent(String a){} public Intent(String a, android.net.Uri u){} public Intent setDataAndType(android.net.Uri u,String t){return this;} public Intent addFlags(int f){return this;} }
