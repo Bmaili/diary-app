@@ -52,7 +52,7 @@ npm run cap:sync             # 构建并同步到 android/
 - 一天从凌晨 4 点开始（可设置）。同一天再次写作时，追加 `### HH:mm` 段落（标题下面不空行）。
 - 写文件都是原子写入（先写 tmp 再 rename）。必须保留用户手动添加的未知字段。
 - AI 写回时不更新 `updated`，并记录 `ai.extracted_at`。手动改过的 `tags/people/places` 字段整个进入 `locked`，AI 不再覆盖。
-- 图片说明就是 Markdown 替代文字 `![说明](../../attachments/…)`，不新增字段。
+- 图片说明就是 Markdown 替代文字 `![说明](../../attachments/…)`，不新增字段。新插的图是长边 2560 的 `.webp`（2026-10-12 起），旧的 `.jpg` 原样保留；代码里不要假设附件是 JPEG。
 - 索引缓存在 `cache/index.json`，同步清单和状态在 `sync/`，问答记录在 `ai/chats.json`。这些都在 `diary/` 之外，可以重建。
 - 日记可设 `ai_exclude: true`（不让 AI 读）：问答工具（`index.aiRows()`）、总结、批量抽取、图片说明都跳过它，月度总结的源哈希也不算它。
 - 删除的日记放在 `trash/<日期>_<时间戳>/`（在 `diary/` 之外，不同步），30 天后启动时清理。删除一律走 `deleteEntryToTrash`，不要直接调 `repo.deleteEntry`（开发者选项清测试数据除外）。
@@ -71,6 +71,7 @@ src/core/            与平台无关、有单元测试的逻辑
                      chatJson 要 JSON：约束解码 → 宽松解析 → 请它重写；去掉 <think>）
                      prompts.ts（各功能系统提示词：可编辑部分 + 代码附加的固定部分，用户改过的存 prefs.ai.prompts）
                      tools.ts agent.ts（工具调用问答，计数在代码里做；按上下文长度压缩发送量）
+                     stats.ts（aggregate 分组统计）charts.ts（回答里的图表：编号、[[chart:…]] 标记、画法）
                      extract.ts summarize.ts caption.ts（看图写说明，user 消息可带 images）
   mdEdit.ts          编辑快捷按钮与列表续行
   pin.ts reminder.ts lunar.ts（农历节气）holidays.ts（法定节假日：内置 + 联网覆盖）poems.ts（内置诗词）
@@ -90,7 +91,9 @@ src/app.ts           全局：store/repo/index、串行写入队列 enqueue、on
 src/prefs.ts         不含密钥的设置（响应式，自动保存；读取时只合并已有的键，新增对象型设置要把键列全）
 src/ui/              views/ 各页面，components/，style.css（主题）settings.css
                      editor/ 编辑页的组合式函数：useEntrySession（打开/自动保存/离开/删除）
-                     usePlaceWeather useTextarea useImages useAiExtract
+                     usePlaceWeather useTextarea（自动增高时保持滚动、光标不被键盘挡住）useImages（插图、说明、看大图）useAiExtract
+                     components/ImageViewer.vue（全屏看图）AnswerChart.vue（问答图表，手写 SVG）
+                     backStack.ts（安卓返回键先关覆盖层）
 tests/               单元测试；tests/mocks/ 下是 OSS、GitHub、LLM 的本地模拟服务器
 e2e/                 端到端测试
 android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用阿里云镜像）
@@ -127,7 +130,8 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 
 ## AI 功能的约定
 
-- 计数在代码里做（`count_days` 等工具），模型只负责选词和表述。
+- 计数在代码里做（`count_days`、`aggregate` 等工具），模型只负责选词和表述。
+- 回答里的图表只画工具结果（`chart_id` → 存下的数据），不要让模型输出图表数字。图表写法放在 `CHART_RULES`（固定部分）。
 - 改默认提示词时要注意：用户改过的版本不会跟着变。程序依赖的格式要求放在 `fixed`（由代码附加），不要放进可编辑部分。
 - 要正文的调用用 `chatText`，要 JSON 的用 `chatJson`，不要直接用 `chat` 再自己解析。
 - 第一次把日记发给某个服务前要征得同意（`ensureConsent`）；`ai_exclude` 的日记任何 AI 功能都不能读。

@@ -938,7 +938,8 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     expect(system).toContain('阿杰是我大学室友。')
     expect(system).toContain('回答不超过三句话。')
     expect(system).not.toContain('口气轻松一点。')
-    expect(system.startsWith('你是我的日记助手，回答要押韵。\n\n今天是 ')).toBe(true)
+    expect(system.startsWith('你是我的日记助手，回答要押韵。\n\n回答里可以放图表')).toBe(true)
+    expect(system).toContain('\n\n今天是 ')
     expect(system).not.toContain('先用工具查')
     // 恢复默认（确认框由 newPage 自动接受）
     await page.goto(BASE + '#/settings/ai/prompt/chat')
