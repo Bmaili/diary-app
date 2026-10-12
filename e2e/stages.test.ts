@@ -1082,3 +1082,74 @@ describe('应用内更新、导入导出设置', () => {
     await b.ctx.close()
   })
 })
+
+describe('编辑长日记时光标不被挡住', () => {
+  /** 光标所在行的下沿和按钮条上沿（视口坐标）；按钮条不在时用视口高度 */
+  async function caret(page: Page): Promise<{ bottom: number; top: number; limit: number; head: number }> {
+    return page.evaluate(() => {
+      const el = document.querySelector('textarea.input') as HTMLTextAreaElement
+      const cs = getComputedStyle(el)
+      const m = document.createElement('div')
+      for (const p of ['fontFamily', 'fontSize', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'boxSizing'] as const) m.style[p] = cs[p]
+      Object.assign(m.style, { position: 'absolute', visibility: 'hidden', whiteSpace: 'pre-wrap', width: `${el.getBoundingClientRect().width}px` })
+      m.textContent = el.value.slice(0, el.selectionEnd)
+      const s = document.createElement('span')
+      s.textContent = '​'
+      m.appendChild(s)
+      document.body.appendChild(m)
+      const top = el.getBoundingClientRect().top + s.offsetTop
+      m.remove()
+      const bar = document.querySelector('.toolbar')?.getBoundingClientRect()
+      const head = document.querySelector('.editor .topbar')!.getBoundingClientRect()
+      return { top, bottom: top + parseFloat(cs.lineHeight), limit: bar ? bar.top : innerHeight, head: head.bottom }
+    })
+  }
+
+  it('在长日记中间打字、在末尾回车，光标都在按钮条上方', async () => {
+    const { ctx, page, errors } = await newPage()
+    // 键盘弹出后网页剩下的高度
+    await page.setViewportSize({ width: 393, height: 460 })
+    await page.goto(BASE + '#/')
+    await page.getByRole('button', { name: '写今天' }).click()
+    const ta = page.getByLabel('日记正文')
+    await ta.waitFor()
+    await page.waitForFunction(() => document.activeElement?.tagName === 'TEXTAREA')
+    await ta.fill(Array.from({ length: 80 }, (_, i) => `第${i}行，今天写了很多字，信息密度很高。`).join('\n'))
+    await page.getByRole('toolbar', { name: '格式' }).waitFor()
+
+    // 中间：把第 40 行放到屏幕偏下的位置再打字
+    await page.evaluate(() => {
+      const el = document.querySelector('textarea.input') as HTMLTextAreaElement
+      const pos = el.value.indexOf('第40行') + 10
+      el.focus()
+      el.setSelectionRange(pos, pos)
+    })
+    const before = await caret(page)
+    await page.evaluate((dy) => window.scrollBy(0, dy), before.bottom - (before.limit - 20))
+    for (const ch of '加了几个字') await page.keyboard.type(ch)
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('新起一行')
+    await page.waitForTimeout(100)
+    let c = await caret(page)
+    expect(c.bottom).toBeLessThanOrEqual(c.limit)
+    expect(c.top).toBeGreaterThanOrEqual(c.head)
+
+    // 末尾连续回车
+    await page.evaluate(() => {
+      const el = document.querySelector('textarea.input') as HTMLTextAreaElement
+      el.setSelectionRange(el.value.length, el.value.length)
+      window.scrollTo(0, document.body.scrollHeight)
+    })
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press('Enter')
+      await page.keyboard.type('继续写一行')
+    }
+    await page.waitForTimeout(100)
+    c = await caret(page)
+    expect(c.bottom).toBeLessThanOrEqual(c.limit)
+    expect(c.top).toBeGreaterThanOrEqual(c.head)
+    await page.screenshot({ path: OUT + '96-editor-long-caret.png' })
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+})

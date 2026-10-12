@@ -41,7 +41,7 @@ const mode = ref<'write' | 'read'>('write')
 const placeNote = ref('')
 const note = (s: string) => (placeNote.value = s)
 
-const { textarea, focused, autosize, focusEnd, onFocus, onBlur, onTool, onBeforeInput, replaceText } = useTextarea(text, readOnly, () => chooseImage())
+const { textarea, focused, keyboard, autosize, onInput, focusEnd, onFocus, onBlur, onTool, onBeforeInput, replaceText } = useTextarea(text, readOnly, () => chooseImage())
 const { placeBusy, locOpen, weatherOpen, fillPlace, pickLocation, locLabel, fetchNowWeather, saveWeather, weatherText } =
   usePlaceWeather({ date, meta, changed: metaChanged, isLeft, note })
 const { imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage } = useImages({
@@ -259,9 +259,10 @@ function goBack() {
       </div>
       <p v-if="placeNote" class="place-note">{{ placeNote }}</p>
 
-      <main class="paper" :class="{ 'with-tools': mode === 'write' && focused }">
+      <main class="paper" :class="{ 'with-tools': mode === 'write' && focused }"
+        :style="mode === 'write' && focused && keyboard ? { paddingBottom: `calc(96px + ${keyboard}px)` } : undefined">
         <textarea v-show="mode === 'write'" ref="textarea" v-model="text" class="input prose" :readonly="readOnly"
-          :placeholder="isToday ? '今天过得怎么样？' : '这一天发生了什么？'" aria-label="日记正文" @input="autosize"
+          :placeholder="isToday ? '今天过得怎么样？' : '这一天发生了什么？'" aria-label="日记正文" @input="onInput"
           @focus="onFocus" @blur="onBlur" @beforeinput="onBeforeInput" />
         <!-- eslint-disable-next-line vue/no-v-html -->
         <article v-if="mode === 'read'" class="prose reading" :class="{ editable: !readOnly }" @change="onReadingChange" @click="onReadingClick"
