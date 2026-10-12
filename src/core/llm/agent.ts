@@ -28,6 +28,10 @@ export function systemPrompt(today: string, first: string | null, last: string |
   return `${base.trim()}\n\n今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。`
 }
 
+const AGG_LABEL: Record<string, string> = {
+  year: '按年', month: '按月', week: '按周', day: '按天', weekday: '按星期', mood: '按心情', weather: '按天气', place: '按地点', person: '按人物', tag: '按标签', none: '合计',
+}
+
 const DATE_RE = /\b(\d{4}-\d{2}-\d{2})\b/g
 
 function describe(tool: string, args: Record<string, unknown>, result: unknown): string {
@@ -36,6 +40,7 @@ function describe(tool: string, args: Record<string, unknown>, result: unknown):
     case 'get_stats': return `看了一下日记概况（${r.total} 篇）`
     case 'list_values': return `查了${({ places: '地点', people: '人物', tags: '标签' } as Record<string, string>)[String(args.field)] ?? ''}词表${args.query ? `里的“${args.query}”` : ''}，找到 ${r.total} 个`
     case 'count_days': return `统计了 ${(args.terms as string[] | undefined)?.map((t) => `“${t}”`).join('、')}：${r.days} 天`
+    case 'aggregate': return r.error ? `统计没成功：${r.error}` : `做了分组统计（${AGG_LABEL[String(args.group_by)] ?? '合计'}${Array.isArray(r.series) && r.series.length > 1 ? `，${r.series.length} 组对比` : ''}）`
     case 'search_entries': return `搜索“${args.query ?? ''}”：${r.total} 篇`
     case 'get_entries': return `读了 ${r.returned} 篇日记`
     case 'get_summaries': return `读了 ${(r.summaries as unknown[] | undefined)?.length ?? 0} 份${args.kind === 'yearly' ? '年度' : '月度'}总结`

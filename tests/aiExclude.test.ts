@@ -39,6 +39,7 @@ describe('不让 AI 读', () => {
     expect((await tools.run('search_entries', { query: '秘密' }) as { total: number }).total).toBe(0)
     expect((await tools.run('get_entries', { dates: ['2026-09-02'] }) as { returned: number }).returned).toBe(0)
     expect((await tools.run('list_values', { field: 'places' }) as { values: { days: number }[] }).values[0].days).toBe(1)
+    expect((await tools.run('aggregate', { group_by: 'none', terms: ['老王烧烤'] }) as { series: { total_days: number }[] }).series[0].total_days).toBe(1)
   })
 
   it('不批量抽取；月度总结不发它，切换后总结变成“源内容已变”', async () => {

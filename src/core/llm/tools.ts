@@ -7,6 +7,7 @@ import type { FileStore, IndexRow, ListField } from '../types'
 import { needsExtraction } from '../diaryIndex'
 import { readSummary, summaryStatus } from '../summaries'
 import type { ToolDef } from './client'
+import { aggregate, GROUP_BY, moodSummary, WEATHER_KINDS } from './stats'
 
 const DATE = { type: 'string', description: 'YYYY-MM-DD' }
 const FIELD = { type: 'string', enum: ['places', 'people', 'tags'] }
@@ -14,7 +15,7 @@ const FIELD = { type: 'string', enum: ['places', 'people', 'tags'] }
 export const TOOL_DEFS: ToolDef[] = [
   {
     name: 'get_stats',
-    description: '日记的基本统计：篇数、日期范围、已用 AI 抽取过地点人物标签的篇数和未抽取篇数。回答任何问题前可先调用以了解数据范围。',
+    description: '日记的基本统计：篇数、日期范围、已用 AI 抽取过地点人物标签的篇数和未抽取篇数，以及心情概况（记了心情的天数、平均心情、1–5 各几天）。回答任何问题前可先调用以了解数据范围。',
     parameters: { type: 'object', properties: { from: DATE, to: DATE }, required: [] },
   },
   {
@@ -41,6 +42,50 @@ export const TOOL_DEFS: ToolDef[] = [
         to: DATE,
       },
       required: ['terms'],
+    },
+  },
+  {
+    name: 'aggregate',
+    description:
+      '分组统计（全部在代码里算）：按时间（year/month/week/day）、星期几（weekday）、心情（mood）、天气（weather）、'
+      + '地点（place）、人物（person）、标签（tag）分组，返回每组的天数、平均心情（1–5）和心情分布。'
+      + '筛选条件和 count_days 一样（terms 同义写法、fields、match_text），还可以按心情、天气、地点、人物、标签筛选。'
+      + '要对比时用 series（最多 4 组，每组有自己的 label 和筛选条件，例如今年和去年、晴天和雨天）；对比不同年份按月分组时会按月份对齐。'
+      + '“心情怎么样”“哪个月最低落”“和谁在一起时心情好”“下雨天心情如何”“星期几写得最多”这类问题用它。结果带 chart_id，可以在回答里画成图。',
+    parameters: {
+      type: 'object',
+      properties: {
+        group_by: { type: 'string', enum: [...GROUP_BY], description: '分组方式；none 表示不分组，只算总数' },
+        from: DATE,
+        to: DATE,
+        terms: { type: 'array', items: { type: 'string' }, description: '只统计提到这些词（任意一个）的日子' },
+        fields: { type: 'array', items: FIELD },
+        match_text: { type: 'boolean', description: 'terms 是否也在正文里找，默认 true' },
+        moods: { type: 'array', items: { type: 'integer' }, description: '只统计这些心情的日子' },
+        weather: { type: 'array', items: { type: 'string', enum: [...WEATHER_KINDS] } },
+        places: { type: 'array', items: { type: 'string' } },
+        people: { type: 'array', items: { type: 'string' } },
+        tags: { type: 'array', items: { type: 'string' } },
+        series: {
+          type: 'array',
+          description: '对比的几组，每组的条件和外层条件同时生效',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string' }, from: DATE, to: DATE,
+              terms: { type: 'array', items: { type: 'string' } },
+              moods: { type: 'array', items: { type: 'integer' } },
+              weather: { type: 'array', items: { type: 'string' } },
+              places: { type: 'array', items: { type: 'string' } },
+              people: { type: 'array', items: { type: 'string' } },
+              tags: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['label'],
+          },
+        },
+        limit: { type: 'integer', description: '按地点、人物、标签分组时最多列几组，默认 15' },
+      },
+      required: ['group_by'],
     },
   },
   {
@@ -125,7 +170,12 @@ export class DiaryTools {
       not_extracted: pending,
       first: rows[rows.length - 1]?.date ?? null,
       last: rows[0]?.date ?? null,
+      ...moodSummary(rows),
     }
+  }
+
+  aggregate(a: Record<string, unknown>) {
+    return aggregate(this.rows(), a)
   }
 
   list_values(a: Record<string, unknown>) {
@@ -256,6 +306,7 @@ export class DiaryTools {
       case 'get_stats': return this.get_stats(args)
       case 'list_values': return this.list_values(args)
       case 'count_days': return this.count_days(args)
+      case 'aggregate': return this.aggregate(args)
       case 'search_entries': return this.search_entries(args)
       case 'get_entries': return this.get_entries(args)
       case 'get_summaries': return this.get_summaries(args)
