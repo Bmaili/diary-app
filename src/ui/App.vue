@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { popBack } from './backStack'
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App as CapApp } from '@capacitor/app'
@@ -38,8 +39,9 @@ onMounted(() => {
     .then(() => initLaunch(router))
     .catch(() => {})
   if (Capacitor.isNativePlatform()) {
-    // 安卓返回键：首页退出 app，其他页面返回上一页
+    // 安卓返回键：先关覆盖层（全屏看图）；首页退出 app，其他页面返回上一页
     CapApp.addListener('backButton', () => {
+      if (!lock.locked && popBack()) return
       if (lock.locked || route.path === '/') CapApp.exitApp()
       else if (tab.value) router.replace('/')
       else router.back()

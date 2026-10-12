@@ -1,9 +1,12 @@
 /**
- * 编辑页的插图和图片说明。插图后打开说明框（可以不写，关掉就行）；
- * 阅读视图里点图片也能改说明。说明存成 Markdown 替代文字，见 core/imageCaption.ts。
+ * 编辑页的插图、图片说明和看大图。插图后打开说明框（可以不写，关掉就行）；
+ * 阅读视图里点图片看大图（2026-10-12 起，之前是直接改说明），大图里可以改说明、分享。
+ * 说明存成 Markdown 替代文字，见 core/imageCaption.ts。
  */
 import { computed, nextTick, reactive, ref, type ComputedRef, type Ref } from 'vue'
-import { cleanCameraTemp, compress, pickImage, saveImage } from '../../imageService'
+import { cleanCameraTemp, compress, imageForShare, imageUrl, pickImage, saveImage } from '../../imageService'
+import { shareImage } from '../../platform/exportShare'
+import { expectExternal } from '../../lockService'
 import { listImages, setImageAlt } from '../../core/imageCaption'
 import { profileFor } from '../../aiService'
 import { prefs } from '../../prefs'
@@ -89,12 +92,52 @@ export function useImages(opts: {
     if (nth >= 0) applyCaption(src, nth, alt)
   }
 
-  /** 阅读视图里点了图片 */
-  function onReadingImage(img: HTMLImageElement, root: HTMLElement) {
-    const src = img.dataset.src ?? img.getAttribute('src') ?? ''
-    const same = Array.from(root.querySelectorAll('img')).filter((i) => (i.dataset.src ?? i.getAttribute('src')) === src)
-    openCaption(src, Math.max(0, same.indexOf(img)))
+  // ---------- 看大图 ----------
+
+  const viewer = reactive({ open: false, index: 0, sharing: false })
+  /** 正文里全部本地图片（按出现顺序），说明改了会跟着变 */
+  const viewerItems = computed(() => listImages(text.value).map((i) => ({ src: i.src, alt: i.alt })))
+
+  /** 第 i 张是同一路径的第几次出现（同一张图贴了两次时用） */
+  function nthOf(i: number): number {
+    const src = viewerItems.value[i]?.src
+    return viewerItems.value.slice(0, i).filter((x) => x.src === src).length
   }
 
-  return { imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage }
+  /** 阅读视图里点了图片：按路径和第几次出现找到它，打开大图 */
+  function onReadingImage(img: HTMLImageElement, root: HTMLElement) {
+    const srcOf = (i: HTMLImageElement) => i.dataset.src ?? i.getAttribute('src') ?? ''
+    const src = srcOf(img)
+    const nth = Array.from(root.querySelectorAll('img')).filter((i) => srcOf(i) === src).indexOf(img)
+    const idx = viewerItems.value.map((x, i) => ({ x, i })).filter(({ x }) => x.src === src)[Math.max(0, nth)]?.i
+    if (idx == null) return
+    Object.assign(viewer, { open: true, index: idx })
+  }
+
+  function editFromViewer(i: number) {
+    const it = viewerItems.value[i]
+    if (it) openCaption(it.src, nthOf(i))
+  }
+
+  async function shareFromViewer(i: number) {
+    const it = viewerItems.value[i]
+    if (!it || viewer.sharing) return
+    viewer.sharing = true
+    const done = expectExternal()
+    try {
+      const name = `diary-${it.src.split('/').pop()!.replace(/\.[^.]+$/, '')}.jpg`
+      await shareImage(name, await imageForShare(it.src))
+    } catch (e) {
+      // 在分享面板里点了取消不算出错
+      if (!/cancel/i.test((e as Error).message)) opts.note(`分享失败：${(e as Error).message}`)
+    } finally {
+      done()
+      viewer.sharing = false
+    }
+  }
+
+  return {
+    imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
+    viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl,
+  }
 }

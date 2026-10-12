@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { startOssMock, type OssMock } from '../tests/mocks/ossServer'
 import { startGitHubMock, type GitHubMock } from '../tests/mocks/githubServer'
 import { lastToolResult, startLlmMock, type LlmMock, type Script } from '../tests/mocks/llmServer'
@@ -395,10 +395,66 @@ describe('阶段 3：位置、天气与插图', () => {
     await page.waitForFunction(() => document.querySelector('article.reading img')?.getAttribute('src')?.startsWith('data:image/webp'))
     expect(await page.locator('article.reading .img-cap').textContent()).toBe('院子里的向日葵')
     await page.screenshot({ path: OUT + '33-reading-image.png' })
-    // 阅读视图里点图片改说明，存进文件
-    await page.locator('article.reading img').click()
+    // 再插一张，看大图时可以左右滑
+    await page.getByRole('button', { name: '编辑', exact: true }).click()
+    await page.getByLabel('日记正文').waitFor()
+    await page.getByRole('button', { name: '插图' }).click()
+    const chooser2 = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: '从相册选' }).click()
+    await (await chooser2).setFiles({ name: 'photo2.png', mimeType: 'image/png', buffer: Buffer.from(png) })
+    await cap.waitFor()
+    await cap.getByLabel('图片说明').fill('第二张')
+    await cap.getByRole('button', { name: '完成' }).click()
+    expect(await page.getByLabel('日记正文').inputValue()).toMatch(/_2\.webp\)/)
+    await page.getByRole('button', { name: '阅读视图' }).click()
+    await page.waitForFunction(() => document.querySelectorAll('article.reading img').length === 2)
+
+    // 阅读视图里点图片看大图：显示说明和 1 / 2，左右滑切换
+    await page.locator('article.reading img').first().click()
+    const viewer = page.getByRole('dialog', { name: '看大图' })
+    await viewer.waitFor()
+    await viewer.getByText('院子里的向日葵').waitFor()
+    await viewer.getByText('1 / 2').waitFor()
+    await page.waitForFunction(() => (document.querySelector('.viewer .slide img') as HTMLImageElement | null)?.complete)
+    await page.screenshot({ path: OUT + '37-viewer.png' })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.screenshot({ path: OUT + '37-viewer-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
+    const swipe = async (fromX: number, toX: number) => {
+      const box = (await viewer.locator('.stage').boundingBox())!
+      const y = box.y + box.height / 2
+      await page.mouse.move(fromX, y)
+      await page.mouse.down()
+      for (let i = 1; i <= 6; i++) await page.mouse.move(fromX + ((toX - fromX) * i) / 6, y)
+      await page.mouse.up()
+    }
+    await swipe(330, 60)
+    await viewer.getByText('2 / 2').waitFor()
+    await viewer.getByText('第二张').waitFor()
+    await swipe(60, 330)
+    await viewer.getByText('1 / 2').waitFor()
+    // 双击放大，再双击还原
+    const imgScale = () => page.evaluate(() => getComputedStyle(document.querySelectorAll('.viewer .slide')[0].querySelector('img')!).transform)
+    await viewer.locator('.stage').dblclick({ position: { x: 196, y: 420 } })
+    await until(async () => /matrix\(2\.5/.test(await imgScale()))
+    await viewer.locator('.stage').dblclick({ position: { x: 196, y: 420 } })
+    await until(async () => (await imgScale()) === 'matrix(1, 0, 0, 1, 0, 0)' || (await imgScale()) === 'none')
+
+    // 分享：浏览器里是下载一张 JPEG
+    const dl = page.waitForEvent('download')
+    await viewer.getByRole('button', { name: '分享' }).click()
+    const file = await dl
+    expect(file.suggestedFilename()).toMatch(/^diary-\d{4}-\d{2}-\d{2}_1\.jpg$/)
+    const jpeg = readFileSync(await file.path())
+    expect([...jpeg.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff])
+
+    // 大图里改说明，存进文件
+    await viewer.getByRole('button', { name: '改说明' }).click()
     await cap.getByLabel('图片说明').fill('向日葵和夕阳')
     await cap.getByRole('button', { name: '完成' }).click()
+    await viewer.getByText('向日葵和夕阳').waitFor()
+    await page.keyboard.press('Escape')
+    await viewer.waitFor({ state: 'detached' })
     await page.waitForFunction(() => document.querySelector('article.reading .img-cap')?.textContent === '向日葵和夕阳')
     await page.waitForFunction(async () => {
       const d = (window as unknown as { __diary: { repo: { readEntryRaw(d: string): Promise<string | null> }; index: { all(): { date: string }[] } } }).__diary

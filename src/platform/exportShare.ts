@@ -31,7 +31,7 @@ export async function openExport(name: string, mime = 'application/zip', dialogT
     try {
       const old = await Filesystem.readdir({ path: '', directory: Directory.Cache })
       for (const f of old.files) {
-        if (/^diary-.*\.(zip|age)$/.test(f.name)) await Filesystem.deleteFile({ path: f.name, directory: Directory.Cache }).catch(() => {})
+        if (/^diary-.*\.(zip|age|jpg)$/.test(f.name)) await Filesystem.deleteFile({ path: f.name, directory: Directory.Cache }).catch(() => {})
       }
     } catch { /* 缓存目录读不了就算了 */ }
     await Filesystem.writeFile({ path: name, data: '', directory: Directory.Cache })
@@ -82,4 +82,11 @@ export async function openExport(name: string, mime = 'application/zip', dialogT
       setTimeout(() => URL.revokeObjectURL(url), 10000)
     },
   }
+}
+
+/** 分享一张图片（2026-10-12 加入，看大图里的“分享”）：真机调起系统分享，浏览器下载 */
+export async function shareImage(name: string, jpeg: Uint8Array): Promise<void> {
+  const t = await openExport(name, 'image/jpeg', '分享图片')
+  await t.sink.write(jpeg)
+  await t.finish()
 }

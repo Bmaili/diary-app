@@ -4,6 +4,7 @@
  * useEntrySession（打开、自动保存、离开、删除）、usePlaceWeather、useTextarea（编辑框与快捷按钮）、
  * useImages（插图与图片说明）、useAiExtract（AI 标注）。
  */
+import ImageViewer from '../components/ImageViewer.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '../markdown'
@@ -44,7 +45,10 @@ const note = (s: string) => (placeNote.value = s)
 const { textarea, focused, keyboard, autosize, onInput, focusEnd, onFocus, onBlur, onTool, onBeforeInput, replaceText } = useTextarea(text, readOnly, () => chooseImage())
 const { placeBusy, locOpen, weatherOpen, fillPlace, pickLocation, locLabel, fetchNowWeather, saveWeather, weatherText } =
   usePlaceWeather({ date, meta, changed: metaChanged, isLeft, note })
-const { imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage } = useImages({
+const {
+  imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
+  viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl,
+} = useImages({
   text, date, readOnly, meta, autosize, replaceText, flush, note,
   cursor: () => (mode.value === 'write' && textarea.value ? textarea.value.selectionStart : null),
 })
@@ -86,10 +90,10 @@ function onReadingChange(e: Event) {
   void flush()
 }
 
-/** 阅读视图里点图片：改图片说明 */
+/** 阅读视图里点图片：看大图（只读的日记也能看） */
 function onReadingClick(e: MouseEvent) {
   const img = (e.target as HTMLElement).closest('img')
-  if (img && !readOnly.value) onReadingImage(img, e.currentTarget as HTMLElement)
+  if (img) onReadingImage(img, e.currentTarget as HTMLElement)
 }
 
 /** 阅读视图里双击正文进入编辑（点到待办方框、链接、图片时不算） */
@@ -267,11 +271,13 @@ function goBack() {
         <!-- eslint-disable-next-line vue/no-v-html -->
         <article v-if="mode === 'read'" class="prose reading" :class="{ editable: !readOnly }" @change="onReadingChange" @click="onReadingClick"
           @dblclick="onReadingDblClick" v-html="rendered" />
-        <p v-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑，点图片写说明</p>
+        <p v-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑，点图片看大图</p>
       </main>
       <EditorToolbar v-if="mode === 'write' && !readOnly && focused" :img-busy="imgBusy" @action="onTool" />
     </template>
 
+    <ImageViewer v-model:index="viewer.index" :open="viewer.open" :items="viewerItems" :can-edit="!readOnly" :sharing="viewer.sharing"
+      :resolve="imageUrl" @close="viewer.open = false" @edit="editFromViewer" @share="shareFromViewer" />
     <ExtractSheet :open="ai.open" :busy="ai.busy" :error="ai.error" :x="ai.x" :meta="meta" @close="ai.open = false" @accept="acceptExtract" />
     <WeatherSheet :open="weatherOpen" :current="meta?.weather" :can-fetch="isToday" :fetcher="fetchNowWeather"
       @close="weatherOpen = false" @save="saveWeather" />
@@ -390,7 +396,7 @@ function goBack() {
 }
 .input::placeholder { color: var(--faint); }
 .reading { min-height: 50vh; }
-.reading.editable :deep(img) { cursor: pointer; }
+.reading :deep(img) { cursor: zoom-in; }
 .sheet-sub { margin: 18px 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .sheet-sub:first-child { margin-top: 4px; }
 </style>
