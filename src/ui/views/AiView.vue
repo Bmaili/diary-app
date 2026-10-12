@@ -12,6 +12,8 @@ import { summaryStatus, type SummaryStatus } from '../../core/summaries'
 import type { ListField } from '../../core/types'
 import Icon from '../components/Icon.vue'
 import Sheet from '../components/Sheet.vue'
+import AnswerChart from '../components/AnswerChart.vue'
+import { splitAnswer } from '../../core/llm/charts'
 
 defineOptions({ name: 'AiView' })
 
@@ -196,8 +198,13 @@ function toggleSel(v: string) {
           <li v-for="(s, j) in t.steps" :key="j">{{ s.summary }}</li>
         </ul>
         <p v-if="t.error" class="err">没有回答成功：{{ t.error }}</p>
-        <!-- eslint-disable-next-line vue/no-v-html -->
-        <div v-else-if="t.a" class="prose a" v-html="render(t.a)" />
+        <div v-else-if="t.a" class="a">
+          <template v-for="(p, k) in splitAnswer(t.a)" :key="k">
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <div v-if="'md' in p" class="prose" v-html="render(p.md)" />
+            <AnswerChart v-else-if="t.charts?.[p.chart]" :data="t.charts[p.chart]" :kind="p.kind" />
+          </template>
+        </div>
         <p v-if="t.stopped" class="usage">你停止了这次回答</p>
         <p v-if="usageText(t)" class="usage">{{ usageText(t) }}</p>
       </article>
@@ -207,8 +214,13 @@ function toggleSel(v: string) {
           <li v-for="(s, j) in asking.steps" :key="j">{{ s.summary }}</li>
           <li v-if="!asking.partial" class="thinking">正在翻日记……</li>
         </ul>
-        <!-- eslint-disable-next-line vue/no-v-html -->
-        <div v-if="asking.partial" class="prose a live" v-html="render(asking.partial + '<span class=&quot;caret&quot;></span>')" />
+        <div v-if="asking.partial" class="a live">
+          <template v-for="(p, k) in splitAnswer(asking.partial)" :key="k">
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <div v-if="'md' in p" class="prose" v-html="render(k === splitAnswer(asking.partial).length - 1 ? p.md + '<span class=&quot;caret&quot;></span>' : p.md)" />
+            <AnswerChart v-else-if="asking.charts[p.chart]" :data="asking.charts[p.chart]" :kind="p.kind" />
+          </template>
+        </div>
       </article>
     </section>
 

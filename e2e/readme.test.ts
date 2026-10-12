@@ -185,6 +185,127 @@ describe('README 截图与关于页', () => {
     await close()
   })
 
+  it('问答里的图表：折线、心情构成、排行、对比、日历格子', async () => {
+    const { page, errors, close } = await open()
+    await page.evaluate(async (files) => {
+      const d = (window as unknown as { __diary: { repo: { store: { writeText(p: string, t: string): Promise<void> } } } }).__diary
+      for (const [p, t] of files) await d.repo.store.writeText(p, t)
+    }, seeds.map((s) => [`diary/entries/${s.date.slice(0, 4)}/${s.date}.md`, fileOf(s)] as [string, string]))
+    await page.reload()
+    await page.waitForFunction(() => document.querySelector('.shell'))
+    await page.goto(BASE + '#/settings/ai/new')
+    await page.getByRole('combobox').first().selectOption('DeepSeek')
+    await page.getByLabel('模型名').fill('deepseek-chat')
+    await page.getByLabel('API Key').fill('sk-readme')
+    await page.getByRole('button', { name: '保存' }).click()
+    await page.waitForURL(/#\/settings\/ai$|#\/ai$/)
+
+    const first = seeds[0].date
+    /** 每个问题：先调一次工具，再用工具结果里的数字和 chart_id 作答（模型碰不到图里的数字） */
+    const plans: Record<string, { call: { name: string; args: Record<string, unknown> }; answer: (r: Record<string, unknown>) => string }> = {
+      心情走势: {
+        call: { name: 'aggregate', args: { group_by: 'month', from: first.slice(0, 7) } },
+        answer: (r) => {
+          const g = (r.series as { groups: { label: string; avg_mood: number | null }[] }[])[0].groups.filter((x) => x.avg_mood != null)
+          const best = [...g].sort((a, b) => b.avg_mood! - a.avg_mood!)[0]
+          return `这几个月心情整体平稳，${best.label}平均 ${best.avg_mood} 分，最高。\n\n[[chart:${r.chart_id}:line]]\n\n每个月的心情构成：\n\n[[chart:${r.chart_id}:mood]]`
+        },
+      },
+      和谁: {
+        call: { name: 'aggregate', args: { group_by: 'person' } },
+        answer: (r) => {
+          const g = (r.series as { groups: { label: string; days: number; avg_mood: number }[] }[])[0].groups
+          return `出现最多的是${g[0].label}（${g[0].days} 天），和${g[0].label}在一起的日子平均心情 ${g[0].avg_mood}。\n\n[[chart:${r.chart_id}]]`
+        },
+      },
+      晴天和下雨: {
+        call: { name: 'aggregate', args: { group_by: 'none', series: [{ label: '晴天', weather: ['晴'] }, { label: '多云', weather: ['多云'] }, { label: '阴天', weather: ['阴'] }, { label: '雨天', weather: ['雨'] }] } },
+        answer: (r) => {
+          const s = r.series as { label: string; avg_mood: number }[]
+          return `${s.map((x) => `${x.label}平均心情 ${x.avg_mood}`).join('，')}。\n\n[[chart:${r.chart_id}:mood]]`
+        },
+      },
+      星期几: {
+        call: { name: 'aggregate', args: { group_by: 'weekday' } },
+        answer: (r) => `各天写得差不多，下面是按星期统计的天数。\n\n[[chart:${r.chart_id}]]`,
+      },
+      工作和约会: {
+        call: { name: 'aggregate', args: { group_by: 'month', from: first.slice(0, 7), series: [{ label: '工作', tags: ['工作'] }, { label: '约会', tags: ['约会'] }, { label: '聚餐', tags: ['聚餐'] }] } },
+        answer: (r) => `每个月写到工作、约会和聚餐的天数：\n\n[[chart:${r.chart_id}]]`,
+      },
+      健身房: {
+        call: { name: 'count_days', args: { terms: ['健身房'], from: first } },
+        answer: (r) => `去了健身房 **${r.days} 天**。\n\n[[chart:${r.chart_id}]]\n\n相关日期：${(r.dates as { date: string }[]).slice(0, 5).map((d) => d.date).join('、')}`,
+      },
+    }
+    llm.script = ({ turns }) => {
+      const q = [...turns].reverse().find((t) => t.role === 'user')!.text!
+      const plan = Object.entries(plans).find(([k]) => q.includes(k))![1]
+      const last = turns.at(-1)!
+      if (last.role !== 'tool') return { toolCalls: [plan.call] }
+      return { text: plan.answer(JSON.parse(last.text!)) }
+    }
+
+    await page.goto(BASE + '#/ai')
+    const shots: [string, string, number][] = [
+      ['这几个月心情走势怎么样？', 'chart-line', 2],
+      ['我和谁见面最多？', 'chart-rank', 1],
+      ['晴天和下雨天心情差别大吗？', 'chart-mood-compare', 1],
+      ['星期几写得最多？', 'chart-weekday', 1],
+      ['每个月写到工作和约会、聚餐各几天？', 'chart-series', 1],
+      ['我哪些天去了健身房？', 'chart-heatmap', 1],
+    ]
+    let total = 0
+    for (const [q, name, n] of shots) {
+      await page.getByLabel('问题', { exact: true }).fill(q)
+      await page.getByRole('button', { name: '发送' }).click()
+      total += n
+      await page.waitForFunction((t) => document.querySelectorAll('.turn figure.chart').length === t, total)
+      await page.waitForFunction(() => !document.querySelector('.turn .live'))
+      if (name === 'chart-line') {
+        // README 用：问题、步骤、文字和图表在一屏里
+        await page.locator('.turn').last().scrollIntoViewIfNeeded()
+        await page.evaluate(() => window.scrollTo(0, (document.querySelector('.turn .q') as HTMLElement).getBoundingClientRect().top + window.scrollY - 120))
+        await page.waitForTimeout(200)
+        await page.screenshot({ path: OUT + 'readme-chart.png' })
+      }
+      const figs = page.locator('.turn').last().locator('figure.chart')
+      for (let i = 0; i < n; i++) {
+        const fig = figs.nth(i)
+        await fig.scrollIntoViewIfNeeded()
+        await fig.screenshot({ path: OUT + `${name}${n > 1 ? `-${i + 1}` : ''}.png` })
+        await page.emulateMedia({ colorScheme: 'dark' })
+        await fig.screenshot({ path: OUT + `${name}${n > 1 ? `-${i + 1}` : ''}-dark.png` })
+        await page.emulateMedia({ colorScheme: 'light' })
+      }
+    }
+    // 图表段之间的文字照常渲染，标记本身不显示
+    expect(await page.locator('.turn .a').last().textContent()).not.toContain('[[chart')
+    // 点柱子显示数值
+    const weekday = page.locator('.turn').nth(3).locator('figure.chart')
+    await weekday.scrollIntoViewIfNeeded()
+    await weekday.locator('rect.hit').first().click()
+    await expect.poll(() => weekday.locator('.info').textContent()).toMatch(/^周一：\d+ 天/)
+    // 看数据表
+    await weekday.getByText('看数据').click()
+    expect(await weekday.locator('table tbody tr').count()).toBe(7)
+    // 日历格子：点有颜色的格子打开那天的日记
+    const heat = page.locator('.turn').last().locator('figure.chart')
+    await heat.scrollIntoViewIfNeeded()
+    await heat.locator('rect.on').first().click()
+    await page.waitForURL(/#\/entry\/\d{4}-\d{2}-\d{2}/)
+    await page.goBack()
+    // 翻看以前的对话，图还在
+    await page.reload()
+    await page.waitForFunction(() => document.querySelector('.shell'))
+    await page.goto(BASE + '#/ai')
+    await page.getByRole('button', { name: '以前的对话' }).click()
+    await page.locator('.sheet').getByText('这几个月心情走势').click()
+    await page.waitForFunction((t) => document.querySelectorAll('.turn figure.chart').length === t, total)
+    expect(errors).toEqual([])
+    await close()
+  })
+
   it('设置里的“关于”', async () => {
     const { page, errors, close } = await open()
     await page.goto(BASE + '#/settings')

@@ -4,7 +4,8 @@ import { AbortedError, chatText, DEFAULT_CONTEXT_TOKENS, LlmError, withInstructi
 /** 每一轮的输出上限：推理模型的思考也算在里面，给少了容易什么都没写就截断 */
 const ANSWER_MAX_OUTPUT = 4000
 import { TOOL_DEFS, type DiaryTools } from './tools'
-import { PROMPTS } from './prompts'
+import { chartRefs, type ChartData } from './charts'
+import { CHART_RULES, PROMPTS } from './prompts'
 
 export interface Step {
   tool: string
@@ -21,11 +22,13 @@ export interface AskResult {
   usage: Usage & { calls: number }
   /** 为了不超出上下文，省略或截断过内容 */
   compacted?: boolean
+  /** 回答里引用到的图表（编号 → 数据） */
+  charts?: Record<string, ChartData>
 }
 
 /** 问答的系统提示词：可编辑的部分（prompts.ts）后面接上今天的日期和日记概况 */
 export function systemPrompt(today: string, first: string | null, last: string | null, total: number, base: string = PROMPTS.chat.text): string {
-  return `${base.trim()}\n\n今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。`
+  return `${base.trim()}\n\n${CHART_RULES}\n\n今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。`
 }
 
 const AGG_LABEL: Record<string, string> = {
@@ -122,6 +125,8 @@ export async function ask(opts: {
   /** 流式输出：每一轮开始时调用 onRound（界面清掉上一轮的半截文字），收到文字片段时调用 onText */
   onRound?: () => void
   onText?: (delta: string) => void
+  /** 工具结果可以画成图时调用（流式输出时界面就能画出来） */
+  onChart?: (id: string, chart: ChartData) => void
   signal?: AbortSignal
 }): Promise<AskResult> {
   const messages: ChatMsg[] = []
@@ -141,9 +146,17 @@ export async function ask(opts: {
   const fixed = estimateTokens(withInstructions(opts.system, opts.cfg.instructions)) + estimateTokens(JSON.stringify(TOOL_DEFS))
   const budget = Math.max(2000, (opts.cfg.contextTokens || DEFAULT_CONTEXT_TOKENS) - maxOut - fixed - 1000)
   const used = () => messages.reduce((a, m) => a + msgTokens(m), 0)
-  const done = (answer: string, dates: string[]): AskResult => ({
-    answer, steps, dates, usage: { ...usage, calls }, ...(compacted ? { compacted } : {}),
-  })
+  // 图表编号：每个问题换一个前缀，免得模型把历史回答里的编号当成这次的
+  const charts: Record<string, ChartData> = {}
+  const prefix = String.fromCharCode(97 + Math.floor(Math.random() * 26)) + String.fromCharCode(97 + Math.floor(Math.random() * 26))
+  let nChart = 0
+  const done = (answer: string, dates: string[]): AskResult => {
+    const used = Object.fromEntries(chartRefs(answer).filter((id) => charts[id]).map((id) => [id, charts[id]]))
+    return {
+      answer, steps, dates, usage: { ...usage, calls }, ...(compacted ? { compacted } : {}),
+      ...(Object.keys(used).length ? { charts: used } : {}),
+    }
+  }
   for (let i = 0; i < rounds; i++) {
     const last = i === rounds - 1
     const fit = fitContext(messages, budget, historyLen)
@@ -183,6 +196,13 @@ export async function ask(opts: {
         result = c.badArgs != null ? { error: `参数不是合法的 JSON：${c.badArgs.slice(0, 200)}` } : await opts.tools.run(c.name, args)
       } catch (e) {
         result = { error: (e as Error).message }
+      }
+      const chart = c.badArgs == null ? opts.tools.chart?.(c.name, args, result) ?? null : null
+      if (chart) {
+        const id = `${prefix}${++nChart}`
+        charts[id] = chart
+        ;(result as Record<string, unknown>).chart_id = id
+        opts.onChart?.(id, chart)
       }
       const step = { tool: c.name, args: c.args, summary: describe(c.name, c.args, result) }
       steps.push(step)

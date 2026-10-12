@@ -1,4 +1,5 @@
 /** AI 的应用层：服务配置、首次发送确认、问答记录、批量抽取、总结、词表合并。 */
+import { chartRefs, type ChartData } from './core/llm/charts'
 import { reactive } from 'vue'
 import { diaryChanged, enqueue, index, refreshDate, repo, store, today } from './app'
 import { prefs, type LlmProfile } from './prefs'
@@ -94,6 +95,8 @@ export interface ChatTurn {
   compacted?: boolean
   /** 用户点了停止（a 里是停止前收到的部分） */
   stopped?: boolean
+  /** 回答里引用到的图表数据（2026-10-12 加入，旧记录没有） */
+  charts?: Record<string, ChartData>
 }
 
 export interface Conversation {
@@ -138,7 +141,7 @@ export async function deleteConversation(id: string) {
 }
 
 /** partial：流式输出中、这一轮已经收到的文字 */
-export const asking = reactive({ busy: false, steps: [] as Step[], question: '', partial: '' })
+export const asking = reactive({ busy: false, steps: [] as Step[], question: '', partial: '', charts: {} as Record<string, ChartData> })
 let controller: AbortController | null = null
 
 /** 停止正在进行的问答：已经收到的文字留下来 */
@@ -156,7 +159,7 @@ export async function askQuestion(q: string): Promise<void> {
     chats.list.unshift(conv)
     chats.currentId = conv.id
   }
-  Object.assign(asking, { busy: true, steps: [], question: q.trim(), partial: '' })
+  Object.assign(asking, { busy: true, steps: [], question: q.trim(), partial: '', charts: {} })
   controller = new AbortController()
   const all = index.aiRows()
   const turn: ChatTurn = { q: q.trim(), a: '', steps: [], dates: [], at: Date.now() }
@@ -172,21 +175,27 @@ export async function askQuestion(q: string): Promise<void> {
       maxRounds: int(prefs.ai.chat.maxRounds, 10, 30, 10),
       onRound: () => (asking.partial = ''),
       onText: (d) => (asking.partial += d),
+      onChart: (id, c) => (asking.charts[id] = c),
       signal: controller.signal,
     })
-    Object.assign(turn, { a: r.answer, steps: r.steps, dates: r.dates, usage: r.usage, ...(r.compacted ? { compacted: true } : {}) })
+    Object.assign(turn, {
+      a: r.answer, steps: r.steps, dates: r.dates, usage: r.usage,
+      ...(r.compacted ? { compacted: true } : {}), ...(r.charts ? { charts: r.charts } : {}),
+    })
   } catch (e) {
     turn.steps = [...asking.steps]
     if (e instanceof AbortedError || controller?.signal.aborted) {
       turn.stopped = true
       turn.a = asking.partial.trim()
       turn.dates = [...new Set([...turn.a.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)].map((m) => m[1]))].sort()
+      const used = chartRefs(turn.a).filter((id) => asking.charts[id])
+      if (used.length) turn.charts = Object.fromEntries(used.map((id) => [id, asking.charts[id]]))
     } else turn.error = (e as Error).message
   } finally {
     conv.turns.push(turn)
     conv.updatedAt = Date.now()
     controller = null
-    Object.assign(asking, { busy: false, steps: [], question: '', partial: '' })
+    Object.assign(asking, { busy: false, steps: [], question: '', partial: '', charts: {} })
     await saveChats()
   }
 }

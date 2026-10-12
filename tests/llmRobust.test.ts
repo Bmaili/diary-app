@@ -9,7 +9,7 @@ import { extractEntry } from '../src/core/llm/extract'
 import { generateMonthly } from '../src/core/llm/summarize'
 import { readSummary } from '../src/core/summaries'
 import { ask, systemPrompt } from '../src/core/llm/agent'
-import { overrideFor, promptHash, PROMPTS, promptState, promptText } from '../src/core/llm/prompts'
+import { overrideFor, promptHash, PROMPTS, promptState, promptText, CHART_RULES } from '../src/core/llm/prompts'
 import { DiaryTools } from '../src/core/llm/tools'
 import { NodeStore } from './nodeStore'
 import { startLlmMock, type LlmMock } from './mocks/llmServer'
@@ -171,8 +171,8 @@ describe('可编辑的系统提示词', () => {
     expect(sys).toContain('{"places": [...], "people": [...], "tags": [...]}')
   })
 
-  it('问答：改过的提示词后面接上今天的日期和日记概况', () => {
+  it('问答：改过的提示词后面接上图表的写法、今天的日期和日记概况', () => {
     const s = systemPrompt('2026-10-07', '2025-01-01', '2026-10-07', 300, '你是我的日记助手。')
-    expect(s).toBe('你是我的日记助手。\n\n今天是 2026-10-07。日记共 300 篇，最早 2025-01-01，最近 2026-10-07。')
+    expect(s).toBe(`你是我的日记助手。\n\n${CHART_RULES}\n\n今天是 2026-10-07。日记共 300 篇，最早 2025-01-01，最近 2026-10-07。`)
   })
 })

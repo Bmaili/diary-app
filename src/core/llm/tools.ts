@@ -7,7 +7,8 @@ import type { FileStore, IndexRow, ListField } from '../types'
 import { needsExtraction } from '../diaryIndex'
 import { readSummary, summaryStatus } from '../summaries'
 import type { ToolDef } from './client'
-import { aggregate, GROUP_BY, moodSummary, WEATHER_KINDS } from './stats'
+import { aggregate, GROUP_BY, moodSummary, WEATHER_KINDS, type AggregateResult } from './stats'
+import { chartFromAggregate, type ChartData } from './charts'
 
 const DATE = { type: 'string', description: 'YYYY-MM-DD' }
 const FIELD = { type: 'string', enum: ['places', 'people', 'tags'] }
@@ -299,6 +300,44 @@ export class DiaryTools {
       else summaries.push({ period: p, text: s.body, status: await summaryStatus(this.store, this.index, p) })
     }
     return { summaries, missing }
+  }
+
+  /**
+   * 能画成图的结果（aggregate、count_days）→ 图表数据，其他返回 null。
+   * 数据全部来自工具结果和索引，见 charts.ts。
+   */
+  chart(name: string, args: Record<string, unknown>, result: unknown): ChartData | null {
+    const r = result as Record<string, unknown> | null
+    if (!r || typeof r !== 'object' || 'error' in r) return null
+    const terms = strArr(args.terms)
+    const about = terms.length ? `“${terms.slice(0, 3).join('、')}”${terms.length > 3 ? '等' : ''}` : ''
+    if (name === 'aggregate') {
+      const a = r as unknown as AggregateResult
+      // 标题：范围 · 分组；指标（天数、平均心情……）由界面按画法接在后面
+      const by = a.group_by === 'none'
+        ? a.series.map((x) => x.label).join('、')
+        : ({ year: '按年', month: '按月', week: '按周', day: '按天', weekday: '按星期', mood: '按心情', weather: '按天气', place: '按地点', person: '按人物', tag: '按标签' } as Record<string, string>)[a.group_by] ?? ''
+      return chartFromAggregate(a, [about, by].filter(Boolean).join(' · '))
+    }
+    if (name === 'count_days') {
+      const dates = (r.dates as { date: string }[] | undefined) ?? []
+      if (!dates.length) return null
+      const pad = (v: unknown, end: boolean) => {
+        const s = typeof v === 'string' ? v : ''
+        if (s.length === 10) return s
+        if (s.length === 7) return end ? `${s}-31` : `${s}-01`
+        if (s.length === 4) return end ? `${s}-12-31` : `${s}-01-01`
+        return ''
+      }
+      return {
+        type: 'dates',
+        title: `${about || '提到'}的日子`,
+        from: pad(args.from, false) || dates[0].date,
+        to: pad(args.to, true) || dates[dates.length - 1].date,
+        dates: dates.map((d) => ({ date: d.date, mood: this.index.get(d.date)?.mood ?? null })),
+      }
+    }
+    return null
   }
 
   async run(name: string, args: Record<string, unknown>): Promise<unknown> {
