@@ -24,6 +24,8 @@ export const EXTRACT_FORMAT = `只输出一个 JSON 对象，不要任何解释�
 没有的项给空数组。`
 
 export const CAPTION_FORMAT = '只输出这句说明本身：不要引号，不要解释。'
+/** 看图写说明时由代码附加：用户消息里怎么标照片的位置（2026-10-12 加入） */
+export const CAPTION_FIXED = `用户消息里附上了这一天的日记，【这张照片】标出了照片在日记里的位置，紧挨着它的文字最可能和照片有关。\n${CAPTION_FORMAT}`
 
 export const PROMPTS: Record<PromptId, PromptDef> = {
   chat: {
@@ -84,7 +86,7 @@ export const PROMPTS: Record<PromptId, PromptDef> = {
 - 不超过 30 个字。
 - 写看得见的内容：什么人、什么东西、在哪儿、在做什么、天气和光线。语气平实，像随手记下的。
 - 日记正文里能对上照片的称呼和地名（比如“小雨”“老王烧烤”），可以用上；对不上就不要猜名字。`,
-    fixed: CAPTION_FORMAT,
+    fixed: CAPTION_FIXED,
   },
 }
 

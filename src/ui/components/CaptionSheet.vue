@@ -15,8 +15,8 @@ const props = defineProps<{
   date: string
   src: string
   current: string
-  /** 这篇日记的正文，给 AI 作参考 */
-  excerpt: () => string
+  /** 附给 AI 的日记内容（照片所在位置、地点和人物） */
+  context: () => string
   /** 可以用 AI（配了服务、这篇没有设为不让 AI 读） */
   canAi: boolean
   /** 打开时自动让 AI 写 */
@@ -50,7 +50,7 @@ async function runAi(auto = false) {
   busy.value = true
   err.value = ''
   try {
-    const t = await captionPreview(props.date, src, props.excerpt())
+    const t = await captionPreview(props.date, src, props.context())
     if (my !== ticket) return
     if (props.open) {
       // 自动写的时候用户已经开始打字，就不覆盖

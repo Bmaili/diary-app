@@ -7,7 +7,7 @@ import { computed, nextTick, reactive, ref, type ComputedRef, type Ref } from 'v
 import { cleanCameraTemp, compress, imageForShare, imageUrl, pickImage, saveImage } from '../../imageService'
 import { shareImage } from '../../platform/exportShare'
 import { expectExternal } from '../../lockService'
-import { listImages, setImageAlt } from '../../core/imageCaption'
+import { captionContext, listImages, setImageAlt } from '../../core/imageCaption'
 import { profileFor } from '../../aiService'
 import { prefs } from '../../prefs'
 import type { EntryMeta } from '../../core/types'
@@ -82,6 +82,12 @@ export function useImages(opts: {
     void opts.flush()
   }
 
+  /** 看图写说明时附上的日记内容：照片所在的位置，加上这一天的地点和人物 */
+  function captionContextNow(): string {
+    const m = opts.meta.value
+    return captionContext(text.value, caption.src, caption.nth, { location: m?.location?.name, places: m?.places, people: m?.people })
+  }
+
   function saveCaption(alt: string) {
     applyCaption(caption.src, caption.nth, alt)
   }
@@ -138,6 +144,6 @@ export function useImages(opts: {
 
   return {
     imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
-    viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl,
+    viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl, captionContextNow,
   }
 }

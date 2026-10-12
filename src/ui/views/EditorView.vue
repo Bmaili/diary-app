@@ -47,7 +47,7 @@ const { placeBusy, locOpen, weatherOpen, fillPlace, pickLocation, locLabel, fetc
   usePlaceWeather({ date, meta, changed: metaChanged, isLeft, note })
 const {
   imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
-  viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl,
+  viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl, captionContextNow,
 } = useImages({
   text, date, readOnly, meta, autosize, replaceText, flush, note,
   cursor: () => (mode.value === 'write' && textarea.value ? textarea.value.selectionStart : null),
@@ -282,7 +282,7 @@ function goBack() {
     <WeatherSheet :open="weatherOpen" :current="meta?.weather" :can-fetch="isToday" :fetcher="fetchNowWeather"
       @close="weatherOpen = false" @save="saveWeather" />
     <ImageSourceSheet :open="imgSheet" @close="imgSheet = false" @pick="insertImage" />
-    <CaptionSheet :open="caption.open" :date="date" :src="caption.src" :current="caption.current" :excerpt="() => text"
+    <CaptionSheet :open="caption.open" :date="date" :src="caption.src" :current="caption.current" :context="captionContextNow"
       :can-ai="canCaption" :auto="autoCaption" @close="caption.open = false" @save="saveCaption" @late="lateCaption" />
     <LocationSheet :open="locOpen" :current="meta?.location" :can-locate="isToday" @close="locOpen = false" @pick="pickLocation" />
     <Sheet :open="sheet === 'tags'" title="标签" @close="closeSheet">

@@ -193,10 +193,10 @@ export async function askQuestion(q: string): Promise<void> {
 
 // ---------- 图片说明 ----------
 
-/** 让 AI 看图写一句说明。src 是正文里的图片路径；excerpt 是这篇日记正文（取开头作参考） */
-export async function captionPreview(date: string, src: string, excerpt: string): Promise<string> {
+/** 让 AI 看图写一句说明。src 是正文里的图片路径；context 是附上的日记内容（core/imageCaption.ts 的 captionContext） */
+export async function captionPreview(date: string, src: string, context: string): Promise<string> {
   const cfg = await configFor('caption')
-  return captionImage(cfg, await imageForAi(src), { date, excerpt }, prompt('caption'))
+  return captionImage(cfg, await imageForAi(src), { date, context }, prompt('caption'))
 }
 
 // ---------- 抽取 ----------
