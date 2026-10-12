@@ -369,7 +369,7 @@ describe('阶段 3：位置、天气与插图', () => {
     await (await chooser).setFiles({ name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from(png) })
     await page.waitForFunction(() => (document.querySelector('textarea.input') as HTMLTextAreaElement).value.includes('attachments'))
     const text = await page.getByLabel('日记正文').inputValue()
-    const m = /!\[\]\(\.\.\/\.\.\/attachments\/(\d{4})\/(\d{4}-\d{2}-\d{2})_1\.jpg\)/.exec(text)
+    const m = /!\[\]\(\.\.\/\.\.\/attachments\/(\d{4})\/(\d{4}-\d{2}-\d{2})_1\.webp\)/.exec(text)
     expect(m).not.toBeNull()
     // 插图后弹出图片说明框（没配 AI 服务时没有“AI 看图”按钮）
     const cap = page.getByRole('dialog', { name: '图片说明' })
@@ -383,14 +383,16 @@ describe('阶段 3：位置、天气与插图', () => {
     const size = await page.evaluate(async (p) => {
       const b64 = await (window as unknown as { __diary: { repo: { store: { readBase64(p: string): Promise<string> } } } }).__diary.repo.store.readBase64(p)
       const img = new Image()
-      img.src = 'data:image/jpeg;base64,' + b64
+      img.src = 'data:image/webp;base64,' + b64
       await img.decode()
-      return { w: img.naturalWidth, h: img.naturalHeight, bytes: (b64.length * 3) / 4 }
-    }, `diary/attachments/${m![1]}/${m![2]}_1.jpg`)
-    expect(size.w).toBe(2048)
-    expect(size.h).toBe(1365)
+      // RIFF....WEBP 文件头
+      const head = atob(b64.slice(0, 16))
+      return { w: img.naturalWidth, h: img.naturalHeight, bytes: (b64.length * 3) / 4, webp: head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP' }
+    }, `diary/attachments/${m![1]}/${m![2]}_1.webp`)
+    // 新图存成 WebP，长边 2560
+    expect(size).toMatchObject({ w: 2560, h: 1707, webp: true })
     await page.getByRole('button', { name: '阅读视图' }).click()
-    await page.waitForFunction(() => document.querySelector('article.reading img')?.getAttribute('src')?.startsWith('data:image/jpeg'))
+    await page.waitForFunction(() => document.querySelector('article.reading img')?.getAttribute('src')?.startsWith('data:image/webp'))
     expect(await page.locator('article.reading .img-cap').textContent()).toBe('院子里的向日葵')
     await page.screenshot({ path: OUT + '33-reading-image.png' })
     // 阅读视图里点图片改说明，存进文件

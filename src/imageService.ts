@@ -1,5 +1,6 @@
 /**
- * 插图（规格 4.4 第 7 条）：长边压到 2048px、JPEG 质量 85，存到 attachments/YYYY/，正文用相对路径引用。
+ * 插图（规格 4.4 第 7 条）：长边压到 2560px、WebP（2026-10-12 起；之前是 2048px JPEG），
+ * 存到 attachments/YYYY/，正文用相对路径引用。旧的 .jpg 原样保留。
  * 选图用系统的文件选择器（WebView 的 <input type=file>），可以从相册选或拍照，不需要存储权限。
  */
 import { store } from './app'
@@ -47,32 +48,92 @@ export function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promise<Fil
   })
 }
 
-export async function compress(file: Blob, maxEdge = 2048, quality = 0.85): Promise<Uint8Array> {
+export type ImageMime = 'image/webp' | 'image/jpeg'
+export interface Compressed {
+  bytes: Uint8Array
+  mime: ImageMime
+}
+
+/** 存进日记的图片：长边 2560、WebP 质量 0.82（同样大小比 JPEG 清楚，放大看也够用） */
+export const STORE_IMAGE = { maxEdge: 2560, quality: 0.82, mime: 'image/webp' as ImageMime }
+
+export const extOf = (mime: string): string => (mime === 'image/webp' ? 'webp' : 'jpg')
+export const mimeOfPath = (path: string): ImageMime => (/\.webp$/i.test(path) ? 'image/webp' : 'image/jpeg')
+
+function newCanvas(w: number, h: number): CanvasRenderingContext2D {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const ctx = c.getContext('2d')!
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  return ctx
+}
+
+/**
+ * 缩放到 w×h。一步从四千多像素缩到两千多时，浏览器的平滑默认是“低”，采样太少，细节发虚、边缘发毛
+ * （2026-10-12 之前照片“有点糊”的主要原因）。现在开高质量平滑，并且每次最多缩一半，逐级缩到目标尺寸。
+ */
+export function drawScaled(src: CanvasImageSource & { width: number; height: number }, w: number, h: number): HTMLCanvasElement {
+  let cur: CanvasImageSource = src
+  let cw = src.width
+  let ch = src.height
+  while (cw / 2 > w && ch / 2 > h) {
+    const nw = Math.round(cw / 2)
+    const nh = Math.round(ch / 2)
+    const step = newCanvas(nw, nh)
+    step.drawImage(cur, 0, 0, nw, nh)
+    if (cur instanceof HTMLCanvasElement) cur.width = 0 // 尽早释放上一级
+    cur = step.canvas
+    cw = nw
+    ch = nh
+  }
+  const out = newCanvas(w, h)
+  // 透明图（截图、PNG）铺白底，和以前一致
+  out.fillStyle = '#fff'
+  out.fillRect(0, 0, w, h)
+  out.drawImage(cur, 0, 0, w, h)
+  if (cur instanceof HTMLCanvasElement && cur !== out.canvas) cur.width = 0
+  return out.canvas
+}
+
+function toBlob(canvas: HTMLCanvasElement, mime: string, quality: number): Promise<Blob> {
+  return new Promise<Blob>((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('压缩失败'))), mime, quality))
+}
+
+/**
+ * 压缩图片。要 WebP 而浏览器编码不了时，canvas 不报错、悄悄给 PNG（体积是 JPEG 的好几倍），
+ * 所以核对实际类型，不是 WebP 就改用 JPEG。
+ */
+export async function compress(file: Blob, opts: { maxEdge?: number; quality?: number; mime?: ImageMime } = {}): Promise<Compressed> {
+  const { maxEdge, quality, mime } = { ...STORE_IMAGE, ...opts }
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions)
   const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height))
-  const w = Math.round(bmp.width * scale)
-  const h = Math.round(bmp.height * scale)
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, w, h)
-  ctx.drawImage(bmp, 0, 0, w, h)
+  const canvas = drawScaled(bmp, Math.max(1, Math.round(bmp.width * scale)), Math.max(1, Math.round(bmp.height * scale)))
   bmp.close()
-  const blob = await new Promise<Blob>((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('压缩失败'))), 'image/jpeg', quality))
-  return new Uint8Array(await blob.arrayBuffer())
+  try {
+    let blob = await toBlob(canvas, mime, quality)
+    let got: ImageMime = mime
+    if (blob.type !== mime) {
+      blob = await toBlob(canvas, 'image/jpeg', Math.min(0.9, quality + 0.06))
+      got = 'image/jpeg'
+    }
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), mime: got }
+  } finally {
+    canvas.width = 0
+  }
 }
 
 /** 保存图片，返回在正文里引用它的 Markdown */
-export async function saveImage(date: string, bytes: Uint8Array): Promise<string> {
+export async function saveImage(date: string, img: Compressed): Promise<string> {
   const year = date.slice(0, 4)
   const dir = `${ROOT}/attachments/${year}`
-  const used = new Set((await store.list(dir)).map((f) => f.name))
+  // 编号不分扩展名：已有 _1.jpg 时新图是 _2.webp，不会出现同号不同格式的两张
+  const used = new Set((await store.list(dir)).map((f) => f.name.replace(/\.[^.]+$/, '')))
   let n = 1
-  while (used.has(`${date}_${n}.jpg`)) n++
-  const name = `${date}_${n}.jpg`
-  await store.writeBase64(`${dir}/${name}`, toBase64(bytes))
+  while (used.has(`${date}_${n}`)) n++
+  const name = `${date}_${n}.${extOf(img.mime)}`
+  await store.writeBase64(`${dir}/${name}`, toBase64(img.bytes))
   return `![](../../attachments/${year}/${name})`
 }
 
@@ -81,12 +142,23 @@ function repoPath(src: string): string {
   return decodeURI(`${ROOT}/${src.replace(/^\.\.\/\.\.\//, '')}`)
 }
 
-/** 发给 AI 看的图：长边缩到 1024，省流量也省 token */
-export async function imageForAi(src: string): Promise<ImagePart> {
-  const b64 = await store.readBase64(repoPath(src))
+/** 读出日记里的一张图 */
+async function readImage(src: string): Promise<Blob> {
+  const path = repoPath(src)
+  const b64 = await store.readBase64(path)
   if (!b64) throw new Error('找不到这张图片')
-  const small = await compress(new Blob([fromBase64(b64) as BlobPart], { type: 'image/jpeg' }), 1024, 0.8)
-  return { mime: 'image/jpeg', data: toBase64(small) }
+  return new Blob([fromBase64(b64) as BlobPart], { type: mimeOfPath(path) })
+}
+
+/** 发给 AI 看的图：长边缩到 1024 的 JPEG（各家模型对 JPEG 支持最稳），省流量也省 token */
+export async function imageForAi(src: string): Promise<ImagePart> {
+  const small = await compress(await readImage(src), { maxEdge: 1024, quality: 0.8, mime: 'image/jpeg' })
+  return { mime: 'image/jpeg', data: toBase64(small.bytes) }
+}
+
+/** 分享给别的 app 的图：转成 JPEG（有的手机或 app 不认识 WebP），尺寸不变 */
+export async function imageForShare(src: string): Promise<Uint8Array> {
+  return (await compress(await readImage(src), { maxEdge: 100000, quality: 0.92, mime: 'image/jpeg' })).bytes
 }
 
 /**
@@ -117,7 +189,7 @@ async function displayUrl(src: string): Promise<string> {
   }
   const b64 = await store.readBase64(path)
   if (!b64) return ''
-  const url = `data:image/jpeg;base64,${b64}`
+  const url = `data:${mimeOfPath(path)};base64,${b64}`
   webCache.set(src, url)
   while (webCache.size > WEB_CACHE_MAX) webCache.delete(webCache.keys().next().value!)
   return url
