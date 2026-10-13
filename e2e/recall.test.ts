@@ -374,7 +374,7 @@ describe('写给未来的信', () => {
     await page.locator('.poem').waitFor()
     await page.locator('.oldpage').waitFor()
     await page.goto(BASE + '#/settings')
-    await page.getByRole('switch', { name: '首页旧页' }).click()
+    await page.getByRole('switch', { name: '旧页' }).click()
     await page.goto(BASE + '#/')
     await page.locator('.poem').waitFor()
     await expect(page.locator('.oldpage').count()).resolves.toBe(0)

@@ -7,7 +7,7 @@ import {
 } from '../src/core/annotation'
 import { annotateEntry } from '../src/core/llm/annotate'
 import { ANNOTATE_FIXED, PROMPTS } from '../src/core/llm/prompts'
-import { listTrash, restoreTrash, trashEntry } from '../src/core/trash'
+import { listTrash, restoreTrash, trashEntry, trashLetter } from '../src/core/trash'
 import { bookImages, buildYearbook, cnYear, estimatePages } from '../src/core/yearbook'
 import type { LlmConfig } from '../src/core/llm/client'
 import { startLlmMock, type LlmMock } from './mocks/llmServer'
@@ -177,5 +177,33 @@ describe('年度日记本', () => {
     expect(few).toBeGreaterThanOrEqual(2)
     expect(many).toBeGreaterThan(250)
     expect(estimatePages(Array.from({ length: 200 }, () => ({ chars: 500, images: 1 })), 12, false, 0)).toBeLessThan(many)
+  })
+})
+
+describe('随信附上的照片', () => {
+  it('封存的正文：文字在前、照片在后；摘要去掉照片；找出引用的照片', async () => {
+    const { letterBody, letterImages, letterText } = await import('../src/core/letters')
+    const b = letterBody('  一年后的我：\n\n你好。 ', ['img/a.webp', 'img/b.jpg'])
+    expect(b).toBe('一年后的我：\n\n你好。\n\n![](img/a.webp)\n\n![](img/b.jpg)')
+    expect(letterBody('', ['img/a.webp'])).toBe('![](img/a.webp)')
+    expect(letterImages(b)).toEqual(['img/a.webp', 'img/b.jpg'])
+    expect(letterImages('![](../../attachments/2026/x.webp)')).toEqual([])
+    expect(letterText(b)).toBe('一年后的我：\n\n你好。')
+  })
+
+  it('撤回、删除信时照片一起进最近删除，恢复时一起回来', async () => {
+    const store = await NodeStore.temp()
+    const repo = new DiaryRepo(store)
+    await repo.init()
+    await store.mkdirp('diary/letters/img')
+    await store.writeText('diary/letters/2026-10-13_1.md', '---\nwritten: x\nopen_on: 2027-10-13\n---\n\n你好\n\n![](img/p1.webp)\n')
+    await store.writeBase64('diary/letters/img/p1.webp', 'AAAA')
+    await store.writeBase64('diary/letters/img/other.webp', 'BBBB')
+    const t = await trashLetter(store, '2026-10-13_1', '（一封撤回的信，没拆过）', new Date(), ['img/p1.webp'])
+    expect(t!.files).toEqual(['letters/2026-10-13_1.md', 'letters/img/p1.webp'])
+    expect(await store.stat('diary/letters/img/p1.webp')).toBeNull()
+    expect(await store.stat('diary/letters/img/other.webp')).not.toBeNull()
+    await restoreTrash(repo, t!.id)
+    expect(await store.readBase64('diary/letters/img/p1.webp')).toBe('AAAA')
   })
 })

@@ -113,6 +113,30 @@ export async function listLetters(store: FileStore): Promise<{ letters: Letter[]
   return { letters, broken }
 }
 
+// ---------- 随信附上的照片（2026-10-13 加入） ----------
+
+/** 信里的照片放在 letters/img/ 下，信里用相对路径 `![](img/…)` 引用（不放 attachments/：免得删除那天的日记时被一起带走） */
+export const LETTER_IMG = `${LETTERS}/img`
+
+const IMG_RE = /!\[[^\]]*\]\((img\/[^)\s]+)\)/g
+
+/** 信里引用的照片（相对 letters/ 的路径，如 img/2026-10-13_k9x2a.webp） */
+export function letterImages(body: string): string[] {
+  return [...new Set([...body.matchAll(IMG_RE)].map((m) => m[1]))]
+}
+
+/** 封存时的正文：文字在前，照片一张一段接在后面 */
+export function letterBody(text: string, images: string[]): string {
+  const t = text.trim()
+  const imgs = images.map((p) => `![](${p})`).join('\n\n')
+  return [t, imgs].filter(Boolean).join('\n\n')
+}
+
+/** 信的文字部分（去掉照片），信匣和最近删除里的摘要用 */
+export function letterText(body: string): string {
+  return body.replace(IMG_RE, '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 /** 新信的编号：同一天写的第几封 */
 export async function newLetterId(store: FileStore, writtenDate: string): Promise<string> {
   const used = new Set((await store.list(LETTERS)).map((f) => f.name.replace(/\.md$/, '')))

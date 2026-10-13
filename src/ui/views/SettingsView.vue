@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Capacitor } from '@capacitor/core'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import {
@@ -23,6 +24,8 @@ const router = useRouter()
 const busy = ref('')
 const msg = ref<Record<string, string>>({})
 const showReadme = ref(false)
+const showBg = ref(false)
+const native = Capacitor.isNativePlatform()
 const readmeHtml = computed(() => DOMPurify.sanitize(marked.parse(README_MD, { async: false }) as string))
 
 const trashCount = ref(0)
@@ -94,8 +97,8 @@ function tapVersion() {
 
 const hours = [0, 1, 2, 3, 4, 5, 6]
 const DAILY_DESC = {
-  local: '首页显示一句古诗词，按节日、节气和季节挑选，不联网。',
-  online: '用“今日诗词”接口，按时间、天气推荐，内容更多。每天联网一次，会让对方知道你的大致位置（IP）；失败时用内置的。',
+  local: '按节日、节气和季节挑一句古诗词，不联网。',
+  online: '用“今日诗词”接口，按时间、天气推荐，诗句更多。每天联网一次，对方会知道你的大致位置（IP）；取不到时用内置的。',
   off: '首页不显示诗词。',
 } as const
 const appVersion = __APP_VERSION__
@@ -132,11 +135,11 @@ const syncLine = computed(() => {
 
     <p v-if="!syncOn" class="note warn">
       <strong>日记目前只存在这台手机上。</strong>
-      卸载 app 或清除 app 数据会删掉全部日记。建议在下面的“同步与备份”里开启 OSS 或 GitHub。
+      卸载 app 或清除 app 数据会删掉全部日记。建议在下面的“同步与备份”里开启 OSS 或 GitHub，或者时常导出一份。
     </p>
 
     <section>
-      <h2>连接</h2>
+      <h2>数据</h2>
       <router-link to="/settings/sync" class="item link">
         <div>
           <div>同步与备份</div>
@@ -144,52 +147,69 @@ const syncLine = computed(() => {
         </div>
         <Icon name="right" class="chev" />
       </router-link>
-      <router-link to="/settings/place" class="item link">
+      <div class="item">
         <div>
-          <div>位置与天气</div>
-          <div class="desc">{{ prefs.place.autoLocate ? '写日记时自动记录位置和天气' : '自动定位已关闭' }}</div>
+          <div>导出全部日记</div>
+          <div class="desc">打包成一个 zip，用 Obsidian、Typora 或任何文本编辑器都能打开。</div>
+          <div v-if="msg.export" class="result">{{ msg.export }}</div>
+        </div>
+        <button class="text-btn" :disabled="!!busy" @click="doExport">
+          {{ busy === 'export' ? (exportProgress.total ? `${exportProgress.done}/${exportProgress.total}` : '打包中') : '导出' }}
+        </button>
+      </div>
+      <router-link to="/settings/import" class="item link">
+        <div>
+          <div>导入日记</div>
+          <div class="desc">浮生记导出的 zip，或者一个 Markdown 文件夹。手机上已有的不会被覆盖。</div>
         </div>
         <Icon name="right" class="chev" />
       </router-link>
-      <router-link to="/settings/ai" class="item link">
+      <router-link to="/settings/trash" class="item link">
         <div>
-          <div>AI 服务</div>
-          <div class="desc">{{ prefs.ai.profiles.length ? `已添加 ${prefs.ai.profiles.length} 个服务` : '还没有添加，问答、抽取和总结需要它' }}</div>
+          <div>最近删除</div>
+          <div class="desc">{{ trashCount ? `${trashCount} 项，30 天后彻底删除` : '删掉的日记和信在这里保留 30 天' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+      <router-link to="/settings/transfer" class="item link">
+        <div>
+          <div>导入导出设置</div>
+          <div class="desc">换手机时把 AI、同步、位置等设置一次带过去，文件用密码加密。不含日记。</div>
         </div>
         <Icon name="right" class="chev" />
       </router-link>
     </section>
 
     <section>
-      <h2>习惯与隐私</h2>
-      <router-link to="/settings/reminder" class="item link">
-        <div>
-          <div>写日记提醒</div>
-          <div class="desc">{{ prefs.reminder.enabled ? `每天 ${prefs.reminder.time}${prefs.reminder.skipWritten ? '，写过就跳过' : ''}` : '未开启' }}</div>
-        </div>
-        <Icon name="right" class="chev" />
-      </router-link>
-      <router-link to="/settings/lock" class="item link">
-        <div>
-          <div>应用锁</div>
-          <div class="desc">{{ prefs.lock.enabled ? 'PIN 已启用' : '未开启' }}</div>
-        </div>
-        <Icon name="right" class="chev" />
-      </router-link>
-    </section>
-
-    <section>
-      <h2>日记</h2>
+      <h2>写日记</h2>
       <label class="item">
         <div>
           <div>一天从几点开始</div>
-          <div class="desc">在这个时间之前写的，算作前一天的日记。</div>
+          <div class="desc">这个时间之前写的，算作前一天。</div>
         </div>
         <select class="field select" :value="settings.cutoffHour"
           @change="setCutoffHour(Number(($event.target as HTMLSelectElement).value))">
           <option v-for="h in hours" :key="h" :value="h">凌晨 {{ h }}:00</option>
         </select>
       </label>
+      <router-link to="/settings/reminder" class="item link">
+        <div>
+          <div>写日记提醒</div>
+          <div class="desc">{{ prefs.reminder.enabled ? `每天 ${prefs.reminder.time}${prefs.reminder.skipWritten ? '，写过就不提醒' : ''}` : '未开启' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+      <router-link to="/settings/place" class="item link">
+        <div>
+          <div>位置与天气</div>
+          <div class="desc">{{ prefs.place.autoLocate ? '写今天的日记时自动记下' : '不自动记，需要时手动选' }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
+    </section>
+
+    <section>
+      <h2>首页与日历</h2>
       <label class="item">
         <div>
           <div>每日诗词</div>
@@ -203,17 +223,17 @@ const syncLine = computed(() => {
       </label>
       <div class="item">
         <div>
-          <div>首页旧页</div>
+          <div>旧页</div>
           <div class="desc">首页摆一篇随机的旧日记，点“换一页”换一篇。</div>
         </div>
-        <Switch v-model="prefs.ui.oldPage" label="首页旧页" />
+        <Switch v-model="prefs.ui.oldPage" label="旧页" />
       </div>
       <div class="item">
         <div>
-          <div>首页提示引用我的日记</div>
-          <div class="desc">梅枝下面那句小提示，偶尔会说起你写过的日子，比如“一年前的今天，你在江边公园”。只用心情不错、没有设“不让 AI 读”的日记，全部在手机上计算。</div>
+          <div>小提示说起旧事</div>
+          <div class="desc">梅枝下的小提示偶尔提起你写过的日子，比如“一年前的今天，你在江边公园”。只挑心情不错的日子，在手机上算，不联网。</div>
         </div>
-        <Switch v-model="prefs.ui.diaryHints" label="首页提示引用我的日记" />
+        <Switch v-model="prefs.ui.diaryHints" label="小提示说起旧事" />
       </div>
       <div class="item">
         <div>
@@ -225,64 +245,53 @@ const syncLine = computed(() => {
       <div class="item">
         <div>
           <div>动态效果</div>
-          <div class="desc">页面切换、列表浮现、日历跟手滑动、梅枝开花、飘落的花瓣。手机系统开了“减少动画”时会自动关掉。</div>
+          <div class="desc">页面切换、梅枝开花、飘落的花瓣等。手机开了“减少动画”时自动关掉。</div>
         </div>
         <Switch v-model="prefs.ui.motion" label="动态效果" />
       </div>
     </section>
 
     <section>
-      <h2>数据</h2>
-      <div class="item">
+      <h2>AI</h2>
+      <router-link to="/settings/ai" class="item link">
         <div>
-          <div>导出为 zip</div>
-          <div class="desc">整个日记文件夹，可以用 Obsidian、Typora 或任何文本编辑器打开。</div>
-          <div v-if="msg.export" class="result">{{ msg.export }}</div>
+          <div>AI 服务</div>
+          <div class="desc">{{ prefs.ai.profiles.length ? `已添加 ${prefs.ai.profiles.length} 个服务` : '还没有添加。问答、标注、总结、图片说明、朱批都要用到' }}</div>
         </div>
-        <button class="text-btn" :disabled="!!busy" @click="doExport">
-          {{ busy === 'export' ? (exportProgress.total ? `${exportProgress.done}/${exportProgress.total}` : '打包中') : '导出' }}
-        </button>
-      </div>
-      <router-link to="/settings/import" class="item link">
+        <Icon name="right" class="chev" />
+      </router-link>
+    </section>
+
+    <section>
+      <h2>隐私</h2>
+      <router-link to="/settings/lock" class="item link">
         <div>
-          <div>导入日记</div>
-          <div class="desc">浮生记导出的 zip，或者一个 Markdown 文件夹。不会覆盖手机上已有的日记。</div>
+          <div>应用锁</div>
+          <div class="desc">{{ prefs.lock.enabled ? (prefs.lock.biometric ? 'PIN 和指纹' : 'PIN 已开启') : '未开启' }}</div>
         </div>
         <Icon name="right" class="chev" />
       </router-link>
       <div class="item">
         <div>
+          <div>防止截屏</div>
+          <div class="desc">截屏、录屏只得到黑屏，最近任务里也只显示空白。想截图给别人看时先关掉。{{ native ? '' : '（浏览器里无效）' }}</div>
+        </div>
+        <Switch v-model="prefs.privacy.noCapture" label="防止截屏" />
+      </div>
+    </section>
+
+    <section>
+      <h2>维护</h2>
+      <div class="item">
+        <div>
           <div>重建索引</div>
-          <div class="desc">列表、日历或搜索结果和文件对不上时使用。日记文件不会被改动。</div>
+          <div class="desc">列表、日历或搜索和文件对不上时用。不会改动日记文件。</div>
           <div v-if="msg.rebuild" class="result">{{ msg.rebuild }}</div>
         </div>
         <button class="text-btn" :disabled="!!busy" @click="doRebuild">
           {{ busy === 'rebuild' ? (indexProgress.total ? `${indexProgress.done}/${indexProgress.total}` : '重建中') : '重建' }}
         </button>
       </div>
-      <router-link to="/settings/transfer" class="item link">
-        <div>
-          <div>导入导出设置</div>
-          <div class="desc">换手机时，把 AI、同步、位置等设置一次带过去。文件用密码加密。</div>
-        </div>
-        <Icon name="right" class="chev" />
-      </router-link>
-      <router-link to="/settings/trash" class="item link">
-        <div>
-          <div>最近删除</div>
-          <div class="desc">{{ trashCount ? `${trashCount} 篇，保留 30 天后彻底删除` : '删掉的日记会在这里保留 30 天' }}</div>
-        </div>
-        <Icon name="right" class="chev" />
-      </router-link>
-      <button class="item link" :aria-expanded="showReadme" @click="showReadme = !showReadme">
-        <div>
-          <div>数据格式说明</div>
-          <div class="desc">日记文件夹里 README.md 的内容。</div>
-        </div>
-        <Icon :name="showReadme ? 'close' : 'right'" class="chev" />
-      </button>
-      <!-- eslint-disable-next-line vue/no-v-html -->
-      <div v-if="showReadme" class="prose readme" v-html="readmeHtml" />
       <div v-if="stats.broken.length" class="item broken">
         <div>
           <div>格式有误的文件</div>
@@ -294,13 +303,25 @@ const syncLine = computed(() => {
           </ul>
         </div>
       </div>
-    </section>
-
-    <section>
-      <h2>后台运行</h2>
-      <p class="desc pad">
-        OPPO、vivo、一加的系统会清理后台的 app。这个 app 在你打开它、离开编辑页时同步，所以不开自启动也能正常备份。
-        如果想让失败的同步在后台多重试几次，可以在系统设置的“应用管理 → 浮生记 → 耗电管理”里允许后台运行。
+      <button class="item link" :aria-expanded="showReadme" @click="showReadme = !showReadme">
+        <div>
+          <div>数据格式说明</div>
+          <div class="desc">日记文件夹里的文件都是什么。</div>
+        </div>
+        <Icon :name="showReadme ? 'close' : 'right'" class="chev" />
+      </button>
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <div v-if="showReadme" class="prose readme" v-html="readmeHtml" />
+      <button class="item link" :aria-expanded="showBg" @click="showBg = !showBg">
+        <div>
+          <div>后台被清理怎么办</div>
+          <div class="desc">有的安卓设备会清理后台的 app。</div>
+        </div>
+        <Icon :name="showBg ? 'close' : 'right'" class="chev" />
+      </button>
+      <p v-if="showBg" class="desc pad">
+        不用担心备份：打开 app、离开编辑页时都会同步，不开自启动也能正常备份。
+        如果想让失败的同步在后台多重试几次，可以在系统设置的应用管理里找到浮生记，允许它在后台运行（不同的安卓设备叫法不一样，常见的是“耗电管理”或“电池优化”）。
       </p>
     </section>
 

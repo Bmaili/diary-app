@@ -5,13 +5,11 @@ import { prefs } from '../../prefs'
 import { checkPin, disableLock, lock, setPin } from '../../lockService'
 import { BIO_REASON, biometricAuth, biometricStatus, type BioStatus } from '../../platform/biometric'
 import { onMounted } from 'vue'
-import { Capacitor } from '@capacitor/core'
 import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
 import PinPad from '../components/PinPad.vue'
 
 const router = useRouter()
-const native = Capacitor.isNativePlatform()
 
 /** 输 PIN 的流程：verify（输旧的）→ new → confirm */
 type Step = 'verify' | 'new' | 'confirm'
@@ -123,13 +121,6 @@ async function onPin(pin: string) {
             <option v-for="d in delays" :key="d.v" :value="d.v">{{ d.label }}</option>
           </select>
         </label>
-        <div class="item">
-          <div>
-            <div>在最近任务里隐藏内容</div>
-            <div class="desc">多任务界面显示空白。安卓的限制：打开后本 app 也不能截屏和录屏。{{ native ? '' : '（浏览器里无效）' }}</div>
-          </div>
-          <Switch v-model="prefs.lock.hideInRecents" label="在最近任务里隐藏内容" />
-        </div>
         <div class="item">
           <div>
             <div>指纹解锁</div>

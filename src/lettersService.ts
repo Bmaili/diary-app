@@ -7,9 +7,11 @@ import { Capacitor } from '@capacitor/core'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { diaryChanged, enqueue, onDiaryChanged, onStarted, repo, store, today } from './app'
 import {
-  LETTER_BASE_ID, LETTER_MAX, letterPath, letterState, listLetters, newLetterId, parseLetter, planLetterReminders,
-  serializeLetter, type Letter,
+  LETTER_BASE_ID, LETTER_IMG, LETTER_MAX, LETTERS, letterBody, letterImages, letterPath, letterState, letterText, listLetters,
+  newLetterId, parseLetter, planLetterReminders, serializeLetter, type Letter,
 } from './core/letters'
+import { toBase64 } from './core/bytes'
+import { extOf, pathUrl, type Compressed } from './imageService'
 import { trashLetter } from './core/trash'
 import { isoLocal } from './core/time'
 import { syncAfterEdit } from './syncService'
@@ -43,9 +45,9 @@ async function changed() {
 }
 
 /** 封存一封新信，返回它的编号 */
-export async function sealLetter(o: { body: string; openOn: string; remind: boolean }, now = new Date()): Promise<string> {
+export async function sealLetter(o: { body: string; openOn: string; remind: boolean; images?: string[] }, now = new Date()): Promise<string> {
   const id = await newLetterId(store, today())
-  await write({ id, meta: { written: isoLocal(now), open_on: o.openOn, ...(o.remind ? { remind: true } : {}) }, body: o.body.trim(), extra: [] })
+  await write({ id, meta: { written: isoLocal(now), open_on: o.openOn, ...(o.remind ? { remind: true } : {}) }, body: letterBody(o.body, o.images ?? []), extra: [] })
   if (o.remind) await requestLetterPermission()
   await changed()
   return id
@@ -81,9 +83,42 @@ export async function changeOpenDate(id: string, date: string): Promise<void> {
 /** 撤回（封着的）或删除（拆过的）：都移到最近删除，30 天内可以恢复。封着的信在最近删除里不露内容 */
 export async function trashLetterById(id: string): Promise<void> {
   const l = await readLetter(id)
-  const preview = letterState(l, today()) === 'opened' ? l.body : '（一封撤回的信，没拆过）'
-  await enqueue(() => trashLetter(store, id, preview))
+  const preview = letterState(l, today()) === 'opened' ? letterText(l.body) || '（只有照片的信）' : '（一封撤回的信，没拆过）'
+  await enqueue(() => trashLetter(store, id, preview, new Date(), letterImages(l.body)))
   await changed()
+}
+
+// ---------- 随信附上的照片（2026-10-13 加入） ----------
+
+/** 写信时存一张照片，返回信里用的相对路径（img/…）。草稿阶段就写进 letters/img/，封存时随信带走 */
+export async function saveLetterImage(img: Compressed): Promise<string> {
+  const name = `${today()}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}.${extOf(img.mime)}`
+  await store.mkdirp(LETTER_IMG)
+  await store.writeBase64(`${LETTER_IMG}/${name}`, toBase64(img.bytes))
+  return `img/${name}`
+}
+
+/** 草稿里去掉一张照片：它只属于这份草稿，直接删掉文件 */
+export async function removeDraftImage(rel: string): Promise<void> {
+  if (!/^img\/[^/]+$/.test(rel)) return
+  await store.remove(`${LETTERS}/${rel}`).catch(() => {})
+}
+
+/** 信里照片（img/…）的显示地址 */
+export function letterImageUrl(rel: string): Promise<string> {
+  return pathUrl(`${LETTERS}/${rel}`)
+}
+
+/** 读信时把正文里的照片换成能显示的地址 */
+export async function resolveLetterImages(html: string): Promise<string> {
+  const srcs = new Set([...html.matchAll(/<img[^>]+src="(img\/[^"]+)"/g)].map((m) => m[1]))
+  const urls = new Map<string, string>()
+  for (const s of srcs) {
+    const u = await letterImageUrl(decodeURI(s)).catch(() => '')
+    if (u) urls.set(s, u)
+  }
+  return html.replace(/(<img[^>]+src=")(img\/[^"]+)(")/g, (m, a: string, src: string, b: string) =>
+    urls.has(src) ? `${a}${urls.get(src)}${b} data-src="${src}"` : m)
 }
 
 // ---------- 到期提醒：本地通知，到拆信那天早上 9 点 ----------

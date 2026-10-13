@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /** 读一封信（规格 5.13）：到了的第一次打开时记下拆信时间；没到的不给看 */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { today } from '../../app'
-import { daysUntil, letterState, type Letter } from '../../core/letters'
+import { daysUntil, letterImages, letterState, type Letter } from '../../core/letters'
 import { parseYmd } from '../../core/time'
 import { lunar } from '../../holidayService'
-import { letters, openLetter, reloadLetters, trashLetterById } from '../../lettersService'
+import { letterImageUrl, letters, openLetter, reloadLetters, resolveLetterImages, trashLetterById } from '../../lettersService'
+import ImageViewer from '../components/ImageViewer.vue'
 import { renderMarkdown } from '../markdown'
 import Icon from '../components/Icon.vue'
 import { ask } from '../dialog'
@@ -42,7 +43,22 @@ const writtenOn = computed(() => {
   const l = lunar(w)
   return `写于 ${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日${l.jieqi ? ` · ${l.jieqi}` : ''}`
 })
-const html = computed(() => (letter.value ? renderMarkdown(letter.value.body) : ''))
+const rawHtml = computed(() => (letter.value ? renderMarkdown(letter.value.body) : ''))
+/** 随信的照片换成能显示的地址 */
+const html = ref('')
+watch(rawHtml, async (h) => {
+  html.value = h
+  html.value = await resolveLetterImages(h)
+}, { immediate: true })
+
+// 点照片看大图
+const viewer = reactive({ open: false, index: 0 })
+const viewerItems = computed(() => (letter.value ? letterImages(letter.value.body).map((src) => ({ src, alt: '' })) : []))
+function onBodyClick(e: MouseEvent) {
+  const img = (e.target as HTMLElement).closest('img')
+  const i = img ? viewerItems.value.findIndex((x) => x.src === img.dataset.src) : -1
+  if (i >= 0) Object.assign(viewer, { open: true, index: i })
+}
 
 async function remove() {
   if (!letter.value) return
@@ -77,8 +93,10 @@ function goBack() {
     <article v-if="letter" class="letter-paper">
       <p class="written">{{ writtenOn }}</p>
       <!-- eslint-disable-next-line vue/no-v-html -->
-      <div class="prose letter-body" v-html="html" />
+      <div class="prose letter-body" @click="onBodyClick" v-html="html" />
     </article>
+    <ImageViewer v-model:index="viewer.index" :open="viewer.open" :items="viewerItems" :can-edit="false" no-share
+      :resolve="letterImageUrl" @close="viewer.open = false" />
     <div v-if="letter" class="acts">
       <router-link to="/letters/new" class="solid-btn reply">回一封，寄给以后</router-link>
     </div>
@@ -101,6 +119,8 @@ function goBack() {
 .letter-body { font-family: var(--kai); font-size: 18px; line-height: 34px; }
 .letter-body :deep(p) { margin: 0 0 34px; }
 .letter-body :deep(p:last-child) { margin-bottom: 0; }
+.letter-body :deep(img) { display: block; max-width: 100%; margin: 0 auto; border-radius: 4px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); cursor: zoom-in; }
+.letter-body :deep(p:has(> img)) { line-height: 0; }
 .acts { display: flex; justify-content: center; margin-top: 22px; }
 .reply { display: inline-flex; align-items: center; text-decoration: none; }
 .sealed { display: flex; flex-direction: column; align-items: center; padding: 60px 32px; text-align: center; }

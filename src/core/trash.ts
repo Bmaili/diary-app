@@ -88,14 +88,15 @@ export async function trashEntry(repo: DiaryRepo, date: string, now = new Date()
 }
 
 /** 把一封信移到最近删除（拆过的信，或者撤回的信）。date 记写信的日期 */
-export async function trashLetter(store: FileStore, letterId: string, preview: string, now = new Date()): Promise<TrashItem | null> {
+export async function trashLetter(store: FileStore, letterId: string, preview: string, now = new Date(), images: string[] = []): Promise<TrashItem | null> {
   const rel = `letters/${letterId}.md`
   if (!(await store.stat(`${ROOT}/${rel}`))) return null
   const item: TrashItem = {
     id: `letter_${letterId}_${now.getTime()}`,
     date: letterId.slice(0, 10),
     deletedAt: now.getTime(),
-    files: [rel],
+    // 随信的照片（letters/img/…）一起带走
+    files: [rel, ...images.map((p) => `letters/${p}`)],
     preview: preview.replace(/\s+/g, ' ').slice(0, 80),
     kind: 'letter',
     letterId,
@@ -103,7 +104,7 @@ export async function trashLetter(store: FileStore, letterId: string, preview: s
   const dir = `${TRASH}/${item.id}`
   await store.mkdirp(dir)
   await store.writeText(`${dir}/info.json`, JSON.stringify(item))
-  await move(store, `${ROOT}/${rel}`, `${dir}/${rel}`)
+  for (const f of item.files) await move(store, `${ROOT}/${f}`, `${dir}/${f}`)
   return item
 }
 

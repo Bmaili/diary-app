@@ -5,6 +5,7 @@ import { index, indexVersion, today } from '../../app'
 import { ymd } from '../../core/time'
 import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
+import Sheet from '../components/Sheet.vue'
 import { MOOD_LABELS } from '../mood'
 import { lunar as lunarDay } from '../../holidayService'
 import { letters } from '../../lettersService'
@@ -138,6 +139,35 @@ function onEnd(e: TouchEvent) {
 const isCurrent = computed(() => year.value === Number(t.slice(0, 4)) && month.value === Number(t.slice(5, 7)))
 const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
 
+// ---------- 点年月直接跳：选年份，再点月份 ----------
+const jump = ref(false)
+const jumpYear = ref(year.value)
+/** 每个月写了几天：键是 YYYY-MM */
+const monthCounts = computed(() => {
+  void indexVersion.value
+  const m = new Map<string, number>()
+  for (const r of index.all()) m.set(r.date.slice(0, 7), (m.get(r.date.slice(0, 7)) ?? 0) + 1)
+  return m
+})
+const jumpYears = computed(() => {
+  const now = Number(t.slice(0, 4))
+  const all = index.all()
+  const first = all.length ? Number(all[all.length - 1].date.slice(0, 4)) : now
+  const from = Math.min(first, year.value, now - 1)
+  const to = Math.max(now + 1, year.value)
+  return Array.from({ length: to - from + 1 }, (_, i) => to - i)
+})
+function openJump() {
+  jumpYear.value = year.value
+  jump.value = true
+}
+function jumpTo(y: number, m: number) {
+  jump.value = false
+  if (y === year.value && m === month.value) return
+  void slideTo(y * 12 + m < year.value * 12 + month.value ? -1 : 1, { y, m })
+}
+const ym = (y: number, m: number) => `${y}-${String(m).padStart(2, '0')}`
+
 /** 到了还没拆的信（首页点了“晚点再看”之后，这里还能拆） */
 const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, today()) === 'arrived') ?? null)
 </script>
@@ -146,9 +176,11 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
   <div class="page">
     <header class="topbar">
       <h1>
-        <Transition :name="dir > 0 ? 'roll-up' : 'roll-down'" mode="out-in">
-          <span :key="month" class="num">{{ month }}</span>
-        </Transition>月<small class="num">{{ year }}</small>
+        <button class="ym" :aria-label="`${year} 年 ${month} 月，点一下选年月`" @click="openJump">
+          <Transition :name="dir > 0 ? 'roll-up' : 'roll-down'" mode="out-in">
+            <span :key="month" class="num">{{ month }}</span>
+          </Transition>月<small class="num">{{ year }}</small><Icon name="down" class="ym-caret" />
+        </button>
       </h1>
       <button v-if="!isCurrent" class="text-btn" @click="goToday">回到本月</button>
       <button class="icon-btn" aria-label="上个月" @click="shift(-1)"><Icon name="left" /></button>
@@ -211,6 +243,21 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
       <span class="book-t">年度日记本<small>排成一本小书，存成 PDF</small></span>
       <Icon name="right" class="book-go" />
     </router-link>
+    <Sheet :open="jump" title="跳到" @close="jump = false">
+      <div class="jy" role="radiogroup" aria-label="年份">
+        <button v-for="y in jumpYears" :key="y" class="jy-btn num" role="radio" :aria-checked="jumpYear === y" :class="{ on: jumpYear === y }"
+          @click="jumpYear = y">{{ y }}</button>
+      </div>
+      <div class="jm">
+        <button v-for="m in 12" :key="m" class="jm-btn" :class="{ on: jumpYear === year && m === month, now: ym(jumpYear, m) === t.slice(0, 7) }"
+          :aria-label="`${jumpYear} 年 ${m} 月${monthCounts.get(ym(jumpYear, m)) ? `，写了 ${monthCounts.get(ym(jumpYear, m))} 天` : ''}`"
+          @click="jumpTo(jumpYear, m)">
+          <span class="jm-m"><span class="num">{{ m }}</span> 月</span>
+          <span class="jm-c">{{ monthCounts.get(ym(jumpYear, m)) ? `${monthCounts.get(ym(jumpYear, m))} 天` : '' }}</span>
+        </button>
+      </div>
+      <button v-if="!isCurrent" class="text-btn jm-today" @click="jumpTo(Number(t.slice(0, 4)), Number(t.slice(5, 7)))">回到本月</button>
+    </Sheet>
   </div>
 </template>
 
@@ -274,6 +321,22 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
 .book-t { flex: 1; display: flex; flex-direction: column; font-size: 15px; }
 .book-t small { font-size: 12px; color: var(--muted); }
 .book-go { width: 14px; height: 14px; color: var(--muted); }
+.ym { display: inline-flex; align-items: baseline; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; }
+.ym:active { opacity: 0.6; }
+.ym-caret { width: 16px; height: 16px; align-self: center; margin-left: 2px; color: var(--faint); }
+.jy { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+.jy::-webkit-scrollbar { display: none; }
+.jy-btn { flex: none; height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); color: var(--ink); font-size: 15px; }
+.jy-btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.jm { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.jm-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 58px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font-size: 14px; }
+.jm-btn .num { font-size: 18px; }
+.jm-c { min-height: 14px; font-size: 11px; color: var(--muted); }
+.jm-btn.now { border-color: var(--accent); color: var(--accent); }
+.jm-btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.jm-btn.on .jm-c { color: inherit; opacity: 0.75; }
+.jm-btn:active { transform: scale(0.95); }
+.jm-today { display: block; margin: 10px auto 4px; }
 .topbar h1 { display: flex; align-items: baseline; gap: 4px; margin-left: 12px; font-size: 17px; color: var(--muted); }
 .topbar h1 > .num { display: inline-block; }
 .topbar h1 .num { font-size: 34px; font-weight: 600; color: var(--ink); line-height: 1; }

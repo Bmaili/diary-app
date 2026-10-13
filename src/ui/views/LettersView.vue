@@ -3,7 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { today } from '../../app'
-import { daysUntil, letterState, quickDates, type Letter } from '../../core/letters'
+import { daysUntil, letterState, letterText, quickDates, type Letter } from '../../core/letters'
 import { addDays, parseYmd } from '../../core/time'
 import { changeOpenDate, letters, reloadLetters, trashLetterById } from '../../lettersService'
 import Icon from '../components/Icon.vue'
@@ -27,7 +27,7 @@ const dot = (d: string) => {
 }
 /** 拆信日是节日一类的，标一下 */
 const dayName = (d: string) => (d.slice(5) === '01-01' ? '元日' : '')
-const firstLine = (l: Letter) => l.body.split('\n').map((s) => s.trim()).find(Boolean)?.replace(/^#+\s*/, '') ?? '（空白的信）'
+const firstLine = (l: Letter) => letterText(l.body).split('\n').map((s) => s.trim()).find(Boolean)?.replace(/^#+\s*/, '') ?? (letterText(l.body) ? '（空白的信）' : '（一封只有照片的信）')
 
 // ---------- 封着的信：改日期、撤回 ----------
 

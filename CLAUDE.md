@@ -29,7 +29,7 @@
 ## 技术栈
 
 - 网页技术 + Capacitor 8 打包。Vue 3 + TypeScript + Vite + Vue Router（hash 模式）。
-- 插件：filesystem、preferences、app、share、keyboard、haptics、network、local-notifications；自写的原生插件 `PrivacyScreenPlugin`（FLAG_SECURE）、`HttpStreamPlugin`（SSE 流式）、`BiometricPlugin`（指纹，androidx.biometric 1.1.0）、`AppUpdatePlugin`（应用内更新：下载、核对 sha256 / 包名 / 版本 / 签名、调起系统安装界面）、`IntakePlugin`（ACTION_PICK 调相册选图、收别的 app 分享进来的内容，都复制到缓存目录；HEIC 转 JPEG）、`PrintPlugin`（年度日记本：不显示的 WebView 载入网页交给系统打印），在 `MainActivity` 里于 `super.onCreate` 之前注册。Capacitor 的 `PluginCall.getLong` 对 JS 传来的整数会返回默认值，取数字用 `getInt` / `getDouble`。
+- 插件：filesystem、preferences、app、share、keyboard、haptics、network、local-notifications；自写的原生插件 `PrivacyScreenPlugin`（FLAG_SECURE，“防止截屏”默认开，`prefs.privacy.noCapture`，和应用锁无关）、`HttpStreamPlugin`（SSE 流式）、`BiometricPlugin`（指纹，androidx.biometric 1.1.0）、`AppUpdatePlugin`（应用内更新：下载、核对 sha256 / 包名 / 版本 / 签名、调起系统安装界面）、`IntakePlugin`（ACTION_PICK 调相册选图、收别的 app 分享进来的内容，都复制到缓存目录；HEIC 转 JPEG）、`PrintPlugin`（年度日记本：不显示的 WebView 载入网页交给系统打印），在 `MainActivity` 里于 `super.onCreate` 之前注册。Capacitor 的 `PluginCall.getLong` 对 JS 传来的整数会返回默认值，取数字用 `getInt` / `getDouble`。
 - 主要依赖：yaml（Document API，保留未知字段）、marked + DOMPurify、JSZip、age-encryption、lunar-javascript。
 - 测试：vitest（单元测试）、Playwright（端到端测试，手机尺寸 Chromium）。
 
@@ -59,7 +59,7 @@ npm run cap:sync             # 构建并同步到 android/
 - 只记了心情也保存（2026-10-13 起）：文件只有 front matter。“记了没有”统一用 `hasRecord`（正文或心情），自动填的位置天气不算；索引里这种日子 `sections === 0`（`hasBody`），AI 批量标注跳过。
 - 珍藏是 `starred: true`（2026-10-13 加入），索引里 `starred`。
 - 朱批在 `diary/annotations/YYYY/YYYY-MM-DD.md`（2026-10-13 加入，SPEC 4.9）：front matter 有 `date`、`created`、`model`，正文是批语。不进索引；删除日记时一起进最近删除。
-- 写给未来的信在 `diary/letters/<写信日期>_<编号>.md`（2026-10-13 加入，SPEC 4.8）：front matter 有 `written`、`open_on`、`remind`、`opened`。不进日记索引，所以 AI、搜索、提示读不到；删除和撤回走 `trashLetter`（最近删除里不露封着的信的内容）。
+- 写给未来的信在 `diary/letters/<写信日期>_<编号>.md`（2026-10-13 加入，SPEC 4.8）：front matter 有 `written`、`open_on`、`remind`、`opened`；随信的照片在 `letters/img/`，信里写 `![](img/…)`（不放 attachments/，免得删日记时被带走）。不进日记索引，所以 AI、搜索、提示读不到；删除和撤回走 `trashLetter`（最近删除里不露封着的信的内容）。
 - 日记可设 `ai_exclude: true`（不让 AI 读）：问答工具（`index.aiRows()`）、总结、批量抽取、图片说明都跳过它，月度总结的源哈希也不算它。
 - 删除的日记放在 `trash/<日期>_<时间戳>/`（在 `diary/` 之外，不同步），30 天后启动时清理。删除一律走 `deleteEntryToTrash`，不要直接调 `repo.deleteEntry`（开发者选项清测试数据除外）。
 - 详细规格见 `SPEC.md` 第 4 节。改了行为要同步更新 `SPEC.md` 和 `README.md`。

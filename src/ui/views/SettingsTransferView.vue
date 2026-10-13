@@ -150,7 +150,7 @@ async function doImport() {
     </header>
 
     <div class="note">
-      换手机或重装时，用它把 AI、同步、位置等设置一次带过去，不用再一项项填。文件里<strong class="inline">不含日记</strong>（日记请用云端同步或“导出为 zip”），也不含应用锁。
+      换手机或重装时，用它把 AI、同步、位置等设置一次带过去，不用再一项项填。文件里<strong class="inline">不含日记</strong>（日记请用云端同步或“导出全部日记”），也不含应用锁。
     </div>
 
     <div class="form">

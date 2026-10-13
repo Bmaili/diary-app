@@ -73,10 +73,17 @@ export const prefs = reactive({
     enabled: false,
     /** 切到后台多少秒后再回来需要解锁；0 表示立即 */
     delaySec: 60,
-    /** 在最近任务里隐藏内容并禁止截屏 */
+    /** 旧设置（1.0.24 之前）：在最近任务里隐藏内容。2026-10-13 起由 privacy.noCapture 代替，只在迁移时读一次 */
     hideInRecents: true,
     /** 指纹解锁（PIN 仍可用） */
     biometric: false,
+  },
+  privacy: {
+    /**
+     * 防止截屏和录屏（2026-10-13 加入，默认开）：给窗口加 FLAG_SECURE，最近任务里也只显示空白。
+     * 和应用锁无关，没开锁也生效。
+     */
+    noCapture: true,
   },
   daily: {
     /** 首页的每日诗词：local 内置诗词库，online 今日诗词接口，off 不显示 */
@@ -111,6 +118,8 @@ export const prefs = reactive({
     body: '',
     openOn: '',
     remind: true,
+    /** 随信附上的照片（已经存进 letters/img/，相对 letters/ 的路径） */
+    images: [] as string[],
   },
   /** 已显示过的一次性提示 */
   seen: [] as string[],
@@ -142,6 +151,11 @@ export async function loadPrefs() {
   if (!prefs.seen.includes('daily-on-1013')) {
     if (prefs.seen.includes('daily-off-1013')) prefs.daily.mode = 'local'
     prefs.seen.push('daily-on-1013')
+  }
+  // 1.0.25 起“防止截屏”单独一项、默认开：以前开着应用锁、特意关掉“在最近任务里隐藏内容”的，沿用关掉
+  if (!prefs.seen.includes('privacy-1013')) {
+    if (v && prefs.lock.enabled && prefs.lock.hideInRecents === false) prefs.privacy.noCapture = false
+    prefs.seen.push('privacy-1013')
   }
   loaded = true
 }

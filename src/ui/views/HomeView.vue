@@ -353,7 +353,7 @@ async function backupExport() {
 async function dismissBackup() {
   if (await ask({
     title: '不再提醒备份？',
-    message: '以后可以在“设置 → 同步与备份”开启云端同步，或在“设置 → 导出为 zip”手动备份。',
+    message: '以后可以在“设置 → 同步与备份”开启云端同步，或在“设置 → 导出全部日记”手动备份。',
     ok: '不再提醒', cancel: '再想想',
   })) {
     prefs.backup.dismissed = true

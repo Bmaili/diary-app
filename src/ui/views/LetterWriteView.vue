@@ -1,11 +1,14 @@
 <script setup lang="ts">
 /** 写一封信（规格 5.13）：写到一半离开也不丢（草稿存在这台手机上），封存后到期前看不到 */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { today } from '../../app'
 import { quickDates } from '../../core/letters'
 import { addDays } from '../../core/time'
-import { sealLetter } from '../../lettersService'
+import { letterImageUrl, removeDraftImage, saveLetterImage, sealLetter } from '../../lettersService'
+import { cleanCameraTemp, compress, pickImages } from '../../imageService'
+import ImageSourceSheet from '../components/ImageSourceSheet.vue'
+import { ask } from '../dialog'
 import { prefs } from '../../prefs'
 import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
@@ -25,7 +28,56 @@ onMounted(() => {
   custom.value = !quick.some((q) => q.date === d.openOn)
 })
 
-const canSeal = computed(() => d.body.trim().length > 0 && d.openOn > t)
+const canSeal = computed(() => (d.body.trim().length > 0 || d.images.length > 0) && d.openOn > t)
+
+// ---------- 随信附上的照片 ----------
+const MAX_IMAGES = 9
+const imgSheet = ref(false)
+const imgBusy = ref('')
+const imgNote = ref('')
+const thumbs = reactive(new Map<string, string>())
+watch(() => [...d.images], async (list) => {
+  for (const p of list) if (!thumbs.has(p)) thumbs.set(p, await letterImageUrl(p).catch(() => ''))
+}, { immediate: true })
+
+async function addImages(source: 'camera' | 'gallery' | 'files') {
+  imgSheet.value = false
+  imgNote.value = ''
+  let picked
+  try {
+    picked = await pickImages(source)
+  } catch (e) {
+    imgNote.value = `选图失败：${(e as Error).message}`
+    return
+  }
+  if (!picked) return
+  if (picked.note) imgNote.value = picked.note
+  const room = MAX_IMAGES - d.images.length
+  const blobs = picked.blobs.slice(0, room)
+  try {
+    for (let i = 0; i < blobs.length; i++) {
+      imgBusy.value = blobs.length > 1 ? `${i + 1}/${blobs.length}` : '处理中'
+      try {
+        d.images.push(await saveLetterImage(await compress(blobs[i])))
+      } catch (e) {
+        imgNote.value = `有一张没附上：${(e as Error).message}`
+      }
+    }
+    if (picked.blobs.length > room) imgNote.value = `一封信最多附 ${MAX_IMAGES} 张照片，多的没有附上。`
+  } finally {
+    picked.done()
+    if (source === 'camera') void cleanCameraTemp()
+    imgBusy.value = ''
+  }
+}
+
+async function dropImage(i: number) {
+  const p = d.images[i]
+  if (!p || !(await ask({ title: '去掉这张照片？', message: '拍的照片没有存进系统相册，去掉就找不回来了。', ok: '去掉', cancel: '留着', danger: true }))) return
+  d.images.splice(i, 1)
+  thumbs.delete(p)
+  await removeDraftImage(p)
+}
 
 function pickQuick(date: string) {
   d.openOn = date
@@ -37,8 +89,9 @@ async function seal() {
   busy.value = true
   err.value = ''
   try {
-    await sealLetter({ body: d.body, openOn: d.openOn, remind: d.remind })
+    await sealLetter({ body: d.body, openOn: d.openOn, remind: d.remind, images: [...d.images] })
     d.body = ''
+    d.images = []
     d.openOn = ''
     d.remind = true
     router.replace('/letters')
@@ -67,6 +120,16 @@ function goBack() {
       <span class="sr">信的内容</span>
       <textarea v-model="d.body" class="letter-input" placeholder="一年后的我：&#10;&#10;现在的你在想什么、担心什么、盼着什么？写下来，到那天再读。" />
     </label>
+    <div class="photos" aria-label="随信附上的照片">
+      <div v-for="(p, i) in d.images" :key="p" class="ph">
+        <img v-if="thumbs.get(p)" :src="thumbs.get(p)" alt="" />
+        <button class="ph-x" aria-label="去掉这张照片" @click="dropImage(i)"><Icon name="close" /></button>
+      </div>
+      <button v-if="d.images.length < MAX_IMAGES" class="ph add" :disabled="!!imgBusy" @click="imgSheet = true">
+        <Icon name="image" /><span>{{ imgBusy || '附上照片' }}</span>
+      </button>
+    </div>
+    <p v-if="imgNote" class="draft-note">{{ imgNote }}</p>
     <p class="draft-note">写到一半离开也没关系，回来还在。</p>
 
     <h2 class="sec">哪天拆开</h2>
@@ -88,6 +151,7 @@ function goBack() {
 
     <p v-if="err" class="result bad pad">{{ err }}</p>
     <p class="foot-note">封存后到那天之前看不到内容，但可以改日期或者撤回。</p>
+    <ImageSourceSheet :open="imgSheet" title="附上照片" @close="imgSheet = false" @pick="addImages" />
   </div>
 </template>
 
@@ -116,6 +180,14 @@ function goBack() {
   resize: none;
 }
 .letter-input::placeholder { color: var(--faint); }
+.photos { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 16px 0; }
+.ph { position: relative; width: 76px; height: 76px; border-radius: 6px; overflow: hidden; background: var(--line); }
+.ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph-x { position: absolute; top: 2px; right: 2px; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.5); color: #fff; }
+.ph-x svg { width: 14px; height: 14px; }
+.ph.add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 1px dashed var(--faint); background: var(--surface); color: var(--muted); font: inherit; font-size: 12px; }
+.ph.add svg { width: 22px; height: 22px; }
+.ph.add:disabled { opacity: 0.6; }
 .draft-note { margin: 6px 20px 0; font-size: 12px; color: var(--faint); }
 .sec { margin: 18px 20px 10px; font-size: 14px; font-weight: 400; color: var(--muted); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 16px; }

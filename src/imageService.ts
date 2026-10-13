@@ -214,24 +214,28 @@ const webCache = new Map<string, string>()
 let rootUri: string | null = null
 
 async function displayUrl(src: string): Promise<string> {
-  const path = repoPath(src)
+  return pathUrl(repoPath(src))
+}
+
+/** 仓库里任意一张图（如信里的照片 diary/letters/img/…）的显示地址 */
+export async function pathUrl(path: string): Promise<string> {
   if (Capacitor.isNativePlatform()) {
     const st = await store.stat(path)
     if (!st) return ''
     rootUri ??= (await Filesystem.getUri({ path: ROOT, directory: Directory.Data })).uri.replace(/\/+$/, '')
     return `${Capacitor.convertFileSrc(`${rootUri}/${path.slice(ROOT.length + 1)}`)}?v=${st.mtime}`
   }
-  const hit = webCache.get(src)
+  const hit = webCache.get(path)
   if (hit) {
     // 最近用过的挪到最后，淘汰时从最前面删
-    webCache.delete(src)
-    webCache.set(src, hit)
+    webCache.delete(path)
+    webCache.set(path, hit)
     return hit
   }
   const b64 = await store.readBase64(path)
   if (!b64) return ''
   const url = `data:${mimeOfPath(path)};base64,${b64}`
-  webCache.set(src, url)
+  webCache.set(path, url)
   while (webCache.size > WEB_CACHE_MAX) webCache.delete(webCache.keys().next().value!)
   return url
 }

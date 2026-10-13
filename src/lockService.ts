@@ -113,7 +113,7 @@ function onShow() {
 }
 
 function applyPrivacy() {
-  void setPrivacyScreen(prefs.lock.enabled && prefs.lock.hideInRecents)
+  void setPrivacyScreen(prefs.privacy.noCapture)
 }
 
 export function initLock() {
@@ -134,6 +134,6 @@ export function initLock() {
         lock.locked = false
       }
     })
-    watch(() => [prefs.lock.enabled, prefs.lock.hideInRecents], applyPrivacy)
+    watch(() => prefs.privacy.noCapture, applyPrivacy)
   })
 }

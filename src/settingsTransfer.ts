@@ -19,7 +19,7 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 
 const SYNC_SECRETS = ['oss.secret', 'github.token']
 const PLACE_SECRETS = ['amap.key', 'qweather.key']
-const MISC_KEYS = ['reminder', 'daily', 'calendar', 'ui', 'update'] as const
+const MISC_KEYS = ['reminder', 'daily', 'calendar', 'ui', 'update', 'privacy'] as const
 
 /** 每类设置现在是什么情况（导出页显示） */
 export function partStatus(id: PartId): string {

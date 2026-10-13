@@ -25,6 +25,8 @@ const props = defineProps<{
   sharing?: boolean
   /** 正文路径 → 显示用的地址 */
   resolve: (src: string) => Promise<string>
+  /** 不显示“分享”（信里的照片）。注意布尔型 prop 不传时是 false，所以用“不要”的写法 */
+  noShare?: boolean
 }>()
 const emit = defineEmits<{ close: []; 'update:index': [i: number]; edit: [i: number]; share: [i: number] }>()
 
@@ -275,7 +277,7 @@ function imgStyle(i: number) {
           <p v-else-if="canEdit" class="cap empty">还没有说明</p>
           <div class="acts">
             <button v-if="canEdit" class="act" @click="emit('edit', index)"><Icon name="pen" />改说明</button>
-            <button class="act" :disabled="sharing" @click="emit('share', index)"><Icon name="share" />{{ sharing ? '正在准备' : '分享' }}</button>
+            <button v-if="!noShare" class="act" :disabled="sharing" @click="emit('share', index)"><Icon name="share" />{{ sharing ? '正在准备' : '分享' }}</button>
           </div>
         </footer>
       </div>
