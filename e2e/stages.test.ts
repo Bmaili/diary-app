@@ -854,9 +854,9 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     await page.getByText('没有删除过的日记。').waitFor()
     expect((await diary(page)).some((t) => t.includes('木星'))).toBe(true)
 
-    // 日历页：图例只剩心情文字
+    // 日历页：图例只剩心情文字（2026-10-13 起说明文字换成了“寄往来日”）
     await page.goto(BASE + '#/calendar')
-    await page.getByText('每天下面是农历').waitFor()
+    await page.getByLabel('寄往来日').waitFor()
     expect(await page.getByText('恒星光谱').count()).toBe(0)
     await page.screenshot({ path: OUT + '72-calendar.png' })
     // 法定节假日联网更新：取到了 2027 年（测试数据），翻到 2027 年 1 月能看到“休 / 班”
@@ -868,7 +868,7 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     await page.goto(BASE + '#/settings')
     await page.getByText(/已有 2027 年的安排/).waitFor()
     await page.goto(BASE + '#/calendar')
-    await page.getByText('每天下面是农历').waitFor()
+    await page.getByLabel('寄往来日').waitFor()
     await page.emulateMedia({ colorScheme: 'dark' })
     await page.screenshot({ path: OUT + '72-calendar-dark.png' })
     await page.emulateMedia({ colorScheme: 'light' })

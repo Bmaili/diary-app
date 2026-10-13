@@ -9,7 +9,7 @@ import { nextTick } from 'vue'
 import type { Router, RouteLocationNormalized } from 'vue-router'
 import { prefs } from '../prefs'
 
-const TABS = ['home', 'calendar', 'search', 'ai']
+const TABS = ['home', 'calendar', 'ai']
 
 export function motionOn(): boolean {
   if (prefs.ui.motion === false) return false

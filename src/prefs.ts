@@ -79,8 +79,8 @@ export const prefs = reactive({
     biometric: false,
   },
   daily: {
-    /** 首页的每日诗词：local 内置诗词库，online 今日诗词接口，off 不显示（2026-10-13 起默认关：首页内容太多） */
-    mode: 'off' as 'local' | 'online' | 'off',
+    /** 首页的每日诗词：local 内置诗词库，online 今日诗词接口，off 不显示 */
+    mode: 'local' as 'local' | 'online' | 'off',
   },
   calendar: {
     /** 法定节假日联网更新（holiday-cn）；关掉只用内置数据 */
@@ -91,6 +91,8 @@ export const prefs = reactive({
     motion: true,
     /** 首页小提示可以引用我的日记（那年今日、第一次写到某人等，2026-10-10 加入） */
     diaryHints: true,
+    /** 首页旧页：摆一篇随机的旧日记（2026-10-13 加入） */
+    oldPage: true,
   },
   update: {
     /** 自动检查新版本（2026-10-10 加入）：每天最多一次，有新版只在设置里显示红点 */
@@ -136,10 +138,10 @@ export async function loadPrefs() {
   // 1.0.4 起问答的这两项最少 10
   prefs.ai.chat.historyTurns = Math.max(10, Number(prefs.ai.chat.historyTurns) || 10)
   prefs.ai.chat.maxRounds = Math.max(10, Number(prefs.ai.chat.maxRounds) || 10)
-  // 2026-10-13：每日诗词改为默认关闭，已装的也关一次（之后自己打开的不再动）
-  if (!prefs.seen.includes('daily-off-1013')) {
-    prefs.daily.mode = 'off'
-    prefs.seen.push('daily-off-1013')
+  // 1.0.22 曾把每日诗词一律关掉过一次（daily-off-1013），之后又改回默认打开：被那次关掉的再打开一次
+  if (!prefs.seen.includes('daily-on-1013')) {
+    if (prefs.seen.includes('daily-off-1013')) prefs.daily.mode = 'local'
+    prefs.seen.push('daily-on-1013')
   }
   loaded = true
 }

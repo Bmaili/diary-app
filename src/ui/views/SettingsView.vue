@@ -203,6 +203,13 @@ const syncLine = computed(() => {
       </label>
       <div class="item">
         <div>
+          <div>首页旧页</div>
+          <div class="desc">首页摆一篇随机的旧日记，点“换一页”换一篇。</div>
+        </div>
+        <Switch v-model="prefs.ui.oldPage" label="首页旧页" />
+      </div>
+      <div class="item">
+        <div>
           <div>首页提示引用我的日记</div>
           <div class="desc">梅枝下面那句小提示，偶尔会说起你写过的日子，比如“一年前的今天，你在江边公园”。只用心情不错、没有设“不让 AI 读”的日记，全部在手机上计算。</div>
         </div>

@@ -119,21 +119,20 @@ describe('只记心情、珍藏、随手翻', () => {
     await old.getByRole('button', { name: '换一页' }).click()
     await expect.poll(() => old.locator('.op-date').innerText()).not.toBe(firstOld)
 
-    await old.getByRole('link', { name: /珍藏/ }).click()
-    await page.waitForURL(/#\/starred$/)
-    await expect(page.locator('.row').evaluateAll((els) => els.map((e) => e.getAttribute('data-date')))).resolves.toEqual(['2026-08-08', '2025-12-31'])
-    await page.screenshot({ path: OUT + 'recall-05-starred.png' })
-
-    await page.goto(BASE + '#/')
     await page.locator('.oldpage .op-main').click()
     await page.waitForURL(/#\/entry\/\d{4}-\d\d-\d\d$/)
     expect(['2026-06-01', '2026-08-08', '2025-12-31']).toContain(page.url().split('/').pop())
 
-    // 搜索里也能只看珍藏
-    await page.goto(BASE + '#/search')
-    await page.getByRole('button', { name: '筛选' }).click()
+    // 搜索：从首页的悬浮按钮进去；搜索框右边的星星只看珍藏
+    await page.goto(BASE + '#/')
+    await page.getByRole('link', { name: '搜索' }).click()
+    await page.waitForURL(/#\/search$/)
     await page.getByRole('button', { name: '只看珍藏' }).click()
     await page.getByText('共 2 篇').waitFor()
+    await expect(page.locator('.hit .hd').allInnerTexts()).resolves.toEqual(['2026.08.08', '2025.12.31'])
+    await page.screenshot({ path: OUT + 'recall-05-search-starred.png' })
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.waitForURL(BASE + '#/')
     expect(errors).toEqual([])
     await ctx.close()
   })
@@ -158,8 +157,13 @@ describe('只记心情、珍藏、随手翻', () => {
     await page.locator('.row[data-date="2026-08-09"]').click()
     await page.getByText('这天只记了心情').waitFor()
     await page.screenshot({ path: OUT + 'recall-08-mood-only-read-dark.png' })
-    await page.goto(BASE + '#/starred')
-    await page.screenshot({ path: OUT + 'recall-09-starred-dark.png' })
+    await page.goto(BASE + '#/search')
+    await page.getByRole('button', { name: '只看珍藏' }).click()
+    await page.getByText('共 1 篇').waitFor()
+    // 搜索栏四个元素在小屏上都放得下，页面不被撑宽
+    expect(await page.locator('.filter-btn').evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(360)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
+    await page.screenshot({ path: OUT + 'recall-09-search-starred-dark-360.png' })
     await ctx.close()
   })
 })
@@ -280,7 +284,11 @@ describe('写给未来的信', () => {
   it('写一封、封存；信匣里只看到日期；改日期；撤回后进最近删除且不露内容', async () => {
     const { ctx, page, errors } = await newPage()
     await seed(page, entry('2026-06-01', '搬家', 'mood: 3\n'))
-    await page.locator('.oldpage').getByRole('link', { name: /寄往来日/ }).click()
+    // 寄往来日在日历页
+    await page.getByRole('link', { name: '日历' }).click()
+    await page.getByLabel('寄往来日').waitFor()
+    await page.screenshot({ path: OUT + 'recall-29-calendar-post.png' })
+    await page.getByLabel('寄往来日').getByRole('link', { name: '信匣' }).click()
     await page.waitForURL(/#\/letters$/)
     await page.getByText('还没有写过信').waitFor()
     await page.screenshot({ path: OUT + 'recall-30-letters-empty.png' })
@@ -336,7 +344,12 @@ describe('写给未来的信', () => {
       const sheet = page.getByRole('dialog', { name: /一年前的你，寄来一封信/ })
       await sheet.waitFor()
       await page.screenshot({ path: OUT + `recall-33-letter-arrived${dark ? '-dark' : ''}.png` })
-      await sheet.getByRole('button', { name: '拆开' }).click()
+      // 晚点再看：日历页的邮票变成“启”，在那里也能拆
+      await sheet.getByRole('button', { name: '晚点再看' }).click()
+      await page.getByRole('link', { name: '日历' }).click()
+      await page.getByText('有一封信到了，还没拆。').waitFor()
+      await page.screenshot({ path: OUT + `recall-36-calendar-arrived${dark ? '-dark' : ''}.png` })
+      await page.getByLabel('寄往来日').getByRole('link', { name: '拆开' }).click()
       await page.waitForURL(/#\/letters\/.+$/)
       await page.getByText('希望你还在写。').waitFor()
       await page.screenshot({ path: OUT + `recall-34-letter-read${dark ? '-dark' : ''}.png` })
@@ -354,11 +367,39 @@ describe('写给未来的信', () => {
     }
   })
 
-  it('每日诗词默认关闭', async () => {
+  it('每日诗词、旧页默认打开，设置里可以关', async () => {
     const { ctx, page } = await newPage()
     await seed(page, entry('2026-06-01', '搬家', 'mood: 3\n'))
-    expect(await page.evaluate(() => (window as unknown as W).__diary.prefs.daily.mode)).toBe('off')
-    await expect(page.locator('.poem').count()).resolves.toBe(0)
+    expect(await page.evaluate(() => (window as unknown as W).__diary.prefs.daily.mode)).toBe('local')
+    await page.locator('.poem').waitFor()
+    await page.locator('.oldpage').waitFor()
+    await page.goto(BASE + '#/settings')
+    await page.getByRole('switch', { name: '首页旧页' }).click()
+    await page.goto(BASE + '#/')
+    await page.locator('.poem').waitFor()
+    await expect(page.locator('.oldpage').count()).resolves.toBe(0)
+    await ctx.close()
+  })
+
+  it('换一页：旧的一页像撕下来一样飘落（开着动画时）', async () => {
+    const ctx = await browser.newContext({ ...DEVICE, reducedMotion: 'no-preference' })
+    await ctx.addInitScript(autoDialog)
+    await ctx.route(/^https?:\/\/(?!127\.0\.0\.1)/, (r) => r.abort())
+    const page = await ctx.newPage()
+    await page.goto(BASE)
+    await page.waitForFunction(() => document.querySelector('.shell'))
+    await seed(page, {
+      ...entry('2026-06-01', '搬进新家的第一个晚上，坐在纸箱上吃了一碗面。', 'mood: 3\n'),
+      ...entry('2026-05-01', '五一去爬山，山顶风很大。', 'mood: 4\n'),
+    })
+    await page.waitForTimeout(2500)
+    await page.locator('.oldpage').getByRole('button', { name: '换一页' }).click()
+    await page.locator('.leaf').waitFor()
+    await page.waitForTimeout(450)
+    await page.screenshot({ path: OUT + 'recall-35-leaf-falling.png' })
+    // 落完就移除，不留在页面上；页面不会被撑宽
+    await expect.poll(() => page.locator('.leaf').count(), { timeout: 3000 }).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(393)
     await ctx.close()
   })
 })

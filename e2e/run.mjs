@@ -170,7 +170,7 @@ try {
     ),
   )
   await page.reload()
-  await page.getByText('外部编辑器写的。').click()
+  await page.locator('.row').getByText('外部编辑器写的。').click()
   await page.waitForURL(/entry\/2026-10-01/)
   await editorReady(page)
   await page.locator('article.reading').waitFor()
@@ -184,7 +184,7 @@ try {
   check('未知字段经 app 编辑后仍在', raw5.includes('my_custom: 别删我') && raw5.includes('在 app 里补了一句'))
 
   // ---------- 6. 删空正文 ----------
-  await page.getByText('外部编辑器写的').click()
+  await page.locator('.row').getByText('外部编辑器写的').click()
   await page.waitForURL(/entry\/2026-10-01/)
   await editorReady(page)
   await toEdit(page)
@@ -272,6 +272,8 @@ try {
   await p2.getByText(/这个月写了/).waitFor()
   await p2.screenshot({ path: OUT + '09-calendar.png' })
 
+  // 搜索不在底部导航里了：从首页的悬浮按钮进去
+  await p2.getByRole('link', { name: '日记' }).click()
   await p2.getByRole('link', { name: '搜索' }).click()
   const s0 = Date.now()
   await p2.getByLabel('搜索关键词').fill('江边公园')

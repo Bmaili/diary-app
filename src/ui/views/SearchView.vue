@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { index, indexVersion } from '../../app'
 import type { ListField } from '../../core/types'
 import { weekday } from '../../core/time'
 import Icon from '../components/Icon.vue'
 
 defineOptions({ name: 'SearchView' })
+
+const router = useRouter()
+function goBack() {
+  if (window.history.state?.back) router.back()
+  else router.replace('/')
+}
 
 const q = ref('')
 const debounced = ref('')
@@ -26,7 +33,7 @@ const f = reactive({
   starred: false,
 })
 const filterCount = computed(
-  () => (f.from ? 1 : 0) + (f.to ? 1 : 0) + f.moods.length + f.tags.length + f.people.length + f.places.length + (f.starred ? 1 : 0),
+  () => (f.from ? 1 : 0) + (f.to ? 1 : 0) + f.moods.length + f.tags.length + f.people.length + f.places.length,
 )
 function toggle<T>(arr: T[], v: T) {
   const i = arr.indexOf(v)
@@ -39,7 +46,6 @@ function clearFilters() {
   f.tags.splice(0)
   f.people.splice(0)
   f.places.splice(0)
-  f.starred = false
 }
 
 const options = computed(() => {
@@ -48,7 +54,7 @@ const options = computed(() => {
   return { tags: pick('tags'), people: pick('people'), places: pick('places') }
 })
 
-const active = computed(() => debounced.value.trim() !== '' || filterCount.value > 0)
+const active = computed(() => debounced.value.trim() !== '' || filterCount.value > 0 || f.starred)
 const hits = computed(() => {
   void indexVersion.value
   if (!active.value) return []
@@ -76,11 +82,16 @@ const groups: { key: ListField; label: string }[] = [
 <template>
   <div class="page">
     <header class="topbar search-bar">
+      <button class="icon-btn back" aria-label="返回" @click="goBack"><Icon name="back" /></button>
       <label class="box">
         <Icon name="search" class="lead" />
         <input v-model="q" type="search" placeholder="在所有日记里搜索" enterkeyhint="search"
           aria-label="搜索关键词" />
       </label>
+      <button class="icon-btn star-btn" :class="{ on: f.starred }" :aria-pressed="f.starred"
+        :aria-label="f.starred ? '只看珍藏（点一下取消）' : '只看珍藏'" @click="f.starred = !f.starred">
+        <Icon name="star" />
+      </button>
       <button class="icon-btn filter-btn" :class="{ on: showFilters || filterCount }" aria-label="筛选"
         :aria-expanded="showFilters" @click="showFilters = !showFilters">
         <Icon name="filter" />
@@ -105,12 +116,6 @@ const groups: { key: ListField; label: string }[] = [
           </button>
         </div>
       </div>
-      <div class="frow">
-        <span class="flabel">珍藏</span>
-        <div class="opts">
-          <button class="chip" :class="{ on: f.starred }" :aria-pressed="f.starred" @click="f.starred = !f.starred">只看珍藏</button>
-        </div>
-      </div>
       <div v-for="g in groups" :key="g.key" class="frow">
         <span class="flabel">{{ g.label }}</span>
         <div class="opts">
@@ -123,7 +128,7 @@ const groups: { key: ListField; label: string }[] = [
     </section>
 
     <p v-if="active" class="total">共 <strong>{{ hits.length }}</strong> 篇</p>
-    <div v-else class="idle"><Icon name="search" class="scope" /><p class="hint muted">输入关键词，或打开筛选按日期、心情、标签查找。多个词用空格隔开，会找同时包含它们的日记。</p></div>
+    <div v-else class="idle"><Icon name="search" class="scope" /><p class="hint muted">输入关键词，或打开筛选按日期、心情、标签查找。多个词用空格隔开，会找同时包含它们的日记。点星星只看珍藏的日子。</p></div>
 
     <ul class="results">
       <li v-for="h in hits.slice(0, limit)" :key="h.row.date">
@@ -149,9 +154,14 @@ const groups: { key: ListField; label: string }[] = [
 </template>
 
 <style scoped>
-.search-bar { gap: 6px; padding-left: 12px; }
+.search-bar { gap: 2px; padding-left: 4px; padding-right: 4px; }
+.search-bar .icon-btn { flex: none; }
+.star-btn { color: var(--muted); }
+.star-btn.on { color: var(--accent); }
+.star-btn.on :deep(path) { fill: currentColor; }
 .box {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;

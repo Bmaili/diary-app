@@ -21,6 +21,7 @@ import { diaryFacts } from '../../core/diaryFacts'
 import { hintSeed, refreshHintSeed } from '../../hintService'
 import { pickWander } from '../../core/wander'
 import { letters } from '../../lettersService'
+import { motionOn } from '../motion'
 import { letterState } from '../../core/letters'
 import { pushBack } from '../backStack'
 import { backupDue } from '../../core/backupReminder'
@@ -226,10 +227,6 @@ onActivated(() => void checkPrompts())
 
 // ---------- 旧页：首页随机摆一篇旧日记（2026-10-13 起代替“随手翻”按钮） ----------
 
-const starredCount = computed(() => {
-  void indexVersion.value
-  return index.starred().length
-})
 /** 这次打开 app 摆出来的那一篇；点“换一页”换，跨了一天重新挑 */
 const oldDate = ref<string | null>(null)
 let oldDay = ''
@@ -239,8 +236,8 @@ function pickOld() {
 }
 const oldPage = computed(() => {
   void indexVersion.value
-  // 那年今日出现的那天，旧页让位，首页不要两张回忆卡
-  if (memories.value.length) return null
+  // 设置里关掉了；那年今日出现的那天，旧页让位，首页不要两张回忆卡
+  if (!prefs.ui.oldPage || memories.value.length) return null
   const r = oldDate.value ? index.get(oldDate.value) : undefined
   return r && r.date < todayStr.value ? r : null
 })
@@ -252,7 +249,40 @@ function oldLabel(d: string): string {
   const y = x.getFullYear() === Number(todayStr.value.slice(0, 4)) ? '' : `${x.getFullYear()} 年 `
   return `${y}${x.getMonth() + 1} 月 ${x.getDate()} 日 · ${weekday(d)}`
 }
-const sealedCount = computed(() => letters.list.filter((l) => !l.meta.opened).length)
+
+/** 正在落下的那一页（复制了旧内容，固定在原来的位置上开始飘） */
+const oldEl = ref<HTMLElement | null>(null)
+const leaf = ref<null | { label: string; text: string; mood?: number; style: Record<string, string> }>(null)
+const turned = ref(false)
+/** 撕口：顶边一排小锯齿 */
+const TEAR = (() => {
+  const n = 18
+  const pts = ['0 100%', '0 5px']
+  for (let i = 1; i <= n; i++) pts.push(`${((i - 0.5) / n) * 100}% ${i % 2 ? 0 : 3}px`, `${(i / n) * 100}% 5px`)
+  pts.push('100% 100%')
+  return `polygon(${pts.join(', ')})`
+})()
+function turnPage() {
+  const cur = oldPage.value
+  const el = oldEl.value
+  if (cur && el && motionOn()) {
+    const r = el.getBoundingClientRect()
+    // 往左还是往右飘，每次随机；落的距离按屏幕高度算，落出屏幕
+    const dir = Math.random() < 0.5 ? -1 : 1
+    leaf.value = {
+      label: oldLabel(cur.date),
+      text: cur.text.replace(/\s*\n+\s*/g, ' '),
+      mood: cur.mood,
+      style: {
+        left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height - 44}px`,
+        '--dir': String(dir), '--fall': `${Math.max(400, window.innerHeight - r.top)}px`, clipPath: TEAR,
+      },
+    }
+  }
+  pickOld()
+  turned.value = false
+  requestAnimationFrame(() => (turned.value = true))
+}
 
 // ---------- 信到了：首页弹出信封（规格 5.13） ----------
 
@@ -373,8 +403,8 @@ const memoryDateLabel = (d: string) => {
       </div>
     </section>
 
-    <section v-if="oldPage" class="oldpage" :class="`mood-${oldPage.mood ?? 0}`" aria-label="旧页">
-      <router-link :to="`/entry/${oldPage.date}`" class="op-main">
+    <section v-if="oldPage" ref="oldEl" class="oldpage" :class="`mood-${oldPage.mood ?? 0}`" aria-label="旧页">
+      <router-link :key="oldPage.date" :to="`/entry/${oldPage.date}`" class="op-main" :class="{ turned }">
         <div class="op-head">
           <span class="op-seal">旧页</span>
           <span class="op-date">{{ oldLabel(oldPage.date) }}</span>
@@ -383,17 +413,23 @@ const memoryDateLabel = (d: string) => {
         <p class="op-text">{{ oldPage.text.replace(/\s*\n+\s*/g, ' ') }}</p>
       </router-link>
       <div class="op-foot">
-        <button class="op-btn" @click="pickOld"><Icon name="shuffle" />换一页</button>
-        <span class="op-links">
-          <router-link to="/letters" class="op-btn"><Icon name="mail" />寄往来日<span v-if="sealedCount" class="num">{{ sealedCount }}</span></router-link>
-          <router-link to="/starred" class="op-btn"><Icon name="star" class="star" />珍藏<span v-if="starredCount" class="num">{{ starredCount }}</span></router-link>
-        </span>
+        <button class="text-btn swap" @click="turnPage">换一页</button>
       </div>
     </section>
-    <nav v-else-if="rows.length" class="recall-links" aria-label="回顾">
-      <router-link to="/letters" class="op-btn"><Icon name="mail" />寄往来日<span v-if="sealedCount" class="num">{{ sealedCount }}</span></router-link>
-      <router-link to="/starred" class="op-btn"><Icon name="star" class="star" />珍藏<span v-if="starredCount" class="num">{{ starredCount }}</span></router-link>
-    </nav>
+
+    <!-- 换一页：旧的那页像从日历上撕下来，飘飘摇摇落下去（ui.motion 关掉时不飘） -->
+    <Teleport to="body">
+      <div v-if="leaf" class="leaf-layer" aria-hidden="true">
+        <div class="leaf" :class="`mood-${leaf.mood ?? 0}`" :style="leaf.style" @animationend="leaf = null">
+          <div class="op-head">
+            <span class="op-seal">旧页</span>
+            <span class="op-date">{{ leaf.label }}</span>
+            <MoodFace :value="leaf.mood ?? null" :size="26" class="op-face" />
+          </div>
+          <p class="op-text">{{ leaf.text }}</p>
+        </div>
+      </div>
+    </Teleport>
 
     <section v-if="showBackup" class="backup" aria-label="备份提醒">
       <button class="icon-btn close" aria-label="不再提醒" @click="dismissBackup"><Icon name="close" /></button>
@@ -463,6 +499,10 @@ const memoryDateLabel = (d: string) => {
       </Transition>
     </Teleport>
 
+    <router-link to="/search" class="fab fab-search" :class="{ mini: fabMini }" aria-label="搜索">
+      <Icon name="search" />
+      <span class="fab-label">搜索</span>
+    </router-link>
     <button class="fab solid-btn" :class="{ mini: fabMini }" aria-label="写今天" @click="writeToday">
       <Icon name="pen" />
       <span class="fab-label">写今天</span>
@@ -530,13 +570,12 @@ const memoryDateLabel = (d: string) => {
 .op-date { flex: 1; min-width: 0; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .op-face { flex: none; }
 .op-text { margin: 10px 0 0; font-size: 16px; line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.op-foot { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.op-links { display: flex; gap: 14px; }
-.op-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; text-decoration: none; }
-.op-btn svg { width: 16px; height: 16px; }
-.op-btn .star { color: var(--accent); }
-.op-btn .star :deep(path) { fill: currentColor; }
-.op-btn:active { opacity: 0.6; }
+.op-foot { position: relative; display: flex; justify-content: flex-end; }
+.op-foot .swap { min-height: 40px; padding: 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+/* 换上来的新一页：从下面那张纸上浮现 */
+.op-main.turned { animation: page-in 0.5s var(--ease-out) 0.12s backwards; }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } }
+/* 信到了：底部弹出的信封 */
 .arrive-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; background: rgba(26, 24, 22, 0.42); }
 .arrive {
   width: 100%;
@@ -561,7 +600,28 @@ const memoryDateLabel = (d: string) => {
 .arrive-leave-active .arrive { transition: transform 0.22s ease-in; }
 .arrive-enter-from, .arrive-leave-to { opacity: 0; }
 .arrive-enter-from .arrive, .arrive-leave-to .arrive { transform: translateY(100%); }
-.recall-links { display: flex; justify-content: flex-end; gap: 18px; margin: -6px 20px 6px; }
+.leaf-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; }
+.leaf {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 18px 16px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px 4px 22px 22px;
+  background-color: var(--surface);
+  background-image: linear-gradient(color-mix(in srgb, var(--mc) 14%, transparent), color-mix(in srgb, var(--mc) 14%, transparent));
+  box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.45);
+  transform-origin: 50% 0;
+  animation: leaf-fall 1.15s cubic-bezier(0.45, 0.05, 0.7, 0.6) forwards;
+}
+/* 先从顶边掀起（撕下来），再左右飘摆着落下去 */
+@keyframes leaf-fall {
+  0% { transform: none; }
+  14% { transform: translateY(-6px) rotate(calc(var(--dir) * -3deg)); }
+  32% { transform: translate(calc(var(--dir) * -16px), calc(var(--fall) * 0.12)) rotate(calc(var(--dir) * 7deg)); }
+  52% { transform: translate(calc(var(--dir) * 20px), calc(var(--fall) * 0.34)) rotate(calc(var(--dir) * -6deg)); }
+  74% { transform: translate(calc(var(--dir) * -10px), calc(var(--fall) * 0.62)) rotate(calc(var(--dir) * 12deg)); opacity: 0.9; }
+  100% { transform: translate(calc(var(--dir) * 34px), var(--fall)) rotate(calc(var(--dir) * 22deg)); opacity: 0; }
+}
 .backup {
   position: relative;
   margin: 0 16px 14px;
@@ -681,6 +741,22 @@ const memoryDateLabel = (d: string) => {
 .fab.mini { padding: 0 18px; }
 .fab.mini .fab-label { max-width: 0; margin-left: 0; opacity: 0; }
 .fab.mini svg { transform: rotate(-12deg) scale(1.1); }
+/* 搜索：在“写今天”上面，浅色，不和主按钮抢 */
+.fab-search {
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 18px + 56px + 12px);
+  min-height: 48px;
+  padding: 0 18px 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 8px 20px -12px rgba(18, 24, 52, 0.5);
+}
+.fab-search svg { width: 18px; height: 18px; }
+.fab-search.mini { padding: 0 14px; }
+.fab-search.mini svg { transform: none; }
 /* 首页顶部依次浮现（只在第一次打开时） */
 .intro .oldpage, .intro .backup { animation: rise-in 0.5s var(--ease-out) 0.06s backwards; }
 .intro .hello, .intro .prompts, .intro .memories { animation: rise-in 0.5s var(--ease-out) backwards; }

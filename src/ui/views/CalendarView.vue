@@ -7,6 +7,8 @@ import Icon from '../components/Icon.vue'
 import MoodFace from '../components/MoodFace.vue'
 import { MOOD_LABELS } from '../mood'
 import { lunar as lunarDay } from '../../holidayService'
+import { letters } from '../../lettersService'
+import { letterState } from '../../core/letters'
 
 defineOptions({ name: 'CalendarView' })
 
@@ -135,6 +137,9 @@ function onEnd(e: TouchEvent) {
 
 const isCurrent = computed(() => year.value === Number(t.slice(0, 4)) && month.value === Number(t.slice(5, 7)))
 const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
+
+/** 到了还没拆的信（首页点了“晚点再看”之后，这里还能拆） */
+const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, today()) === 'arrived') ?? null)
 </script>
 
 <template>
@@ -184,11 +189,53 @@ const moodOf = (date: string) => rows.value.get(date)?.mood ?? 0
       <span v-for="(w, i) in MOOD_LABELS" :key="w" :class="`mood-${i + 1}`"><i class="dot"></i>{{ w }}</span>
       <span class="mood-0"><i class="dot"></i>没记心情</span>
     </div>
-    <p class="hint muted">每天下面是农历，节气和节日用朱红标出；右上角“休”是法定放假，“班”是调休上班。点没写的日子可以补写，左右滑动换月份。</p>
+
+    <!-- 寄往来日：不显示有几封、哪天拆，免得天天被提醒；只有信到了还没拆时邮票变成“启” -->
+    <section class="post" aria-label="寄往来日">
+      <svg class="flap" viewBox="0 0 358 176" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0 L150 78 Q179 92 208 78 L358 0" /></svg>
+      <div class="stamp" :class="{ arrived: arrivedLetter }" aria-hidden="true"><span>{{ arrivedLetter ? '启' : '寄' }}<small>往来日</small></span></div>
+      <div class="post-text">
+        <p class="post-title">寄往来日</p>
+        <p class="post-sub">{{ arrivedLetter ? '有一封信到了，还没拆。' : '写几句给以后的自己，到那天才能拆开。' }}</p>
+      </div>
+      <div class="post-acts">
+        <router-link v-if="arrivedLetter" :to="`/letters/${arrivedLetter.id}`" class="post-btn accent">拆开</router-link>
+        <router-link v-else to="/letters/new" class="post-btn"><Icon name="pen" />写一封信</router-link>
+        <router-link to="/letters" class="post-link">信匣<Icon name="right" /></router-link>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
+.post {
+  position: relative;
+  height: 158px;
+  margin: 18px 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background-color: var(--surface);
+  background-image: var(--paper, none);
+  overflow: hidden;
+}
+.flap { position: absolute; inset: 0; width: 100%; height: 100%; }
+.flap path { fill: none; stroke: var(--line); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+/* 邮票：虚线齿孔，朱红印面 */
+.stamp { position: absolute; top: 14px; right: 16px; width: 46px; height: 56px; padding: 3px; border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 2px; background: var(--surface); transform: rotate(3deg); }
+.stamp span { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; background: var(--accent); color: var(--on-accent); font-family: var(--kai); font-size: 18px; line-height: 1.1; }
+.stamp small { margin-top: 3px; font-size: 9px; opacity: 0.85; }
+.stamp.arrived { animation: stamp-wiggle 2.4s ease-in-out infinite; }
+@keyframes stamp-wiggle { 0%, 80%, 100% { transform: rotate(3deg); } 86% { transform: rotate(-4deg); } 92% { transform: rotate(6deg); } }
+.post-text { position: absolute; left: 20px; right: 76px; top: 16px; }
+.post-title { margin: 0; font-family: var(--kai); font-size: 21px; letter-spacing: 0.08em; }
+.post-sub { margin: 4px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.post-acts { position: absolute; left: 20px; right: 16px; bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+.post-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 18px; border-radius: 20px; background: var(--ink); color: var(--bg); font-size: 15px; font-weight: 700; text-decoration: none; }
+.post-btn svg { width: 16px; height: 16px; }
+.post-btn.accent { background: var(--accent); color: var(--on-accent); }
+.post-btn:active, .post-link:active { opacity: 0.6; }
+.post-link { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; font-size: 14px; color: var(--muted); text-decoration: none; }
+.post-link svg { width: 14px; height: 14px; }
 .topbar h1 { display: flex; align-items: baseline; gap: 4px; margin-left: 12px; font-size: 17px; color: var(--muted); }
 .topbar h1 > .num { display: inline-block; }
 .topbar h1 .num { font-size: 34px; font-weight: 600; color: var(--ink); line-height: 1; }

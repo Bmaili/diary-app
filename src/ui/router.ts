@@ -6,7 +6,8 @@ export const router = createRouter({
   routes: [
     { path: '/', component: Home, meta: { tab: 'home' } },
     { path: '/calendar', component: () => import('./views/CalendarView.vue'), meta: { tab: 'calendar' } },
-    { path: '/search', component: () => import('./views/SearchView.vue'), meta: { tab: 'search' } },
+    // 搜索（2026-10-13 起不在底部导航里，从首页的悬浮按钮进来）
+    { path: '/search', component: () => import('./views/SearchView.vue') },
     { path: '/ai', component: () => import('./views/AiView.vue'), meta: { tab: 'ai' } },
     { path: '/settings', component: () => import('./views/SettingsView.vue') },
     { path: '/settings/sync', component: () => import('./views/SyncSettingsView.vue') },
@@ -26,7 +27,6 @@ export const router = createRouter({
     { path: '/letters', component: () => import('./views/LettersView.vue') },
     { path: '/letters/new', component: () => import('./views/LetterWriteView.vue') },
     { path: '/letters/:id', component: () => import('./views/LetterReadView.vue') },
-    { path: '/starred', component: () => import('./views/StarredView.vue') },
     { path: '/settings/import', component: () => import('./views/ImportView.vue') },
     { path: '/entry/:date', component: () => import('./views/EditorView.vue') },
   ],

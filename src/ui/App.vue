@@ -31,7 +31,6 @@ const tabIndex = computed(() => Math.max(0, tabs.findIndex((t) => t.key === tab.
 const tabs = [
   { key: 'home', path: '/', label: '日记', icon: 'book' },
   { key: 'calendar', path: '/calendar', label: '日历', icon: 'calendar' },
-  { key: 'search', path: '/search', label: '搜索', icon: 'search' },
   { key: 'ai', path: '/ai', label: 'AI', icon: 'brush' },
 ]
 
@@ -107,7 +106,7 @@ onMounted(() => {
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   height: calc(var(--nav-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   background-color: var(--bg);
@@ -120,7 +119,7 @@ onMounted(() => {
   position: absolute;
   left: 0;
   bottom: calc(var(--safe-bottom) + 6px);
-  width: 25%;
+  width: calc(100% / 3);
   display: flex;
   justify-content: center;
   pointer-events: none;
