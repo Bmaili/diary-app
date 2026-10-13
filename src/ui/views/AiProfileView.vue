@@ -126,7 +126,7 @@ async function save() {
 async function remove() {
   if (!(await ask({ title: `删除「${f.name}」？`, ok: '删除', danger: true }))) return
   prefs.ai.profiles = prefs.ai.profiles.filter((p) => p.id !== f.id)
-  for (const t of ['chat', 'extract', 'summary', 'caption'] as const) if (prefs.ai.use[t] === f.id) prefs.ai.use[t] = ''
+  for (const t of ['chat', 'extract', 'summary', 'caption', 'annotate'] as const) if (prefs.ai.use[t] === f.id) prefs.ai.use[t] = ''
   await setSecret(`llm.${f.id}`, '')
   router.back()
 }

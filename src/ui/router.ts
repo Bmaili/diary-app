@@ -27,6 +27,7 @@ export const router = createRouter({
     { path: '/letters', component: () => import('./views/LettersView.vue') },
     { path: '/letters/new', component: () => import('./views/LetterWriteView.vue') },
     { path: '/letters/:id', component: () => import('./views/LetterReadView.vue') },
+    { path: '/yearbook', component: () => import('./views/YearbookView.vue') },
     { path: '/settings/import', component: () => import('./views/ImportView.vue') },
     { path: '/entry/:date', component: () => import('./views/EditorView.vue') },
   ],

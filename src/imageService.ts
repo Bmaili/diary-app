@@ -1,7 +1,7 @@
 /**
  * 插图（规格 4.4 第 7 条）：长边压到 2560px、WebP（2026-10-12 起；之前是 2048px JPEG），
  * 存到 attachments/YYYY/，正文用相对路径引用。旧的 .jpg 原样保留。
- * 选图用系统的文件选择器（WebView 的 <input type=file>），可以从相册选或拍照，不需要存储权限。
+ * 选图默认调起手机自带的相册（见 pickImages），拍照用 WebView 的 <input capture>，都不需要存储权限。
  */
 import { store } from './app'
 import { ROOT } from './core/repo'
@@ -10,6 +10,7 @@ import type { ImagePart } from './core/llm/client'
 import { expectExternal } from './lockService'
 import { Capacitor } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
+import { cleanIntake, GalleryUnavailable, pickFromGallery, readIntakeFile, type IntakeFile } from './platform/intake'
 
 /**
  * 拍照时系统相机把原图写在 app 外部目录的 Pictures/JPEG_*.jpg（Capacitor 的做法），
@@ -25,20 +26,19 @@ export async function cleanCameraTemp(): Promise<void> {
   } catch { /* 目录不存在 */ }
 }
 
-/**
- * camera：直接打开相机拍一张（安卓 WebView 收到 capture 属性后调系统相机，第一次会请求相机权限）。
- * 拍的照片只进日记，不会存进系统相册。
- */
-export function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promise<File | null> {
+/** 用网页的选文件（<input type=file>）选图：拍照时只要一张，系统选择器可以多选 */
+function pickByInput(source: 'camera' | 'files'): Promise<Blob[] | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
     if (source === 'camera') input.setAttribute('capture', 'environment')
+    else input.multiple = true
     const done = expectExternal()
     input.onchange = () => {
       done()
-      resolve(input.files?.[0] ?? null)
+      const files = Array.from(input.files ?? [])
+      resolve(files.length ? files : null)
     }
     input.addEventListener('cancel', () => {
       done()
@@ -46,6 +46,47 @@ export function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promise<Fil
     })
     input.click()
   })
+}
+
+export interface PickedImages {
+  blobs: Blob[]
+  /** 处理完后调用：删掉复制到缓存目录的原图 */
+  done: () => void
+  /** 退回系统选择器等需要告诉用户的事 */
+  note?: string
+}
+
+/**
+ * 选图（2026-10-13 起）：
+ * - camera：直接打开相机拍一张（安卓 WebView 收到 capture 属性后调系统相机，第一次会请求相机权限）。
+ *   拍的照片只进日记，不会存进系统相册。
+ * - gallery：调起手机自带的相册（ACTION_PICK，能看到所有文件夹，可以多选）；
+ *   相册用不了时退回系统的选择器。浏览器里直接用选文件。
+ * - files：系统的选择器（新版安卓是照片选择器，只有按时间排的照片和几个固定相册），可以多选。
+ * 返回 null 表示没选。
+ */
+export async function pickImages(source: 'camera' | 'gallery' | 'files'): Promise<PickedImages | null> {
+  if (source === 'gallery' && Capacitor.isNativePlatform()) {
+    const done = expectExternal()
+    let files: IntakeFile[] | null
+    try {
+      files = await pickFromGallery(true)
+    } catch (e) {
+      if (!(e instanceof GalleryUnavailable)) throw e
+      done()
+      const blobs = await pickByInput('files')
+      return blobs && { blobs, done: () => {}, note: '没能打开手机相册，换成了系统的选择器。' }
+    } finally {
+      done()
+    }
+    if (!files?.length) return null
+    const got = files
+    const blobs: Blob[] = []
+    for (const f of got) blobs.push(await readIntakeFile(f))
+    return { blobs, done: () => cleanIntake(got) }
+  }
+  const blobs = await pickByInput(source === 'camera' ? 'camera' : 'files')
+  return blobs && { blobs, done: () => {} }
 }
 
 export type ImageMime = 'image/webp' | 'image/jpeg'

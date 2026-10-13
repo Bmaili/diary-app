@@ -8,12 +8,13 @@ import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
 
 const router = useRouter()
-const tasks: Task[] = ['chat', 'extract', 'summary', 'caption']
+const tasks: Task[] = ['chat', 'extract', 'summary', 'caption', 'annotate']
 const noteHint: Record<Task, string> = {
   chat: '比如：回答尽量简短；先说结论再列日期。',
   extract: '比如：标签只用 工作、运动、读书、聚餐、旅行、家人 这几个；地点写到店名就行，不要写城市。',
   summary: '比如：口气轻松一点；多写变化少写流水账；每份不超过 500 字。',
   caption: '比如：照片里的橘猫是阿乐；写得更有画面感一点。',
+  annotate: '比如：用文言一点的口吻；可以偶尔开个玩笑。',
 }
 const showTaskNotes = ref(tasks.some((t) => prefs.ai.taskNotes[t]?.trim()))
 const desc: Record<Task, string> = {
@@ -21,6 +22,7 @@ const desc: Record<Task, string> = {
   extract: '从日记里标出人物、地点、标签。可以用便宜一些的模型。',
   summary: '写月度和年度总结。',
   caption: '看图给插图写一句说明。要选能看图的模型，如 qwen-vl、glm-4v、gpt-4o、Claude。',
+  annotate: '阅读视图里点“请批”，给这一篇写一两句批语。',
 }
 </script>
 

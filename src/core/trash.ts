@@ -5,10 +5,12 @@
  *   本机这份是后悔药，保留 30 天后自动清掉。
  * - 一次删除是 trash/<日期>_<时间戳>/ 一个文件夹，里面按 diary/ 下的相对路径存放，外加 info.json。
  * - 图片只带走文件名以这一天开头（编辑页插图时的命名）、且没有被其他日记引用的。
+ * - 这天的朱批（annotations/）一起带走（2026-10-13 起）。
  */
 import type { FileStore } from './types'
 import { ROOT, entryPath, type DiaryRepo } from './repo'
 import { parseEntry, plainText } from './entryFile'
+import { annotationPath, annotationRel } from './annotation'
 
 export const TRASH = 'trash'
 export const KEEP_DAYS = 30
@@ -73,7 +75,7 @@ export async function trashEntry(repo: DiaryRepo, date: string, now = new Date()
     id: `${date}_${now.getTime()}`,
     date,
     deletedAt: now.getTime(),
-    files: [entryRel, ...(await ownImages(repo, date))],
+    files: [entryRel, ...(await ownImages(repo, date)), ...((await store.stat(annotationPath(date))) ? [annotationRel(date)] : [])],
     preview,
     ...(mood != null ? { mood } : {}),
   }

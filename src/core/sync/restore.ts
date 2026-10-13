@@ -120,7 +120,7 @@ export async function restoreFrom(
     if (existing != null) await store.remove(target).catch(() => {})
     await store.rename(`${TMP}/${path}`, target)
     manifest[path] = hash
-    if (path.startsWith('entries/') || path.startsWith('attachments/') || path.startsWith('summaries/') || path.startsWith('letters/')) result.restored.push(path)
+    if (path.startsWith('entries/') || path.startsWith('attachments/') || path.startsWith('summaries/') || path.startsWith('letters/') || path.startsWith('annotations/')) result.restored.push(path)
   }
   if (crypto) {
     // 恢复用的就是云端的密钥文件，说明文件视为已同步

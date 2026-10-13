@@ -204,6 +204,13 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
         <router-link to="/letters" class="post-link">信匣<Icon name="right" /></router-link>
       </div>
     </section>
+
+    <!-- 年度日记本：把一年排成一本小书，交给系统打印存成 PDF -->
+    <router-link to="/yearbook" class="book-row">
+      <span class="book-ic" aria-hidden="true">本</span>
+      <span class="book-t">年度日记本<small>排成一本小书，存成 PDF</small></span>
+      <Icon name="right" class="book-go" />
+    </router-link>
   </div>
 </template>
 
@@ -236,6 +243,37 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
 .post-btn:active, .post-link:active { opacity: 0.6; }
 .post-link { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; font-size: 14px; color: var(--muted); text-decoration: none; }
 .post-link svg { width: 14px; height: 14px; }
+.book-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  min-height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+.book-row:active { opacity: 0.7; }
+.book-ic {
+  flex: none;
+  width: 26px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 2px 4px 4px 2px;
+  background: color-mix(in srgb, var(--m5) 12%, var(--surface));
+  font-family: var(--kai);
+  font-size: 13px;
+}
+.book-t { flex: 1; display: flex; flex-direction: column; font-size: 15px; }
+.book-t small { font-size: 12px; color: var(--muted); }
+.book-go { width: 14px; height: 14px; color: var(--muted); }
 .topbar h1 { display: flex; align-items: baseline; gap: 4px; margin-left: 12px; font-size: 17px; color: var(--muted); }
 .topbar h1 > .num { display: inline-block; }
 .topbar h1 .num { font-size: 34px; font-weight: 600; color: var(--ink); line-height: 1; }

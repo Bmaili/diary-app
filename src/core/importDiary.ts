@@ -276,7 +276,7 @@ export async function planImport(input: ImportFile[], repo: DiaryRepo): Promise<
     for (const f of files) {
       if (!f.path.startsWith(root) || used.has(f)) continue
       const rel = f.path.slice(root.length)
-      if (rel.startsWith('attachments/') || rel.startsWith('summaries/') || /^letters\/[^/]+\.md$/.test(rel)) plan.others.push({ target: rel, file: f })
+      if (rel.startsWith('attachments/') || rel.startsWith('summaries/') || /^letters\/[^/]+\.md$/.test(rel) || /^annotations\/\d{4}\/\d{4}-\d{2}-\d{2}\.md$/.test(rel)) plan.others.push({ target: rel, file: f })
     }
   } else {
     const byDate = new Map<string, ParsedMd[]>()

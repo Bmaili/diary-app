@@ -273,7 +273,7 @@ try {
   await p2.screenshot({ path: OUT + '09-calendar.png' })
 
   // 搜索不在底部导航里了：从首页的悬浮按钮进去
-  await p2.getByRole('link', { name: '日记' }).click()
+  await p2.getByRole('link', { name: '日记', exact: true }).click()
   await p2.getByRole('link', { name: '搜索' }).click()
   const s0 = Date.now()
   await p2.getByLabel('搜索关键词').fill('江边公园')
@@ -337,7 +337,7 @@ try {
   await dp.getByRole('link', { name: 'AI' }).click()
   await dp.waitForTimeout(300)
   await dp.screenshot({ path: OUT + '15-dark-ai.png' })
-  await dp.getByRole('link', { name: '日记' }).click()
+  await dp.getByRole('link', { name: '日记', exact: true }).click()
   await dp.getByRole('button', { name: '写今天' }).click()
   await dp.getByLabel('日记正文').pressSequentially('深色模式下的样子。')
   await dp.screenshot({ path: OUT + '12-dark-editor.png' })

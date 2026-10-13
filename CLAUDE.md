@@ -24,11 +24,12 @@
   - 不能在本地打安卓包。Java 改动只能用桩类编译检查，最终以 CI 结果为准。
   - 用 `https://api.github.com/repos/<owner>/<repo>/commits/<sha>/check-runs` 查看构建是否成功；`.../check-runs/<id>/annotations` 看失败原因（workflow 失败时会把日志结尾写成 error 注释）。
   - 用 `.../releases` 查看发布结果、下载 APK；签名用 `keytool -printcert -jarfile` 核对，和上一个版本的证书指纹一致才算通过。
+  - 改了 `IntakePlugin.java`、`PrintPlugin.java`、`MainActivity.java` 后跑 `bash e2e/native-compile/run.sh`（桩类编译，查拼写、类型、漏 import）；用到新的安卓接口要在 `e2e/native-compile/stubs/` 里补上声明。
 
 ## 技术栈
 
 - 网页技术 + Capacitor 8 打包。Vue 3 + TypeScript + Vite + Vue Router（hash 模式）。
-- 插件：filesystem、preferences、app、share、keyboard、haptics、network、local-notifications；自写的原生插件 `PrivacyScreenPlugin`（FLAG_SECURE）、`HttpStreamPlugin`（SSE 流式）、`BiometricPlugin`（指纹，androidx.biometric 1.1.0）、`AppUpdatePlugin`（应用内更新：下载、核对 sha256 / 包名 / 版本 / 签名、调起系统安装界面），在 `MainActivity` 里于 `super.onCreate` 之前注册。Capacitor 的 `PluginCall.getLong` 对 JS 传来的整数会返回默认值，取数字用 `getInt` / `getDouble`。
+- 插件：filesystem、preferences、app、share、keyboard、haptics、network、local-notifications；自写的原生插件 `PrivacyScreenPlugin`（FLAG_SECURE）、`HttpStreamPlugin`（SSE 流式）、`BiometricPlugin`（指纹，androidx.biometric 1.1.0）、`AppUpdatePlugin`（应用内更新：下载、核对 sha256 / 包名 / 版本 / 签名、调起系统安装界面）、`IntakePlugin`（ACTION_PICK 调相册选图、收别的 app 分享进来的内容，都复制到缓存目录；HEIC 转 JPEG）、`PrintPlugin`（年度日记本：不显示的 WebView 载入网页交给系统打印），在 `MainActivity` 里于 `super.onCreate` 之前注册。Capacitor 的 `PluginCall.getLong` 对 JS 传来的整数会返回默认值，取数字用 `getInt` / `getDouble`。
 - 主要依赖：yaml（Document API，保留未知字段）、marked + DOMPurify、JSZip、age-encryption、lunar-javascript。
 - 测试：vitest（单元测试）、Playwright（端到端测试，手机尺寸 Chromium）。
 
@@ -57,6 +58,7 @@ npm run cap:sync             # 构建并同步到 android/
 - 索引缓存在 `cache/index.json`，同步清单和状态在 `sync/`，问答记录在 `ai/chats.json`。这些都在 `diary/` 之外，可以重建。
 - 只记了心情也保存（2026-10-13 起）：文件只有 front matter。“记了没有”统一用 `hasRecord`（正文或心情），自动填的位置天气不算；索引里这种日子 `sections === 0`（`hasBody`），AI 批量标注跳过。
 - 珍藏是 `starred: true`（2026-10-13 加入），索引里 `starred`。
+- 朱批在 `diary/annotations/YYYY/YYYY-MM-DD.md`（2026-10-13 加入，SPEC 4.9）：front matter 有 `date`、`created`、`model`，正文是批语。不进索引；删除日记时一起进最近删除。
 - 写给未来的信在 `diary/letters/<写信日期>_<编号>.md`（2026-10-13 加入，SPEC 4.8）：front matter 有 `written`、`open_on`、`remind`、`opened`。不进日记索引，所以 AI、搜索、提示读不到；删除和撤回走 `trashLetter`（最近删除里不露封着的信的内容）。
 - 日记可设 `ai_exclude: true`（不让 AI 读）：问答工具（`index.aiRows()`）、总结、批量抽取、图片说明都跳过它，月度总结的源哈希也不算它。
 - 删除的日记放在 `trash/<日期>_<时间戳>/`（在 `diary/` 之外，不同步），30 天后启动时清理。删除一律走 `deleteEntryToTrash`，不要直接调 `repo.deleteEntry`（开发者选项清测试数据除外）。
@@ -86,14 +88,19 @@ src/core/            与平台无关、有单元测试的逻辑
   wander.ts（随手翻）backupReminder.ts（首页备份提醒的条件）
   zipReader.ts（按需读 zip：Blob 切片 + DecompressionStream，GBK 文件名）importDiary.ts（导入：先 planImport 再 applyImport）
   letters.ts（信的格式、状态、快捷日期、到期提醒的排法）
+  shareIn.ts（分享进来的文字怎么拼、接在哪）annotation.ts（朱批的格式、发给模型的内容、清理输出）
+  yearbook.ts（年度日记本的排版：纯函数出整本 HTML）  llm/annotate.ts（朱批）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
-                     secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream
+                     secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream、
+                     intake（IntakePlugin：选图、分享进来；缓存文件用 convertFileSrc 读成 Blob）
 src/*Service.ts      应用层：sync、place、image、ai、lock、reminder、daily、holiday、launch、update（应用内更新）
                      （界面读农历要用 holidayService 的 `lunar()`，节假日数据更新后才会刷新）
 src/backupService.ts 导出 zip（设置页和首页备份提醒共用），记下导出时间
 src/importService.ts 导入日记的流程和状态（模块级，离开页面不中断）
 src/lettersService.ts 写给未来的信：读写、改日期、撤回、本地通知（编号 300000 起）
+src/shareService.ts  分享进来：等读好、解锁后，文字图片交给今天的编辑页（shareInbox + 地址里的 share 编号），zip 走导入
+src/yearbookService.ts 年度日记本：读一年的日记、换图片地址、调 Print 插件（浏览器里用 iframe 打印）
 src/hintService.ts   首页小提示的换句节奏（回来时隔 30 分钟或跨时段换句，切页面不换）
 src/settingsTransfer.ts  导入导出设置：按类收集 prefs 和密钥、导入时整类覆盖（换了 Bucket / 仓库的同步后端先关着）
 src/appInfo.ts       应用名、slogan、作者邮箱、仓库地址、致谢列表（关于页用）
@@ -102,12 +109,15 @@ src/prefs.ts         不含密钥的设置（响应式，自动保存；读取�
 src/ui/              views/ 各页面，components/，style.css（主题）settings.css
                      editor/ 编辑页的组合式函数：useEntrySession（打开/自动保存/离开/删除）
                      usePlaceWeather useTextarea（自动增高时保持滚动、光标不被键盘挡住）useImages（插图、说明、看大图）useAiExtract
+                     useShareIn（收下分享进来的内容、撤销）useAnnotation（朱批）
                      components/ImageViewer.vue（全屏看图）AnswerChart.vue（问答图表，手写 SVG）
                      backStack.ts（安卓返回键先关覆盖层）
                      dialog.ts + components/AppDialog.vue（app 自己的提示框：ask / choose / tell / promptText；
                      不要再用 window.confirm / alert / prompt。返回键按 dismiss，dismiss 要设成安全的选项）
 tests/               单元测试；tests/mocks/ 下是 OSS、GitHub、LLM 的本地模拟服务器
-e2e/                 端到端测试；native-update/ 是应用内更新原生下载逻辑的测试（桩类 + 本地 HTTPS 服务器）
+e2e/                 端到端测试；native-update/ 是应用内更新原生下载逻辑的测试（桩类 + 本地 HTTPS 服务器）；
+                     native-compile/ 是其他原生插件的桩类编译检查
+                     页面里的异步条件用 page.evaluate 轮询：waitForFunction 不等函数返回的 Promise（会当成成立）
                      autoDialog.mjs：测试里自动点提示框的主按钮（window.__dialogRule 改规则，__noAutoDialog 关掉）
 android/             Capacitor 安卓工程（settings.gradle 在非 CI 时用阿里云镜像）
 design/              图标源图 icon-enso.svg（各密度 PNG 由它渲染）
@@ -171,12 +181,13 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 已有的图片还不能批量让 AI 写说明。
 - 锁定是整个字段锁：手动改过标签后，AI 就不再补标签。是否改成只保护手动加的那几个词，还没定。
 - 应用内更新从 GitHub 下载安装包，国内网络可能很慢或下不动；以后可以加一个国内镜像。
-- 编辑页从 `/entry/A` 直接跳到 `/entry/B` 时组件被复用、不会重新打开那一天（日期在 setup 里只读一次）。现在没有这种跳法；以后要加（比如日记里链到另一天）得先处理。
-- 插图选“相册”用的是网页选文件，新版安卓会交给系统照片选择器：只有按时间排的全部照片和几个固定相册，看不到其他文件夹，一次只能选一张。
+- 编辑页按完整地址（含 query）区分组件（`App.vue` 里 router-view 的 key），从一天跳到另一天、或者又分享进来一次时会重新打开。注意同一路由只改 query 时旧页面不走 `onBeforeRouteLeave`，靠 `onBeforeUnmount` 保存。
+- “从相册选”靠手机自带相册响应 `ACTION_PICK` 并临时授权读图；个别相册不给授权时退回系统选择器。真机效果以用户反馈为准（云端没法真机测）。
+- 年度日记本靠系统打印：照片很多时排版慢、占内存；页数是估的。
 
 ## 已商定的后续计划（2026-10-13 和用户确认）
 
-第一批（心情即记、珍藏、随手翻、导入、备份提醒、AI 空状态）和第二批（写给未来的信、首页旧页卡片、app 自己的提示框）已做。之后又按用户意见改了布局：底部导航只剩日记、日历、AI，搜索是首页“写今天”上方的悬浮按钮，珍藏是搜索框右边的星星（没有单独的珍藏集页面了）；寄往来日在日历页下面，故意不显示信的数量和日期，留着到期那天的惊喜；首页诗词和旧页都默认打开。后面几批：
+第一批（心情即记、珍藏、随手翻、导入、备份提醒、AI 空状态）、第二批（写给未来的信、首页旧页卡片、app 自己的提示框）和后面的原生一批、年度日记本、朱批都已做（2026-10-13），下面留作记录。之后又按用户意见改了布局：底部导航只剩日记、日历、AI，搜索是首页“写今天”上方的悬浮按钮，珍藏是搜索框右边的星星（没有单独的珍藏集页面了）；寄往来日在日历页下面，故意不显示信的数量和日期，留着到期那天的惊喜；首页诗词和旧页都默认打开。后面几批：
 
 2. 原生代码一批：从别的 app 分享进来（先解锁，打开今天的编辑页、追加 `### HH:mm` 段落，可撤销；zip 分享进来走导入）；选图改用 `ACTION_PICK` 调起手机自带相册（能看到所有文件夹，不需要新权限），保留系统选择器作退路。两者共用“把 content:// 图片复制进日记”的代码。
 3. 年度日记本：用安卓系统打印（PrintManager）把排好的网页存成 PDF，不内置字体。可选全年或只要珍藏、放不放照片和总结。

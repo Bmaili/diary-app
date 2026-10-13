@@ -4,7 +4,7 @@
  * 说明存成 Markdown 替代文字，见 core/imageCaption.ts。
  */
 import { computed, nextTick, reactive, ref, type ComputedRef, type Ref } from 'vue'
-import { cleanCameraTemp, compress, imageForShare, imageUrl, pickImage, saveImage } from '../../imageService'
+import { cleanCameraTemp, compress, imageForShare, imageUrl, pickImages, saveImage } from '../../imageService'
 import { shareImage } from '../../platform/exportShare'
 import { expectExternal } from '../../lockService'
 import { captionContext, listImages, setImageAlt } from '../../core/imageCaption'
@@ -36,28 +36,54 @@ export function useImages(opts: {
     imgSheet.value = true
   }
 
-  async function insertImage(source: 'camera' | 'gallery') {
+  /** 正在处理第几张 / 一共几张（多选时按钮上显示进度） */
+  const imgProgress = ref('')
+
+  async function insertImage(source: 'camera' | 'gallery' | 'files') {
     imgSheet.value = false
     if (opts.readOnly.value || imgBusy.value) return
-    const file = await pickImage(source)
-    if (!file) return
-    imgBusy.value = true
+    let picked
     try {
-      const md = await saveImage(opts.date, await compress(file))
+      picked = await pickImages(source)
+    } catch (e) {
+      opts.note(`选图失败：${(e as Error).message}`)
+      return
+    }
+    if (!picked) return
+    if (picked.note) opts.note(picked.note)
+    imgBusy.value = true
+    const mds: string[] = []
+    let failed = 0
+    let lastError = ''
+    try {
+      const n = picked.blobs.length
+      for (let i = 0; i < n; i++) {
+        imgProgress.value = n > 1 ? `${i + 1}/${n}` : ''
+        try {
+          mds.push(await saveImage(opts.date, await compress(picked.blobs[i])))
+        } catch (e) {
+          failed++
+          lastError = (e as Error).message
+        }
+      }
       if (source === 'camera') void cleanCameraTemp()
+      if (failed) opts.note(mds.length ? `有 ${failed} 张没插进去（${lastError}）` : `插图失败：${lastError}`)
+      if (!mds.length) return
+      const block = mds.join('\n\n')
       const pos = Math.min(imgPos ?? text.value.length, text.value.length)
       const before = text.value.slice(0, pos)
       const after = text.value.slice(pos)
       const pre = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : ''
-      text.value = `${before}${pre}${md}\n\n${after.replace(/^\n+/, '')}`
+      text.value = `${before}${pre}${block}\n\n${after.replace(/^\n+/, '')}`
       await nextTick()
       opts.autosize()
-      const src = listImages(md)[0]?.src
+      // 只插了一张时接着写说明；一次插好几张时不一张张弹框，之后点图片再写
+      const src = mds.length === 1 ? listImages(mds[0])[0]?.src : undefined
       if (src) openCaption(src, 0)
-    } catch (e) {
-      opts.note(`插图失败：${(e as Error).message}`)
     } finally {
+      picked.done()
       imgBusy.value = false
+      imgProgress.value = ''
     }
   }
 
@@ -143,7 +169,7 @@ export function useImages(opts: {
   }
 
   return {
-    imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
+    imgBusy, imgProgress, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
     viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl, captionContextNow,
   }
 }

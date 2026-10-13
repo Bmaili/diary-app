@@ -15,9 +15,13 @@ import { imageForAi } from './imageService'
 import { mergeValues } from './core/vocab'
 import type { ListField } from './core/types'
 import { ask as askDialog } from './ui/dialog'
+import { annotateEntry } from './core/llm/annotate'
+import { annotationPath, parseAnnotation, serializeAnnotation, type Annotation } from './core/annotation'
+import { isoLocal } from './core/time'
+import { syncAfterEdit } from './syncService'
 
-export type Task = 'chat' | 'extract' | 'summary' | 'caption'
-export const TASK_LABEL: Record<Task, string> = { chat: '问答', extract: '抽取', summary: '总结', caption: '图片说明' }
+export type Task = 'chat' | 'extract' | 'summary' | 'caption' | 'annotate'
+export const TASK_LABEL: Record<Task, string> = { chat: '问答', extract: '抽取', summary: '总结', caption: '图片说明', annotate: '朱批' }
 
 export const tools = new DiaryTools(index, repo, store)
 
@@ -76,7 +80,7 @@ export async function ensureConsent(task: Task): Promise<boolean> {
     message:
       `服务地址：${host}\n\n` +
       '问答时会发送你的问题以及工具查到的相关日记片段；抽取会发送单篇日记全文；总结会发送整月的日记；' +
-      '图片说明会发送那张图片（缩小后）和这篇日记的开头。这些内容会经过该服务商的服务器。',
+      '图片说明会发送那张图片（缩小后）和这篇日记；朱批会发送你请批的那一篇。这些内容会经过该服务商的服务器。',
     ok: '继续', cancel: '不用了',
   })
   if (ok) prefs.ai.consented.push(p.id)
@@ -267,4 +271,41 @@ export async function merge(field: ListField, from: string[], to: string): Promi
   const n = await enqueue(() => mergeValues(repo, index, field, from, to, (d) => refreshDate(d)))
   diaryChanged()
   return n
+}
+
+// ---------- 朱批 ----------
+
+/** 这一天的批语；没有或文件坏了返回 null（坏文件不动它） */
+export async function loadAnnotation(date: string): Promise<Annotation | null> {
+  const raw = await store.readText(annotationPath(date))
+  if (raw == null) return null
+  try {
+    const a = parseAnnotation(raw, date)
+    return a.text ? a : null
+  } catch {
+    return null
+  }
+}
+
+/** 请 AI 批这一篇（avoid：换一句时上一句的内容）。写进 diary/annotations/ 并返回 */
+export async function requestAnnotation(date: string, avoid?: string): Promise<Annotation> {
+  const cfg = await configFor('annotate')
+  const doc = await repo.readEntry(date)
+  if (!doc) throw new Error('这一天还没有保存的日记')
+  if (doc.meta.ai_exclude) throw new Error('这篇设了不让 AI 读')
+  const text = await annotateEntry(cfg, doc, prompt('annotate'), avoid)
+  const old = await loadAnnotation(date)
+  const a: Annotation = { date, created: isoLocal(new Date()), model: cfg.model, text, extra: old?.extra ?? [] }
+  await enqueue(async () => {
+    await store.mkdirp(annotationPath(date).replace(/\/[^/]+$/, ''))
+    await repo.writeAtomic(annotationPath(date), serializeAnnotation(a))
+  })
+  syncAfterEdit()
+  return a
+}
+
+/** 删去批语（AI 写的，随时可以再请，所以直接删文件；云端的在下次同步时删掉） */
+export async function deleteAnnotation(date: string): Promise<void> {
+  await enqueue(() => store.remove(annotationPath(date)).catch(() => {}))
+  syncAfterEdit()
 }

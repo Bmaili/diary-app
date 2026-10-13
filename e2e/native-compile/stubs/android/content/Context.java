@@ -1,0 +1,1 @@
+package android.content; public class Context { public static final String PRINT_SERVICE="print"; public java.io.File getCacheDir(){return null;} public java.io.File getFilesDir(){return null;} public ContentResolver getContentResolver(){return null;} public Object getSystemService(String n){return null;} }

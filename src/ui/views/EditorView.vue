@@ -31,12 +31,16 @@ import { usePlaceWeather } from '../editor/usePlaceWeather'
 import { useTextarea } from '../editor/useTextarea'
 import { useImages } from '../editor/useImages'
 import { useAiExtract } from '../editor/useAiExtract'
+import { useShareIn } from '../editor/useShareIn'
+import { useAnnotation } from '../editor/useAnnotation'
+import { takeShare } from '../../shareService'
+import Seal from '../components/Seal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const date = String(route.params.date)
 
-const { session, text, status, saveError, statusText, meta, readOnly, isToday, open, flush, metaChanged, remove, isLeft } = useEntrySession(date)
+const { session, text, status, saveError, statusText, meta, readOnly, isToday, open, flush, metaChanged, remove, isLeft, dropIfEmpty } = useEntrySession(date)
 const mode = ref<'write' | 'read'>('write')
 /** 元数据下面的一行提示（定位失败、插图失败、AI 设置等） */
 const placeNote = ref('')
@@ -46,13 +50,16 @@ const { textarea, focused, keyboard, autosize, onInput, focusEnd, onFocus, onBlu
 const { placeBusy, locOpen, weatherOpen, fillPlace, pickLocation, locLabel, fetchNowWeather, saveWeather, weatherText } =
   usePlaceWeather({ date, meta, changed: metaChanged, isLeft, note })
 const {
-  imgBusy, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
+  imgBusy, imgProgress, imgSheet, chooseImage, insertImage, caption, canCaption, autoCaption, saveCaption, lateCaption, onReadingImage,
   viewer, viewerItems, editFromViewer, shareFromViewer, imageUrl, captionContextNow,
 } = useImages({
   text, date, readOnly, meta, autosize, replaceText, flush, note,
   cursor: () => (mode.value === 'write' && textarea.value ? textarea.value.selectionStart : null),
 })
 const { canExtract, ai, runExtract, acceptExtract } = useAiExtract(date, session, flush, note)
+const { shareBar, applyShare, undoShare } = useShareIn({ date, text, autosize, flush, dropIfEmpty })
+const hasBody = computed(() => !!session.value && hasContent(bodyFor(session.value, text.value)))
+const { zhu, canAsk, loadZhu, askZhu, another, removeZhu } = useAnnotation({ date, meta, hasBody, readOnly, flush })
 
 const title = computed(() => {
   const d = parseYmd(date)
@@ -122,10 +129,14 @@ onMounted(async () => {
     return
   }
   const s = await open(route.query.append === '1')
+  void loadZhu()
+  // 从别的 app 分享进来的：接在后面（只认今天，编号对得上才收）
+  const shared = !s.error && isToday.value ? takeShare(route.query.share) : null
+  if (shared) await applyShare(shared)
   // 光标滚动进视野时，留出按钮条的高度
   document.documentElement.style.scrollPaddingBottom = '72px'
   // 已经写过的日记默认打开阅读视图；新的一天和“写今天”追加段落时直接编辑
-  if (!s.error && s.existed && !s.appended) mode.value = 'read'
+  if (!s.error && s.existed && !s.appended && !shared) mode.value = 'read'
   await nextTick()
   autosize()
   if (!s.error && (!s.existed || s.appended)) focusEnd()
@@ -257,6 +268,12 @@ function goBack() {
         这个文件的格式有误（{{ session.error }}）。为避免损坏数据，app 不会改写它，请在其他编辑器里修正后再打开。
       </p>
       <p v-if="status === 'error'" class="banner">保存失败：{{ saveError }}。内容还在编辑框里，请稍后再试。</p>
+      <Transition name="bar">
+        <div v-if="shareBar.show" class="share-bar" role="status">
+          <span>{{ shareBar.label || '正在放进来…' }}</span>
+          <button v-if="!shareBar.busy" class="undo" aria-label="撤销分享进来的内容" @click="undoShare">撤销</button>
+        </div>
+      </Transition>
 
       <MoodSlider v-if="!readOnly" v-model="mood" :title="isToday ? '今天的心情' : '这天的心情'">
         <template #top>
@@ -282,7 +299,7 @@ function goBack() {
       <div v-if="!readOnly" class="actions" role="toolbar" aria-label="编辑标签、人物地点和插图">
         <button class="act" @click="openSheet('tags')"><Icon name="hash" class="ci" />{{ meta.tags?.length ? '改标签' : '加标签' }}</button>
         <button class="act" @click="openSheet('more')"><Icon name="person" class="ci" />人物和地点</button>
-        <button class="act" :disabled="imgBusy" @click="chooseImage"><Icon name="image" class="ci" />{{ imgBusy ? '处理中' : '插图' }}</button>
+        <button class="act" :disabled="imgBusy" @click="chooseImage"><Icon name="image" class="ci" />{{ imgBusy ? `处理中 ${imgProgress}`.trim() : '插图' }}</button>
         <button v-if="canExtract && !meta.ai_exclude" class="act" @click="runExtract"><Icon name="sparkle" class="ci" />AI 标注</button>
       </div>
       <p v-if="placeNote" class="place-note">{{ placeNote }}</p>
@@ -295,6 +312,19 @@ function goBack() {
         <!-- eslint-disable-next-line vue/no-v-html -->
         <article v-if="mode === 'read' && !moodOnly" class="prose reading" :class="{ editable: !readOnly }" @change="onReadingChange" @click="onReadingClick"
           @dblclick="onReadingDblClick" v-html="rendered" />
+        <section v-if="mode === 'read' && !moodOnly && (zhu.item || zhu.busy)" class="zhu" aria-label="朱批">
+          <div class="zhu-head"><Seal text="批" :size="22" class="zhu-seal" /><span class="zhu-line"></span></div>
+          <p v-if="zhu.busy" class="zhu-text busy">研墨中……</p>
+          <p v-else class="zhu-text">{{ zhu.item?.text }}</p>
+          <div v-if="zhu.item && !zhu.busy && !readOnly" class="zhu-acts">
+            <button v-if="canAsk" class="text-btn" @click="another">换一句</button>
+            <button class="text-btn" @click="removeZhu">删去</button>
+          </div>
+        </section>
+        <div v-else-if="mode === 'read' && !moodOnly && canAsk && zhu.loaded" class="zhu-ask">
+          <button class="ask-btn" @click="askZhu"><span class="mini-seal">批</span>请批</button>
+        </div>
+        <p v-if="mode === 'read' && zhu.error" class="zhu-err">没批成：{{ zhu.error }}</p>
         <p v-if="mode === 'read' && !readOnly && moodOnly" class="mood-only" @dblclick="toggleMode">这天只记了心情。想写的时候，点右上角的笔写几句。</p>
         <p v-else-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑，点图片看大图</p>
       </main>
@@ -407,6 +437,59 @@ function goBack() {
 .mood-only { margin: 8px 0 0; min-height: 30vh; font-size: 16px; line-height: 1.8; color: var(--muted); }
 .read-hint { animation: fade-in 0.6s 0.4s backwards; margin: 24px 0 0; font-size: 12px; color: var(--faint); text-align: center; }
 .ci { width: 16px; height: 16px; flex: none; }
+/* 分享进来后的提示条 */
+.share-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 10px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px;
+}
+.share-bar span { flex: 1; }
+.undo { flex: none; height: 32px; padding: 0 14px; border: 0; border-radius: 16px; background: color-mix(in srgb, var(--bg) 16%, transparent); color: var(--bg); font-size: 14px; }
+.bar-enter-active, .bar-leave-active { transition: opacity 0.25s, transform 0.25s var(--ease-out); }
+.bar-enter-from, .bar-leave-to { opacity: 0; transform: translateY(-8px); }
+/* 朱批：正文下面，朱红楷体 */
+.zhu { margin: 26px 0 0; animation: rise-in 0.4s var(--ease-out); }
+.zhu-head { display: flex; align-items: center; gap: 8px; }
+.zhu-seal { flex: none; }
+.zhu-line { flex: 1; height: 1px; background: repeating-linear-gradient(90deg, var(--accent) 0 4px, transparent 4px 8px); opacity: 0.5; }
+.zhu-text { margin: 12px 0 0; font-family: var(--kai); font-size: 19px; line-height: 1.8; color: var(--accent); }
+.zhu-text.busy { opacity: 0.6; animation: breathe 1.6s ease-in-out infinite alternate; }
+@keyframes breathe { from { opacity: 0.35; } to { opacity: 0.8; } }
+.zhu-acts { display: flex; justify-content: flex-end; gap: 4px; margin-top: 4px; }
+.zhu-acts .text-btn { color: var(--muted); font-weight: 400; font-size: 14px; }
+.zhu-ask { display: flex; justify-content: flex-end; margin-top: 18px; }
+.ask-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 14px;
+}
+.ask-btn:active { transform: scale(0.96); }
+.mini-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1.3px solid var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+  font-family: var(--kai);
+  font-size: 12px;
+}
+.zhu-err { margin: 10px 0 0; font-size: 13px; color: var(--danger); text-align: right; }
 .place-note { margin: -4px 20px 10px; font-size: 12px; color: var(--faint); }
 .paper { padding: 4px 20px calc(40px + var(--safe-bottom)); }
 .paper.with-tools { padding-bottom: calc(96px + var(--safe-bottom)); }
@@ -424,7 +507,7 @@ function goBack() {
   overflow: hidden;
 }
 .input::placeholder { color: var(--faint); }
-.reading { min-height: 50vh; }
+.reading { min-height: 12vh; }
 .reading :deep(img) { cursor: zoom-in; }
 .sheet-sub { margin: 18px 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .sheet-sub:first-child { margin-top: 4px; }

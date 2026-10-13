@@ -1,0 +1,1 @@
+package android.print; public class PrintAttributes { public static class MediaSize { public static final MediaSize ISO_A5=new MediaSize(); } public static class Builder { public Builder setMediaSize(MediaSize m){return this;} public PrintAttributes build(){return new PrintAttributes();} } }

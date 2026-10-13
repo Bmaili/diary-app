@@ -41,13 +41,13 @@ export const prefs = reactive({
   },
   ai: {
     profiles: [] as LlmProfile[],
-    use: { chat: '', extract: '', summary: '', caption: '' },
+    use: { chat: '', extract: '', summary: '', caption: '', annotate: '' },
     /** 已经确认过“会把日记发给该服务”的配置 id */
     consented: [] as string[],
     /** 给 AI 的补充说明（问答、抽取、总结都会带上） */
     notes: '',
     /** 只给某一项功能的补充说明，接在共用说明后面 */
-    taskNotes: { chat: '', extract: '', summary: '', caption: '' },
+    taskNotes: { chat: '', extract: '', summary: '', caption: '', annotate: '' },
     /** 问答：带上最近几轮对话、最多调用几轮工具 */
     chat: { historyTurns: 10, maxRounds: 10 },
     /** 批量抽取同时处理几篇 */
@@ -58,8 +58,8 @@ export const prefs = reactive({
      * 改过的系统提示词（2026-10-07 加入），没改的是 null（用默认）。
      * 键要事先列全：读取设置时只合并已有的键。
      */
-    prompts: { chat: null, extract: null, monthly: null, monthlyPart: null, yearly: null, caption: null } as Record<
-      'chat' | 'extract' | 'monthly' | 'monthlyPart' | 'yearly' | 'caption', PromptOverride | null
+    prompts: { chat: null, extract: null, monthly: null, monthlyPart: null, yearly: null, caption: null, annotate: null } as Record<
+      'chat' | 'extract' | 'monthly' | 'monthlyPart' | 'yearly' | 'caption' | 'annotate', PromptOverride | null
     >,
   },
   reminder: {

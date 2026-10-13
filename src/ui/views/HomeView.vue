@@ -267,7 +267,7 @@ function turnPage() {
   const el = oldEl.value
   if (cur && el && motionOn()) {
     const r = el.getBoundingClientRect()
-    // 往左还是往右飘，每次随机；落的距离按屏幕高度算，落出屏幕
+    // 往左还是往右飘，每次随机；只飘一小段就淡淡消失
     const dir = Math.random() < 0.5 ? -1 : 1
     leaf.value = {
       label: oldLabel(cur.date),
@@ -275,7 +275,7 @@ function turnPage() {
       mood: cur.mood,
       style: {
         left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height - 44}px`,
-        '--dir': String(dir), '--fall': `${Math.max(400, window.innerHeight - r.top)}px`, clipPath: TEAR,
+        '--dir': String(dir), clipPath: TEAR,
       },
     }
   }
@@ -611,16 +611,16 @@ const memoryDateLabel = (d: string) => {
   background-image: linear-gradient(color-mix(in srgb, var(--mc) 14%, transparent), color-mix(in srgb, var(--mc) 14%, transparent));
   box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.45);
   transform-origin: 50% 0;
-  animation: leaf-fall 1.15s cubic-bezier(0.45, 0.05, 0.7, 0.6) forwards;
+  --fall: 150px;
+  animation: leaf-fall 1s cubic-bezier(0.4, 0.1, 0.6, 0.9) forwards;
 }
-/* 先从顶边掀起（撕下来），再左右飘摆着落下去 */
+/* 先从顶边掀起（撕下来），再左右飘摆着落一小段，边落边淡 */
 @keyframes leaf-fall {
-  0% { transform: none; }
-  14% { transform: translateY(-6px) rotate(calc(var(--dir) * -3deg)); }
-  32% { transform: translate(calc(var(--dir) * -16px), calc(var(--fall) * 0.12)) rotate(calc(var(--dir) * 7deg)); }
-  52% { transform: translate(calc(var(--dir) * 20px), calc(var(--fall) * 0.34)) rotate(calc(var(--dir) * -6deg)); }
-  74% { transform: translate(calc(var(--dir) * -10px), calc(var(--fall) * 0.62)) rotate(calc(var(--dir) * 12deg)); opacity: 0.9; }
-  100% { transform: translate(calc(var(--dir) * 34px), var(--fall)) rotate(calc(var(--dir) * 22deg)); opacity: 0; }
+  0% { transform: none; opacity: 1; }
+  16% { transform: translateY(-6px) rotate(calc(var(--dir) * -3deg)); opacity: 1; }
+  42% { transform: translate(calc(var(--dir) * -14px), calc(var(--fall) * 0.3)) rotate(calc(var(--dir) * 5deg)); opacity: 0.85; }
+  70% { transform: translate(calc(var(--dir) * 12px), calc(var(--fall) * 0.65)) rotate(calc(var(--dir) * -4deg)); opacity: 0.45; }
+  100% { transform: translate(calc(var(--dir) * -6px), var(--fall)) rotate(calc(var(--dir) * 8deg)); opacity: 0; }
 }
 .backup {
   position: relative;
@@ -723,7 +723,7 @@ const memoryDateLabel = (d: string) => {
 .fab {
   position: fixed;
   right: 18px;
-  bottom: calc(var(--nav-h) + var(--safe-bottom) + 18px);
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 34px);
   z-index: 25;
   display: inline-flex;
   align-items: center;
@@ -743,7 +743,7 @@ const memoryDateLabel = (d: string) => {
 .fab.mini svg { transform: rotate(-12deg) scale(1.1); }
 /* 搜索：在“写今天”上面，浅色，不和主按钮抢 */
 .fab-search {
-  bottom: calc(var(--nav-h) + var(--safe-bottom) + 18px + 56px + 12px);
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 34px + 56px + 12px);
   min-height: 48px;
   padding: 0 18px 0 16px;
   border: 1px solid var(--line);

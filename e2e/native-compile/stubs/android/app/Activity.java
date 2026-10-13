@@ -1,0 +1,1 @@
+package android.app; public class Activity extends android.content.Context { public static final int RESULT_OK=-1; public android.content.Intent getIntent(){return null;} public void runOnUiThread(Runnable r){r.run();} }

@@ -1,0 +1,1 @@
+package android.webkit; public abstract class WebSettings { public abstract void setJavaScriptEnabled(boolean b); public abstract void setAllowFileAccess(boolean b); public abstract void setBlockNetworkLoads(boolean b); }

@@ -10,6 +10,7 @@ import LockScreen from './components/LockScreen.vue'
 import AppDialog from './components/AppDialog.vue'
 import { lock } from '../lockService'
 import { initLaunch } from '../launchService'
+import { initShare } from '../shareService'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,7 +37,10 @@ const tabs = [
 
 onMounted(() => {
   start()
-    .then(() => initLaunch(router))
+    .then(() => {
+      initLaunch(router)
+      initShare(router)
+    })
     .catch(() => {})
   if (Capacitor.isNativePlatform()) {
     // 安卓返回键：先关覆盖层（全屏看图）；首页退出 app，其他页面返回上一页
@@ -64,9 +68,10 @@ onMounted(() => {
       <i v-for="(p, i) in petals" :key="i" :style="{ left: p.left, '--d': p.d, '--delay': p.delay, '--s': p.s, '--sway': p.sway }"></i>
     </div>
     <div class="shell" :inert="lock.locked || undefined">
-    <router-view v-slot="{ Component }">
+    <router-view v-slot="{ Component, route: r }">
       <keep-alive :include="['HomeView', 'CalendarView', 'SearchView', 'AiView']">
-        <component :is="Component" />
+        <!-- 编辑页按完整地址区分：从一天跳到另一天、或者又分享进来一次时重新打开，不复用上一个 -->
+        <component :is="Component" :key="r.path.startsWith('/entry/') ? r.fullPath : undefined" />
       </keep-alive>
     </router-view>
     <nav v-if="tab" class="nav" aria-label="主导航">

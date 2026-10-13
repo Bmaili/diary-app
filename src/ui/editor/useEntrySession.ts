@@ -128,6 +128,24 @@ export function useEntrySession(date: string) {
     return true
   }
 
+  /**
+   * 撤销分享进来的内容后调用：这一天本来没有日记、撤销后又什么都没记了，就把刚建的文件移到最近删除
+   * （不用等离开页面）；否则照常保存（改回原样时写回原文）。
+   */
+  async function dropIfEmpty(): Promise<void> {
+    const s = session.value
+    if (!s || s.error || deleted) return
+    if (hasRecord({ body: bodyFor(s, text.value), meta: s.doc.meta }) || !s.existed || s.originalRaw != null) return flush()
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    await deleteEntryToTrash(date)
+    s.existed = false
+    savedBody = ''
+    status.value = 'idle'
+  }
+
   /** 页面已关闭（比如别的流程结束后），之后的回调不要再改东西 */
   const isLeft = () => left
 
@@ -182,5 +200,5 @@ export function useEntrySession(date: string) {
     return true
   })
 
-  return { session, text, status, saveError, statusText, meta, readOnly, isToday, open, flush, schedule, metaChanged, remove, isLeft }
+  return { session, text, status, saveError, statusText, meta, readOnly, isToday, open, flush, schedule, metaChanged, remove, isLeft, dropIfEmpty }
 }

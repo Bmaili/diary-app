@@ -8,7 +8,7 @@
  * 用户改过的版本记下当时默认版本的指纹；之后默认更新了，设置里会提示，但不会自动覆盖用户的版本。
  */
 
-export type PromptId = 'chat' | 'extract' | 'monthly' | 'monthlyPart' | 'yearly' | 'caption'
+export type PromptId = 'chat' | 'extract' | 'monthly' | 'monthlyPart' | 'yearly' | 'caption' | 'annotate'
 
 export interface PromptDef {
   label: string
@@ -34,6 +34,12 @@ export const CHART_RULES = `回答里可以放图表：aggregate 和 count_days 
 - 可以指定画法：[[chart:chart_id:bar]] 柱状图（天数），[[chart:chart_id:line]] 平均心情走势，[[chart:chart_id:rank]] 横向排行，[[chart:chart_id:mood]] 心情构成，[[chart:chart_id:heatmap]] 日历格子（count_days 的日期或按天统计）。不写就用合适的默认画法。
 - 只在图比文字更清楚时放图（有趋势、分布、对比、日期分布），一个回答一般一两张；简单的一个数字不要放图。
 - 图不能代替文字：文字里仍要说出结论和关键数字。只能用这次工具结果里出现过的 chart_id，不要编造。`
+
+/**
+ * 朱批的固定部分（2026-10-13 加入）：格式要求和“心情不好的日子只陪伴”由代码附加，用户改提示词也改不掉。
+ */
+export const ANNOTATE_FIXED = `只输出批语本身：一两句，不超过 60 个字，纯文本，不用 Markdown、引号、表情，不署名。
+心情是“不好”或“很差”的日子：只陪伴和体谅，不批评，不说教，不给建议，也不要劝他往好处想。`
 
 export const PROMPTS: Record<PromptId, PromptDef> = {
   chat: {
@@ -99,6 +105,16 @@ export const PROMPTS: Record<PromptId, PromptDef> = {
 - 写看得见的内容：什么人、什么东西、在哪儿、在做什么、天气和光线。语气平实，像随手记下的。
 - 日记正文里能对上照片的称呼和地名（比如“小雨”“老王烧烤”），可以用上；对不上就不要猜名字。`,
     fixed: CAPTION_FIXED,
+  },
+  annotate: {
+    label: '朱批',
+    desc: '阅读视图里点“请批”时，读这一篇日记，在下面用朱笔写一两句。',
+    text: `你是用户的一位老朋友，读他的日记，像旧时读书人在页边写眉批那样，用朱笔写一句批语。
+- 针对这篇里具体的事、具体的一句话来写，让他知道你真的读了；不要泛泛的鸡汤。
+- 可以是会心一笑、一点体谅、替他留意到的一件小好事，或者一个轻轻的追问。
+- 语气平实温和，像熟人随口说的。文白都可以，但不要堆辞藻、不要掉书袋。
+- 不评价文笔，不总结全文，不复述日记。`,
+    fixed: ANNOTATE_FIXED,
   },
 }
 
