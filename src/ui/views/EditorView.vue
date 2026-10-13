@@ -293,7 +293,7 @@ function goBack() {
           :placeholder="placeholder" aria-label="日记正文" @input="onInput"
           @focus="onFocus" @blur="onBlur" @beforeinput="onBeforeInput" />
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <article v-if="mode === 'read'" class="prose reading" :class="{ editable: !readOnly }" @change="onReadingChange" @click="onReadingClick"
+        <article v-if="mode === 'read' && !moodOnly" class="prose reading" :class="{ editable: !readOnly }" @change="onReadingChange" @click="onReadingClick"
           @dblclick="onReadingDblClick" v-html="rendered" />
         <p v-if="mode === 'read' && !readOnly && moodOnly" class="mood-only" @dblclick="toggleMode">这天只记了心情。想写的时候，点右上角的笔写几句。</p>
         <p v-else-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑，点图片看大图</p>
@@ -404,7 +404,7 @@ function goBack() {
 .star { color: var(--faint); }
 .star.on { color: var(--accent); }
 .star.on :deep(path) { fill: currentColor; }
-.mood-only { margin: 8px 0 0; font-size: 16px; line-height: 1.8; color: var(--muted); }
+.mood-only { margin: 8px 0 0; min-height: 30vh; font-size: 16px; line-height: 1.8; color: var(--muted); }
 .read-hint { animation: fade-in 0.6s 0.4s backwards; margin: 24px 0 0; font-size: 12px; color: var(--faint); text-align: center; }
 .ci { width: 16px; height: 16px; flex: none; }
 .place-note { margin: -4px 20px 10px; font-size: 12px; color: var(--faint); }
