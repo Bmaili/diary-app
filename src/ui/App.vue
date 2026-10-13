@@ -7,6 +7,7 @@ import { Capacitor } from '@capacitor/core'
 import { indexProgress, loadError, ready, start } from '../app'
 import Icon from './components/Icon.vue'
 import LockScreen from './components/LockScreen.vue'
+import AppDialog from './components/AppDialog.vue'
 import { lock } from '../lockService'
 import { initLaunch } from '../launchService'
 
@@ -79,6 +80,7 @@ onMounted(() => {
     </nav>
     </div>
     <LockScreen v-if="lock.locked" />
+    <AppDialog />
   </template>
 </template>
 

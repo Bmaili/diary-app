@@ -9,6 +9,7 @@ export const README_MD = `# 日记数据
 - \`entries/YYYY/YYYY-MM-DD.md\`：每天一篇日记，没写的日子没有文件。
 - \`attachments/YYYY/\`：日记里引用的图片，用相对路径引用。
 - \`summaries/monthly/YYYY-MM.md\`、\`summaries/yearly/YYYY.md\`：AI 生成或手写的总结。
+- \`letters/\`：写给未来的信。front matter 里 open_on 是拆信日期，written 是写信时间，opened 是拆开的时间。
 
 ## 日记文件
 

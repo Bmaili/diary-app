@@ -1,7 +1,7 @@
 /**
  * 导入日记（2026-10-13 加入，规格 5.12）。两种来源：
  *
- * 1. 浮生记导出的 zip（里面有 format.json 和 entries/）：日记原文照搬，图片、总结一起带过来。
+ * 1. 浮生记导出的 zip（里面有 format.json 和 entries/）：日记原文照搬，图片、总结、写给未来的信一起带过来。
  * 2. Markdown / 纯文本文件（一个文件夹压成的 zip，或直接多选的 .md / .txt）：
  *    日期依次从 front matter 的 date、文件名、开头的标题里找；找不到的列出来、跳过。
  *    同一天有好几个文件时合成一篇，每个文件一段，段落标题是文件名。
@@ -52,7 +52,7 @@ export interface PlannedEntry {
 export interface ImportPlan {
   kind: ImportKind
   entries: PlannedEntry[]
-  /** 浮生记 zip 里其余要带过来的文件（没被日记引用的图片、AI 总结），目标是 diary/ 下的相对路径 */
+  /** 浮生记 zip 里其余要带过来的文件（没被日记引用的图片、AI 总结、写给未来的信），目标是 diary/ 下的相对路径；手机上已有的不动 */
   others: { target: string; file: ImportFile }[]
   /** 认不出日期的文件 */
   unrecognized: string[]
@@ -276,7 +276,7 @@ export async function planImport(input: ImportFile[], repo: DiaryRepo): Promise<
     for (const f of files) {
       if (!f.path.startsWith(root) || used.has(f)) continue
       const rel = f.path.slice(root.length)
-      if (rel.startsWith('attachments/') || rel.startsWith('summaries/')) plan.others.push({ target: rel, file: f })
+      if (rel.startsWith('attachments/') || rel.startsWith('summaries/') || /^letters\/[^/]+\.md$/.test(rel)) plan.others.push({ target: rel, file: f })
     }
   } else {
     const byDate = new Map<string, ParsedMd[]>()

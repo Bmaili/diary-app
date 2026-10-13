@@ -60,8 +60,10 @@ async function doReschedule() {
 export function initReminder() {
   if (!reminderSupported) return
   void LocalNotifications.createChannel({ id: CHANNEL, name: '写日记提醒', description: '每天提醒写一句日记', importance: 3 }).catch(() => {})
-  void LocalNotifications.addListener('localNotificationActionPerformed', () => {
-    void router.push(`/entry/${today()}`)
+  void LocalNotifications.addListener('localNotificationActionPerformed', (a) => {
+    // 信到了的通知：回首页，首页会弹出信封（lettersService）
+    if (a.notification.extra?.kind === 'letter') void router.push('/')
+    else void router.push(`/entry/${today()}`)
   })
   onStarted(() => {
     void reschedule()

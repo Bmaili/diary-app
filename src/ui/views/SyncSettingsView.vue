@@ -8,6 +8,7 @@ import {
 import { hasSecret } from '../../platform/secrets'
 import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
+import { ask, choose, tell } from '../dialog'
 
 const router = useRouter()
 onMounted(() => void refreshPending())
@@ -33,10 +34,17 @@ async function toggle(id: BackendId, on: boolean) {
     try {
       const p = await preview(id)
       if (p.entries > 0) {
-        const goRestore = window.confirm(
-          `云端已有 ${p.entries} 篇日记（最新 ${p.latest}）。\n\n建议先从云端恢复，再开启同步。点“确定”去恢复；点“取消”直接开启（同名日记以手机上的为准）。`,
-        )
-        if (goRestore) {
+        const pick = await choose({
+          title: `云端已有 ${p.entries} 篇日记`,
+          message: `最新一篇是 ${p.latest}。建议先从云端恢复，再开启同步；直接开启的话，同名的日记以手机上的为准。`,
+          options: [
+            { label: '先去恢复', value: 'restore', kind: 'primary' },
+            { label: '直接开启同步', value: 'enable', kind: 'ghost' },
+          ],
+          dismiss: 'none',
+        })
+        if (pick === 'none') return
+        if (pick === 'restore') {
           router.push({ path: '/settings/restore', query: { from: id } })
           return
         }
@@ -44,14 +52,14 @@ async function toggle(id: BackendId, on: boolean) {
         if (p.encrypted) {
           prefs.sync[id].encrypt = true
           if (!(await canDecrypt(p))) {
-            window.alert('云端的日记是加密的。请先输入当时设置的加密密码。')
+            await tell({ title: '云端的日记是加密的', message: '请先输入当时设置的加密密码。' })
             router.push({ path: '/settings/sync/encryption', query: { recover: id } })
             return
           }
         }
       }
     } catch (e) {
-      if (!window.confirm(`连不上${id === 'oss' ? ' OSS' : ' GitHub'}：${(e as Error).message}\n\n仍然开启吗？`)) return
+      if (!(await ask({ title: `连不上${id === 'oss' ? ' OSS' : ' GitHub'}`, message: `${(e as Error).message}\n\n仍然开启吗？`, ok: '仍然开启' }))) return
     }
   }
   prefs.sync[id].enabled = true
@@ -68,18 +76,20 @@ async function toggleEncrypt(id: BackendId, on: boolean) {
     const warn = id === 'github'
       ? 'GitHub 的提交历史里仍然保留着以前的明文。想彻底不留明文，建议新建一个仓库，在 GitHub 设置里改好仓库名后再打开加密。'
       : '如果 Bucket 开了版本控制，以前的明文会作为历史版本保留。想彻底清除，需要在 OSS 控制台删除历史版本。'
-    if (!window.confirm(`为${label}打开加密？
-
-云端的文件会全部换成加密版本，旧的明文文件会被删除。
-
-${warn}`)) return
+    if (!(await ask({
+      title: `为${label.trim()}打开加密？`,
+      message: `云端的文件会全部换成加密版本，旧的明文文件会被删除。\n\n${warn}`,
+      ok: '打开加密',
+    }))) return
     if (!encState.hasKeys) {
       router.push({ path: '/settings/sync/encryption', query: { then: id } })
       return
     }
-  } else if (!window.confirm(`关闭${label}的加密？
-
-云端会全部换回明文文件，加密文件和 _encryption 文件夹会被删除。`)) return
+  } else if (!(await ask({
+    title: `关闭${label.trim()}的加密？`,
+    message: '云端会全部换回明文文件，加密文件和 _encryption 文件夹会被删除。',
+    ok: '关闭加密', danger: true,
+  }))) return
   prefs.sync[id].encrypt = on
   await refreshPending()
   if (prefs.sync[id].enabled) void syncNow(true, [id])

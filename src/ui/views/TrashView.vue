@@ -6,6 +6,8 @@ import { diaryChanged, enqueue, refreshDate, repo, store } from '../../app'
 import { KEEP_DAYS, listTrash, purgeTrashItem, restoreTrash, type TrashItem } from '../../core/trash'
 import { parseYmd } from '../../core/time'
 import Icon from '../components/Icon.vue'
+import { ask } from '../dialog'
+import { reloadLetters } from '../../lettersService'
 
 const router = useRouter()
 const items = ref<TrashItem[]>([])
@@ -39,8 +41,9 @@ async function restore(t: TrashItem) {
       return d
     })
     diaryChanged()
+    if (t.kind === 'letter') void reloadLetters()
     await load()
-    msg.value = { ...msg.value, done: `已恢复 ${label(date)}` }
+    msg.value = { ...msg.value, done: t.kind === 'letter' ? `已恢复 ${label(date)} 写的信` : `已恢复 ${label(date)}` }
   } catch (e) {
     msg.value = { ...msg.value, [t.id]: (e as Error).message }
   } finally {
@@ -49,7 +52,7 @@ async function restore(t: TrashItem) {
 }
 
 async function purge(t: TrashItem) {
-  if (busy.value || !window.confirm(`彻底删除 ${label(t.date)} 的日记？之后无法找回。`)) return
+  if (busy.value || !(await ask({ title: t.kind === 'letter' ? `彻底删除 ${label(t.date)} 写的信？` : `彻底删除 ${label(t.date)} 的日记？`, message: '之后无法找回。', ok: '彻底删除', danger: true }))) return
   busy.value = t.id
   try {
     await purgeTrashItem(store, t.id)
@@ -76,7 +79,7 @@ async function purge(t: TrashItem) {
       <p v-if="loaded && !items.length" class="desc pad">没有删除过的日记。</p>
       <div v-for="t in items" :key="t.id" class="item">
         <div>
-          <div class="num-date">{{ label(t.date) }}</div>
+          <div class="num-date">{{ label(t.date) }}<span v-if="t.kind === 'letter'" class="kind">写的信</span></div>
           <div class="desc preview">{{ t.preview || (t.mood ? '只记了心情' : '（无正文）') }}</div>
           <div class="desc">{{ left(t) }}<template v-if="images(t)">，含 {{ images(t) }} 张图片</template></div>
           <div v-if="msg[t.id]" class="result bad">{{ msg[t.id] }}</div>
@@ -92,6 +95,7 @@ async function purge(t: TrashItem) {
 
 <style scoped>
 .num-date { font-weight: 600; }
+.kind { margin-left: 6px; font-weight: 400; color: var(--muted); }
 .preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .acts { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
 .danger { color: var(--danger); }

@@ -9,6 +9,7 @@ import { checkPassphrase, generatePassphrase } from '../../core/sync/crypto'
 import { applyBundle, buildBundle, bundlePartSummary, partStatus } from '../../settingsTransfer'
 import { openExport } from '../../platform/exportShare'
 import { expectExternal } from '../../lockService'
+import { ask } from '../dialog'
 
 const router = useRouter()
 const mode = ref<'export' | 'import'>('export')
@@ -123,7 +124,7 @@ async function doImport() {
   const ids = inParts.value.filter((p) => ipick[p.id]).map((p) => p.id)
   if (!ids.length) return setMsg('至少选一项', true)
   const names = PARTS.filter((p) => ids.includes(p.id)).map((p) => p.label).join('、')
-  if (!window.confirm(`用文件里的设置替换这台手机上的：${names}？\n\n日记不受影响。`)) return
+  if (!(await ask({ title: '替换这台手机上的设置？', message: `会用文件里的设置替换：${names}。日记不受影响。`, ok: '替换' }))) return
   busy.value = true
   setMsg('')
   try {

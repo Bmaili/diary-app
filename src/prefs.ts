@@ -79,8 +79,8 @@ export const prefs = reactive({
     biometric: false,
   },
   daily: {
-    /** 首页的每日诗词：local 内置诗词库，online 今日诗词接口，off 不显示 */
-    mode: 'local' as 'local' | 'online' | 'off',
+    /** 首页的每日诗词：local 内置诗词库，online 今日诗词接口，off 不显示（2026-10-13 起默认关：首页内容太多） */
+    mode: 'off' as 'local' | 'online' | 'off',
   },
   calendar: {
     /** 法定节假日联网更新（holiday-cn）；关掉只用内置数据 */
@@ -103,6 +103,12 @@ export const prefs = reactive({
   backup: {
     lastExport: '',
     dismissed: false,
+  },
+  /** 写了一半的信（2026-10-13 加入）：封存前离开写信页也不丢；只在这台手机上 */
+  letterDraft: {
+    body: '',
+    openOn: '',
+    remind: true,
   },
   /** 已显示过的一次性提示 */
   seen: [] as string[],
@@ -130,6 +136,11 @@ export async function loadPrefs() {
   // 1.0.4 起问答的这两项最少 10
   prefs.ai.chat.historyTurns = Math.max(10, Number(prefs.ai.chat.historyTurns) || 10)
   prefs.ai.chat.maxRounds = Math.max(10, Number(prefs.ai.chat.maxRounds) || 10)
+  // 2026-10-13：每日诗词改为默认关闭，已装的也关一次（之后自己打开的不再动）
+  if (!prefs.seen.includes('daily-off-1013')) {
+    prefs.daily.mode = 'off'
+    prefs.seen.push('daily-off-1013')
+  }
   loaded = true
 }
 

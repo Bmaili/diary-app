@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
 import { overrideFor, promptHash, PROMPTS, promptState, type PromptId } from '../../core/llm/prompts'
 import Icon from '../components/Icon.vue'
+import { ask } from '../dialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,9 +24,9 @@ function onInput() {
   prefs.ai.prompts[id] = overrideFor(id, draft.value, prefs.ai.prompts[id]?.base)
 }
 
-function reset() {
+async function reset() {
   if (state.value === 'default') return
-  if (!window.confirm('恢复成默认的提示词？你改过的内容会丢掉。')) return
+  if (!(await ask({ title: '恢复成默认的提示词？', message: '你改过的内容会丢掉。', ok: '恢复默认', danger: true }))) return
   prefs.ai.prompts[id] = null
   draft.value = def.text
   showDefault.value = false

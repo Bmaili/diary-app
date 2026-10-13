@@ -3,6 +3,7 @@
  * 截图在 e2e/out/recall-*.png（亮色、暗色、360 宽小屏）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { autoDialog } from './autoDialog.mjs'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -20,7 +21,7 @@ const DEVICE = {
 let server: ChildProcess
 let browser: Browser
 
-type W = { __diary: { repo: { readEntryRaw(d: string): Promise<string | null>; store: { writeText(p: string, t: string): Promise<void> } }; index: { all(): { date: string; text: string; starred?: boolean }[] }; prefs: Record<string, any> } }
+type W = { __diary: { repo: { readEntryRaw(d: string): Promise<string | null>; store: { writeText(p: string, t: string): Promise<void>; readText(p: string): Promise<string | null> } }; index: { all(): { date: string; text: string; starred?: boolean }[] }; prefs: Record<string, any> } }
 
 async function newPage(opts: { dark?: boolean; width?: number } = {}): Promise<{ ctx: BrowserContext; page: Page; errors: string[] }> {
   const ctx = await browser.newContext({
@@ -33,7 +34,7 @@ async function newPage(opts: { dark?: boolean; width?: number } = {}): Promise<{
   const page = await ctx.newPage()
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
-  page.on('dialog', (d) => d.accept())
+  await ctx.addInitScript(autoDialog)
   await page.goto(BASE)
   await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && document.querySelector('.shell'))
   return { ctx, page, errors }
@@ -92,7 +93,7 @@ describe('只记心情、珍藏、随手翻', () => {
     await ctx.close()
   })
 
-  it('珍藏：顶栏点星，首页和珍藏集里都能看到；随手翻打开一篇旧日记', async () => {
+  it('珍藏：顶栏点星，首页和珍藏集里都能看到；首页旧页可以换一页、点开', async () => {
     const { ctx, page, errors } = await newPage()
     await seed(page, {
       ...entry('2026-06-01', '搬进新家的第一个晚上，坐在纸箱上吃了一碗面。', 'mood: 3\n'),
@@ -110,15 +111,21 @@ describe('只记心情、珍藏、随手翻', () => {
     await page.getByRole('button', { name: '返回' }).click()
     await page.waitForURL(BASE + '#/')
     await page.locator('.row[data-date="2026-08-08"] .starred').waitFor()
-    await page.screenshot({ path: OUT + 'recall-04-home-recall-bar.png' })
+    // 旧页卡片：首页摆一篇旧日记，可以换一页
+    const old = page.locator('.oldpage')
+    await old.waitFor()
+    await page.screenshot({ path: OUT + 'recall-04-home-oldpage.png' })
+    const firstOld = await old.locator('.op-date').innerText()
+    await old.getByRole('button', { name: '换一页' }).click()
+    await expect.poll(() => old.locator('.op-date').innerText()).not.toBe(firstOld)
 
-    await page.locator('.recall a').click()
+    await old.getByRole('link', { name: /珍藏/ }).click()
     await page.waitForURL(/#\/starred$/)
     await expect(page.locator('.row').evaluateAll((els) => els.map((e) => e.getAttribute('data-date')))).resolves.toEqual(['2026-08-08', '2025-12-31'])
     await page.screenshot({ path: OUT + 'recall-05-starred.png' })
 
     await page.goto(BASE + '#/')
-    await page.getByRole('button', { name: '随手翻' }).click()
+    await page.locator('.oldpage .op-main').click()
     await page.waitForURL(/#\/entry\/\d{4}-\d\d-\d\d$/)
     expect(['2026-06-01', '2026-08-08', '2025-12-31']).toContain(page.url().split('/').pop())
 
@@ -166,7 +173,7 @@ describe('备份提醒', () => {
     await page.getByText('这些日记还没有备份').waitFor()
     await page.screenshot({ path: OUT + 'recall-10-backup.png' })
     await page.getByRole('button', { name: '不再提醒' }).click()
-    await expect(page.getByText('这些日记还没有备份').count()).resolves.toBe(0)
+    await expect.poll(() => page.getByText('这些日记还没有备份').count()).toBe(0)
     expect(await page.evaluate(() => (window as unknown as W).__diary.prefs.backup.dismissed)).toBe(true)
     expect(errors).toEqual([])
     await ctx.close()
@@ -234,6 +241,124 @@ describe('导入日记', () => {
     await (await chooser).setFiles(OUT + 'import-sample.zip')
     await page.getByText('认不出日期的文件').waitFor()
     await page.screenshot({ path: OUT + 'recall-15-import-preview-dark.png', fullPage: true })
+    await ctx.close()
+  })
+})
+
+describe('app 自己的提示框', () => {
+  it('删除确认和“正文删光了”二选一，亮色暗色截图；返回键按安全选项处理', async () => {
+    for (const dark of [false, true]) {
+      const { ctx, page, errors } = await newPage({ dark })
+      await seed(page, entry('2026-08-08', '和小雨去海边，看了日出。', 'mood: 5\n'))
+      await page.evaluate(() => ((window as unknown as { __noAutoDialog: boolean }).__noAutoDialog = true))
+      await page.locator('.row[data-date="2026-08-08"]').click()
+      await page.getByRole('button', { name: '删除这篇日记' }).click()
+      const dlg = page.getByRole('alertdialog')
+      await dlg.getByText('删除 8 月 8 日的日记？').waitFor()
+      await page.screenshot({ path: OUT + `recall-20-dialog-delete${dark ? '-dark' : ''}.png` })
+      await dlg.getByRole('button', { name: '取消' }).click()
+      await expect.poll(() => dlg.count()).toBe(0)
+
+      // 删光正文、留着心情离开：问只保留心情还是恢复
+      await page.getByRole('button', { name: '编辑' }).click()
+      await page.getByLabel('日记正文').fill('')
+      await page.waitForTimeout(1300)
+      await page.getByRole('button', { name: '返回' }).click()
+      await dlg.getByText('正文已经删光了').waitFor()
+      await page.screenshot({ path: OUT + `recall-21-dialog-choose${dark ? '-dark' : ''}.png` })
+      // Esc（和安卓返回键一样）按“恢复原来的正文”
+      await page.keyboard.press('Escape')
+      await page.waitForURL(BASE + '#/')
+      await expect.poll(() => page.evaluate(() => (window as unknown as W).__diary.repo.readEntryRaw('2026-08-08'))).toContain('看了日出')
+      expect(errors).toEqual([])
+      await ctx.close()
+    }
+  })
+})
+
+describe('写给未来的信', () => {
+  it('写一封、封存；信匣里只看到日期；改日期；撤回后进最近删除且不露内容', async () => {
+    const { ctx, page, errors } = await newPage()
+    await seed(page, entry('2026-06-01', '搬家', 'mood: 3\n'))
+    await page.locator('.oldpage').getByRole('link', { name: /寄往来日/ }).click()
+    await page.waitForURL(/#\/letters$/)
+    await page.getByText('还没有写过信').waitFor()
+    await page.screenshot({ path: OUT + 'recall-30-letters-empty.png' })
+    await page.getByRole('link', { name: '写一封', exact: true }).click()
+    await page.waitForURL(/#\/letters\/new$/)
+    await page.getByLabel('信的内容').fill('一年后的我：\n\n现在是寒露，刚换了工作。希望你还在写。')
+    // 写到一半离开，回来还在
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.getByRole('link', { name: '写一封', exact: true }).click()
+    await expect(page.getByLabel('信的内容').inputValue()).resolves.toContain('刚换了工作')
+    await page.getByRole('button', { name: /明年元日/ }).click()
+    await page.screenshot({ path: OUT + 'recall-31-letter-write.png' })
+    await page.getByRole('button', { name: '封存' }).click()
+    await page.waitForURL(/#\/letters$/)
+    const nextYear = Number(today().slice(0, 4)) + 1
+    await page.getByText(`${nextYear}.1.1 元日`).waitFor()
+    // 封着的信不露内容
+    expect(await page.locator('.letters-page').innerText()).not.toContain('刚换了工作')
+    await page.screenshot({ path: OUT + 'recall-32-letters-sealed.png' })
+    const files = await page.evaluate(async () => (window as unknown as { __diary: { repo: { store: { list(d: string): Promise<{ name: string }[]> } } } }).__diary.repo.store.list('diary/letters'))
+    expect(files).toHaveLength(1)
+    const raw = await page.evaluate((n) => (window as unknown as W).__diary.repo.store.readText(`diary/letters/${n}`), files[0].name)
+    expect(raw).toMatch(new RegExp(`^---\\nwritten: .+\\nopen_on: ${nextYear}-01-01\\nremind: true\\n---\\n\\n一年后的我：`))
+    // 草稿清掉了
+    expect(await page.evaluate(() => (window as unknown as W).__diary.prefs.letterDraft.body)).toBe('')
+
+    // 改日期
+    await page.locator('.env').first().click()
+    await page.getByRole('button', { name: '三年后' }).click()
+    await page.getByRole('button', { name: '保存日期' }).click()
+    await page.getByText(`还有`).first().waitFor()
+    await expect.poll(() => page.evaluate((n) => (window as unknown as W).__diary.repo.store.readText(`diary/letters/${n}`), files[0].name)).toContain(`open_on: ${nextYear + 2}-`)
+    // 撤回
+    await page.locator('.env').first().click()
+    await page.getByRole('button', { name: '撤回这封信' }).click()
+    await page.getByText('还没有写过信').waitFor()
+    await page.goto(BASE + '#/settings/trash')
+    await page.getByText('写的信').waitFor()
+    expect(await page.locator('.settings').innerText()).not.toContain('刚换了工作')
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+
+  it('信到了：首页弹出信封，拆开后记下拆信时间，信匣里移到“已拆开”', async () => {
+    for (const dark of [false, true]) {
+      const { ctx, page, errors } = await newPage({ dark })
+      const t = today()
+      const lastYear = `${Number(t.slice(0, 4)) - 1}${t.slice(4)}`
+      await seed(page, {
+        ...entry('2026-06-01', '搬家', 'mood: 3\n'),
+        [`diary/letters/${lastYear}_1.md`]: `---\nwritten: ${lastYear}T21:00:00+08:00\nopen_on: ${t}\nremind: true\n---\n\n一年后的我：\n\n希望你还在写。\n`,
+      })
+      const sheet = page.getByRole('dialog', { name: /一年前的你，寄来一封信/ })
+      await sheet.waitFor()
+      await page.screenshot({ path: OUT + `recall-33-letter-arrived${dark ? '-dark' : ''}.png` })
+      await sheet.getByRole('button', { name: '拆开' }).click()
+      await page.waitForURL(/#\/letters\/.+$/)
+      await page.getByText('希望你还在写。').waitFor()
+      await page.screenshot({ path: OUT + `recall-34-letter-read${dark ? '-dark' : ''}.png` })
+      await expect.poll(() => page.evaluate((p) => (window as unknown as W).__diary.repo.store.readText(p), `diary/letters/${lastYear}_1.md`)).toMatch(/\nopened: .+\n/)
+      await page.getByRole('button', { name: '返回' }).click()
+      await page.goto(BASE + '#/letters')
+      await page.getByText('已拆开').waitFor()
+      // 回首页不再弹
+      await page.goto(BASE + '#/')
+      await page.locator('.shell').waitFor()
+      await page.waitForTimeout(500)
+      await expect(sheet.count()).resolves.toBe(0)
+      expect(errors).toEqual([])
+      await ctx.close()
+    }
+  })
+
+  it('每日诗词默认关闭', async () => {
+    const { ctx, page } = await newPage()
+    await seed(page, entry('2026-06-01', '搬家', 'mood: 3\n'))
+    expect(await page.evaluate(() => (window as unknown as W).__diary.prefs.daily.mode)).toBe('off')
+    await expect(page.locator('.poem').count()).resolves.toBe(0)
     await ctx.close()
   })
 })

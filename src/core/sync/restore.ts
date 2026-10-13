@@ -111,7 +111,7 @@ export async function restoreFrom(
       manifest[path] = hash
       continue
     }
-    if (existing != null && !replacedAll && path.startsWith('entries/')) {
+    if (existing != null && !replacedAll && (path.startsWith('entries/') || path.startsWith('letters/'))) {
       // 同名不同内容：保留本地版本，清单不记录，下次同步会用本地版本覆盖云端
       result.skipped.push(path)
       continue
@@ -120,7 +120,7 @@ export async function restoreFrom(
     if (existing != null) await store.remove(target).catch(() => {})
     await store.rename(`${TMP}/${path}`, target)
     manifest[path] = hash
-    if (path.startsWith('entries/') || path.startsWith('attachments/') || path.startsWith('summaries/')) result.restored.push(path)
+    if (path.startsWith('entries/') || path.startsWith('attachments/') || path.startsWith('summaries/') || path.startsWith('letters/')) result.restored.push(path)
   }
   if (crypto) {
     // 恢复用的就是云端的密钥文件，说明文件视为已同步

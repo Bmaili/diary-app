@@ -44,7 +44,7 @@ watch(
 
 async function runAi(auto = false) {
   if (busy.value || !props.canAi) return
-  if (!ensureConsent('caption')) return
+  if (!(await ensureConsent('caption'))) return
   const my = ++ticket
   const src = props.src
   busy.value = true

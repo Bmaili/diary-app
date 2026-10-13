@@ -4,6 +4,7 @@
  * 日记里的人名、地名都是虚构的。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { autoDialog } from './autoDialog.mjs'
 import { chromium, type Browser, type Page, type Route } from 'playwright'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
@@ -116,7 +117,7 @@ async function open(): Promise<{ page: Page; errors: string[]; close: () => Prom
   const page = await ctx.newPage()
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
-  page.on('dialog', (d) => d.accept())
+  await page.addInitScript(autoDialog)
   await page.goto(BASE)
   await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && document.querySelector('.shell'))
   return { page, errors, close: () => ctx.close() }

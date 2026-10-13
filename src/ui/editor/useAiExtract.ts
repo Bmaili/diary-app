@@ -10,7 +10,7 @@ export function useAiExtract(date: string, session: Ref<EditSession | null>, flu
   const ai = reactive({ open: false, busy: false, error: '', x: null as Extraction | null, model: '' })
 
   async function runExtract() {
-    if (ai.busy || !ensureConsent('extract')) return
+    if (ai.busy || !(await ensureConsent('extract'))) return
     await flush()
     if (!session.value?.existed) {
       note('先写点内容再让 AI 标注')

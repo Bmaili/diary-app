@@ -208,10 +208,10 @@ const suggestions = computed(() => {
 })
 
 async function removeEntry() {
-  const ok = await remove(
-    `删除${title.value}的日记？\n\n日记和这天插的图片会移到“设置 → 最近删除”，保留 30 天，可以恢复。` +
-      '开了同步的话，云端的副本会在下次同步时删除。',
-  )
+  const ok = await remove({
+    title: `删除 ${title.value}的日记？`,
+    message: '日记和这天插的图片会移到“设置 → 最近删除”，保留 30 天，可以恢复。开了同步的话，云端的副本会在下次同步时删除。',
+  })
   if (ok) goBack()
 }
 

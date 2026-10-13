@@ -17,6 +17,7 @@ import { enabled, syncState, BACKENDS } from '../../syncService'
 import { SLOGAN } from '../../appInfo'
 import { holidaySourceChanged, holidayStatus, refreshHolidays } from '../../holidayService'
 import { showBadge, updateState } from '../../updateService'
+import { ask } from '../dialog'
 
 const router = useRouter()
 const busy = ref('')
@@ -70,7 +71,7 @@ const doClearTest = () =>
   run('clear', async () => {
     const rows = index.testRows()
     if (!rows.length) return '没有测试日记'
-    if (!window.confirm(`删除 ${rows.length} 篇测试日记？真实日记不受影响。`)) return ''
+    if (!(await ask({ title: `删除 ${rows.length} 篇测试日记？`, message: '真实日记不受影响。', ok: '删除', danger: true }))) return ''
     await enqueue(async () => {
       for (const r of rows) await repo.deleteEntry(r.date)
     })

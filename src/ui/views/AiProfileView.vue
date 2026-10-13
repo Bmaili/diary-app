@@ -7,6 +7,7 @@ import { DEFAULT_CONTEXT_TOKENS, PRESETS, parseExtraBody, testConfig } from '../
 import { profileConfig } from '../../aiService'
 import Icon from '../components/Icon.vue'
 import Switch from '../components/Switch.vue'
+import { ask } from '../dialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -123,7 +124,7 @@ async function save() {
 }
 
 async function remove() {
-  if (!window.confirm(`删除「${f.name}」？`)) return
+  if (!(await ask({ title: `删除「${f.name}」？`, ok: '删除', danger: true }))) return
   prefs.ai.profiles = prefs.ai.profiles.filter((p) => p.id !== f.id)
   for (const t of ['chat', 'extract', 'summary', 'caption'] as const) if (prefs.ai.use[t] === f.id) prefs.ai.use[t] = ''
   await setSecret(`llm.${f.id}`, '')

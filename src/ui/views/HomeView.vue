@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { index, indexVersion, settings, today } from '../../app'
 import type { IndexRow } from '../../core/types'
@@ -15,14 +15,18 @@ import { overall } from '../../syncService'
 import { profileFor } from '../../aiService'
 import { readSummary } from '../../core/summaries'
 import { store } from '../../app'
-import { addDays, daysBetween, parseYmd } from '../../core/time'
+import { addDays, daysBetween, parseYmd, weekday } from '../../core/time'
 import { pickHint, slotOf } from '../../core/hints'
 import { diaryFacts } from '../../core/diaryFacts'
 import { hintSeed, refreshHintSeed } from '../../hintService'
 import { pickWander } from '../../core/wander'
+import { letters } from '../../lettersService'
+import { letterState } from '../../core/letters'
+import { pushBack } from '../backStack'
 import { backupDue } from '../../core/backupReminder'
 import { enabled as syncBackends } from '../../syncService'
 import { exportZip, exporting } from '../../backupService'
+import { ask } from '../dialog'
 
 defineOptions({ name: 'HomeView' })
 
@@ -220,20 +224,81 @@ async function checkPrompts() {
 watch([indexVersion, todayStr], () => void checkPrompts(), { immediate: true })
 onActivated(() => void checkPrompts())
 
-// ---------- 回顾条：随手翻、珍藏 ----------
+// ---------- 旧页：首页随机摆一篇旧日记（2026-10-13 起代替“随手翻”按钮） ----------
 
 const starredCount = computed(() => {
   void indexVersion.value
   return index.starred().length
 })
-let lastWander: string | undefined
-function wander() {
-  const d = pickWander(rows.value, todayStr.value, lastWander)
-  if (!d) return
-  lastWander = d
-  router.push(`/entry/${d}`)
+/** 这次打开 app 摆出来的那一篇；点“换一页”换，跨了一天重新挑 */
+const oldDate = ref<string | null>(null)
+let oldDay = ''
+function pickOld() {
+  oldDate.value = pickWander(rows.value, todayStr.value, oldDate.value ?? undefined)
+  oldDay = todayStr.value
 }
-const canWander = computed(() => rows.value.some((r) => r.date < todayStr.value))
+const oldPage = computed(() => {
+  void indexVersion.value
+  // 那年今日出现的那天，旧页让位，首页不要两张回忆卡
+  if (memories.value.length) return null
+  const r = oldDate.value ? index.get(oldDate.value) : undefined
+  return r && r.date < todayStr.value ? r : null
+})
+watch([rows, todayStr], () => {
+  if (oldDay !== todayStr.value || !oldDate.value || !index.get(oldDate.value)) pickOld()
+}, { immediate: true })
+function oldLabel(d: string): string {
+  const x = parseYmd(d)
+  const y = x.getFullYear() === Number(todayStr.value.slice(0, 4)) ? '' : `${x.getFullYear()} 年 `
+  return `${y}${x.getMonth() + 1} 月 ${x.getDate()} 日 · ${weekday(d)}`
+}
+const sealedCount = computed(() => letters.list.filter((l) => !l.meta.opened).length)
+
+// ---------- 信到了：首页弹出信封（规格 5.13） ----------
+
+const homeActive = ref(true)
+onActivated(() => (homeActive.value = true))
+onDeactivated(() => (homeActive.value = false))
+const arrivedList = computed(() => letters.list.filter((l) => letterState(l, todayStr.value) === 'arrived'))
+const showArrival = computed(() => homeActive.value && !letters.snoozed && arrivedList.value.length > 0)
+let removeBack: (() => void) | null = null
+watch(showArrival, (on) => {
+  removeBack?.()
+  removeBack = on ? pushBack(snooze) : null
+}, { immediate: true })
+function snooze() {
+  removeBack = null
+  letters.snoozed = true
+}
+function openArrived() {
+  const l = arrivedList.value[0]
+  if (!l) return
+  removeBack?.()
+  removeBack = null
+  letters.snoozed = true
+  router.push(`/letters/${l.id}`)
+}
+/** “一年前的你”“三个月前的你”…… */
+function fromWhen(writtenDate: string): string {
+  const n = daysBetween(writtenDate, todayStr.value)
+  if (n >= 365) {
+    const y = Math.floor(n / 365)
+    return y === 1 ? '一年前的你' : `${y} 年前的你`
+  }
+  if (n >= 30) return `${Math.floor(n / 30)} 个月前的你`
+  return n <= 1 ? '昨天的你' : `${n} 天前的你`
+}
+const arrivalTitle = computed(() => {
+  const list = arrivedList.value
+  if (list.length > 1) return `有 ${list.length} 封信到了`
+  return list[0] ? `${fromWhen(list[0].id.slice(0, 10))}，寄来一封信` : ''
+})
+const arrivalSub = computed(() => {
+  const l = arrivedList.value[0]
+  if (!l) return ''
+  const d = parseYmd(l.id.slice(0, 10))
+  return `写于 ${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`
+})
 
 // ---------- 备份提醒 ----------
 
@@ -255,8 +320,12 @@ async function backupExport() {
     backupMsg.value = `导出失败：${(e as Error).message}`
   }
 }
-function dismissBackup() {
-  if (window.confirm('不再提醒备份？\n\n以后可以在“设置 → 同步与备份”开启云端同步，或在“设置 → 导出为 zip”手动备份。')) {
+async function dismissBackup() {
+  if (await ask({
+    title: '不再提醒备份？',
+    message: '以后可以在“设置 → 同步与备份”开启云端同步，或在“设置 → 导出为 zip”手动备份。',
+    ok: '不再提醒', cancel: '再想想',
+  })) {
     prefs.backup.dismissed = true
   }
 }
@@ -304,9 +373,26 @@ const memoryDateLabel = (d: string) => {
       </div>
     </section>
 
-    <nav v-if="rows.length" class="recall" aria-label="回顾">
-      <button class="recall-btn" :disabled="!canWander" @click="wander"><Icon name="shuffle" />随手翻</button>
-      <router-link to="/starred" class="recall-btn"><Icon name="star" />珍藏<span v-if="starredCount" class="num cnt">{{ starredCount }}</span></router-link>
+    <section v-if="oldPage" class="oldpage" :class="`mood-${oldPage.mood ?? 0}`" aria-label="旧页">
+      <router-link :to="`/entry/${oldPage.date}`" class="op-main">
+        <div class="op-head">
+          <span class="op-seal">旧页</span>
+          <span class="op-date">{{ oldLabel(oldPage.date) }}</span>
+          <MoodFace :value="oldPage.mood ?? null" :size="26" class="op-face" />
+        </div>
+        <p class="op-text">{{ oldPage.text.replace(/\s*\n+\s*/g, ' ') }}</p>
+      </router-link>
+      <div class="op-foot">
+        <button class="op-btn" @click="pickOld"><Icon name="shuffle" />换一页</button>
+        <span class="op-links">
+          <router-link to="/letters" class="op-btn"><Icon name="mail" />寄往来日<span v-if="sealedCount" class="num">{{ sealedCount }}</span></router-link>
+          <router-link to="/starred" class="op-btn"><Icon name="star" class="star" />珍藏<span v-if="starredCount" class="num">{{ starredCount }}</span></router-link>
+        </span>
+      </div>
+    </section>
+    <nav v-else-if="rows.length" class="recall-links" aria-label="回顾">
+      <router-link to="/letters" class="op-btn"><Icon name="mail" />寄往来日<span v-if="sealedCount" class="num">{{ sealedCount }}</span></router-link>
+      <router-link to="/starred" class="op-btn"><Icon name="star" class="star" />珍藏<span v-if="starredCount" class="num">{{ starredCount }}</span></router-link>
     </nav>
 
     <section v-if="showBackup" class="backup" aria-label="备份提醒">
@@ -358,6 +444,25 @@ const memoryDateLabel = (d: string) => {
     </section>
     <div ref="sentinel" class="sentinel"></div>
 
+    <Teleport to="body">
+      <Transition name="arrive">
+        <div v-if="showArrival" class="arrive-backdrop" @click.self="snooze">
+          <section class="arrive" role="dialog" aria-modal="true" :aria-label="arrivalTitle">
+            <svg class="arrive-env" viewBox="0 0 140 96" aria-hidden="true">
+              <rect x="2" y="2" width="136" height="92" rx="4" />
+              <path d="M2 4 L70 52 L138 4" />
+              <rect class="arrive-seal" x="54" y="36" width="32" height="32" rx="3" />
+              <text x="70" y="58" text-anchor="middle">封</text>
+            </svg>
+            <p class="arrive-title">{{ arrivalTitle }}</p>
+            <p class="arrive-sub">{{ arrivalSub }}</p>
+            <button class="arrive-open" @click="openArrived">拆开</button>
+            <button class="arrive-later" @click="snooze">晚点再看</button>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
+
     <button class="fab solid-btn" :class="{ mini: fabMini }" aria-label="写今天" @click="writeToday">
       <Icon name="pen" />
       <span class="fab-label">写今天</span>
@@ -407,32 +512,56 @@ const memoryDateLabel = (d: string) => {
 .stars { margin: 2px 0 4px; }
 .sub { margin: 0; font-size: 14px; }
 .hint-line { margin: 3px 0 0; font-family: var(--kai); font-size: 15px; line-height: 1.6; letter-spacing: 0.04em; color: var(--ink); opacity: 0.8; }
-.recall {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0 20px 14px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+/* 旧页：和“那年今日”同一种卡片，心情色从顶上淡淡晕开 */
+.oldpage {
+  position: relative;
+  margin: 0 16px 14px;
+  padding: 14px 16px 4px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  overflow: hidden;
 }
-.recall-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 46px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  font-size: 15px;
-  text-decoration: none;
+.oldpage::before { content: ''; position: absolute; inset: 0; background: var(--mc); opacity: 0.14; pointer-events: none; }
+.op-main { position: relative; display: block; color: inherit; text-decoration: none; }
+.op-main:active { opacity: 0.6; }
+.op-head { display: flex; align-items: center; gap: 10px; }
+.op-seal { flex: none; padding: 1px 5px; border: 1.2px solid var(--accent); border-radius: 3px; color: var(--accent); font-family: var(--kai); font-size: 13px; letter-spacing: 0.15em; }
+.op-date { flex: 1; min-width: 0; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op-face { flex: none; }
+.op-text { margin: 10px 0 0; font-size: 16px; line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.op-foot { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.op-links { display: flex; gap: 14px; }
+.op-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; text-decoration: none; }
+.op-btn svg { width: 16px; height: 16px; }
+.op-btn .star { color: var(--accent); }
+.op-btn .star :deep(path) { fill: currentColor; }
+.op-btn:active { opacity: 0.6; }
+.arrive-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; background: rgba(26, 24, 22, 0.42); }
+.arrive {
+  width: 100%;
+  padding: 18px 24px calc(28px + var(--safe-bottom));
+  border-radius: 24px 24px 0 0;
+  background-color: var(--surface);
+  background-image: var(--paper, none);
+  text-align: center;
 }
-.recall-btn + .recall-btn { border-left: 1px solid var(--line); }
-.recall-btn svg { width: 18px; height: 18px; color: var(--muted); }
-.recall-btn:disabled { color: var(--faint); }
-.recall-btn:active { opacity: 0.6; }
-.recall .cnt { color: var(--muted); font-size: 15px; }
+.arrive::before { content: ''; display: block; width: 36px; height: 4px; margin: 0 auto 16px; border-radius: 2px; background: var(--line); }
+.arrive-env { display: block; width: 140px; height: 96px; margin: 0 auto; }
+.arrive-env rect:first-child { fill: var(--bg); stroke: var(--faint); }
+.arrive-env path { fill: none; stroke: var(--faint); stroke-width: 1.2; }
+.arrive-env .arrive-seal { fill: var(--accent); }
+.arrive-env text { fill: var(--on-accent); font-family: var(--kai); font-size: 17px; }
+.arrive-title { margin: 18px 0 0; font-family: var(--kai); font-size: 20px; }
+.arrive-sub { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.arrive-open { width: 100%; min-height: 50px; margin-top: 22px; border: 0; border-radius: 25px; background: var(--accent); color: var(--on-accent); font: inherit; font-size: 17px; font-weight: 700; }
+.arrive-later { width: 100%; min-height: 44px; margin-top: 8px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 15px; }
+.arrive-enter-active, .arrive-leave-active { transition: opacity 0.25s ease; }
+.arrive-enter-active .arrive { transition: transform 0.45s var(--spring); }
+.arrive-leave-active .arrive { transition: transform 0.22s ease-in; }
+.arrive-enter-from, .arrive-leave-to { opacity: 0; }
+.arrive-enter-from .arrive, .arrive-leave-to .arrive { transform: translateY(100%); }
+.recall-links { display: flex; justify-content: flex-end; gap: 18px; margin: -6px 20px 6px; }
 .backup {
   position: relative;
   margin: 0 16px 14px;
@@ -553,7 +682,7 @@ const memoryDateLabel = (d: string) => {
 .fab.mini .fab-label { max-width: 0; margin-left: 0; opacity: 0; }
 .fab.mini svg { transform: rotate(-12deg) scale(1.1); }
 /* 首页顶部依次浮现（只在第一次打开时） */
-.intro .recall, .intro .backup { animation: rise-in 0.5s var(--ease-out) 0.06s backwards; }
+.intro .oldpage, .intro .backup { animation: rise-in 0.5s var(--ease-out) 0.06s backwards; }
 .intro .hello, .intro .prompts, .intro .memories { animation: rise-in 0.5s var(--ease-out) backwards; }
 .intro .prompts { animation-delay: 0.08s; }
 .intro .memories { animation-delay: 0.14s; }

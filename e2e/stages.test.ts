@@ -3,6 +3,7 @@
  * 阿里云 OSS、GitHub、高德、天气、LLM 的请求都被拦截并转发到本地模拟服务器。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { autoDialog } from './autoDialog.mjs'
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, readFileSync } from 'node:fs'
@@ -94,7 +95,7 @@ async function newPage(opts: { geo?: boolean } = {}): Promise<{ ctx: BrowserCont
   const page = await ctx.newPage()
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
-  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()))
+  await page.addInitScript(autoDialog)
   await page.goto(BASE)
   await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && document.querySelector('.shell'))
   // 测试里不等“停笔 2 分钟”，离开编辑页就同步
@@ -204,8 +205,7 @@ describe('阶段 2：同步与恢复', () => {
     await page.getByRole('button', { name: '保存' }).click()
     await page.waitForURL(/#\/settings\/sync$/)
     // 云端 OSS 已有上一个测试留下的日记，开启时会建议先恢复：这里选“直接开启”
-    page.removeAllListeners('dialog')
-    page.on('dialog', (d) => (d.message().includes('建议先从云端恢复') ? d.dismiss() : d.accept()))
+    await page.evaluate(() => ((window as unknown as { __dialogRule: unknown }).__dialogRule = { pick: { when: '建议先从云端恢复', label: '直接开启同步' } }))
     await page.getByRole('switch', { name: '同步到阿里云 OSS' }).click()
     await page.locator('[role=switch][aria-label="同步到阿里云 OSS"][aria-checked="true"]').waitFor()
     await page.getByRole('switch', { name: '同步到GitHub' }).click()
@@ -250,14 +250,9 @@ describe('阶段 2：同步与恢复', () => {
     await page.getByLabel('AccessKey Secret').fill(OSS.secret)
     await page.getByRole('button', { name: '保存' }).click()
     await page.waitForURL(/#\/settings\/sync$/)
-    const msgs: string[] = []
-    page.removeAllListeners('dialog')
-    page.on('dialog', (d) => {
-      msgs.push(d.message())
-      d.accept()
-    })
     await page.getByRole('switch', { name: '同步到阿里云 OSS' }).click()
     await page.waitForURL(/#\/settings\/restore/)
+    const msgs: string[] = await page.evaluate(() => (window as unknown as { __dialogLog: string[] }).__dialogLog)
     expect(msgs[0]).toMatch(/云端已有 \d+ 篇日记/)
     await page.getByText(/云端有/).waitFor()
     await page.screenshot({ path: OUT + '24-restore-preview.png' })
@@ -537,8 +532,7 @@ describe('阶段 4：AI', () => {
     // 词表合并：把“阿杰”改名为“杰哥”
     await page.getByRole('button', { name: '人物' }).click()
     await page.getByRole('button', { name: /^阿杰/ }).click()
-    page.removeAllListeners('dialog')
-    page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept('杰哥') : d.accept()))
+    await page.evaluate(() => ((window as unknown as { __dialogRule: unknown }).__dialogRule = { input: '杰哥' }))
     await page.getByRole('button', { name: '改名' }).click()
     await page.getByText(/已改写 7 篇日记/).waitFor()
     await page.getByRole('button', { name: /^杰哥/ }).waitFor()
@@ -1012,6 +1006,8 @@ describe('每日诗词、不让 AI 读', () => {
   it('首页有诗词可以换一首；编辑页可以设置不让 AI 读', async () => {
     const { ctx, page, errors } = await newPage()
     await writeToday(page, '今天不想让 AI 看到的一篇。')
+    // 2026-10-13 起每日诗词默认关闭：先打开
+    await page.evaluate(() => ((window as unknown as { __diary: { prefs: { daily: { mode: string } } } }).__diary.prefs.daily.mode = 'local'))
     const verse = page.locator('.poem .verse')
     await verse.waitFor()
     const first = await verse.innerText()

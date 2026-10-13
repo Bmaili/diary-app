@@ -14,6 +14,7 @@ import { syncAfterEdit, syncOnHide } from '../../syncService'
 import { bodyFor, openSession, revertedRaw, type EditSession } from '../../core/session'
 import { entryPath } from '../../core/repo'
 import { hasContent, hasRecord } from '../../core/entryFile'
+import { ask, choose } from '../dialog'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'empty' | 'error'
 
@@ -115,9 +116,9 @@ export function useEntrySession(date: string) {
   }
 
   /** 删除这一天：移到“最近删除”，云端副本在下次同步时删除。返回是否删了 */
-  async function remove(confirmText: string): Promise<boolean> {
+  async function remove(confirm: { title: string; message: string }): Promise<boolean> {
     const s = session.value
-    if (!s?.existed || !window.confirm(confirmText)) return false
+    if (!s?.existed || !(await ask({ ...confirm, ok: '删除', danger: true }))) return false
     // 先把最后一秒的输入存下来，回收站里的才是完整版本
     if (hasRecord({ body: bodyFor(s, text.value), meta: s.doc.meta })) await flush()
     left = true
@@ -145,7 +146,11 @@ export function useEntrySession(date: string) {
     const body = bodyFor(s, text.value)
     if (!hasRecord({ body, meta: s.doc.meta }) && s.existed) {
       // 这次才记下、又全部撤掉了（比如拖了心情又点“不记”）：悄悄移到最近删除，不用再问
-      if (s.originalRaw == null || window.confirm('这一天的正文和心情都清空了。要删除这一天的日记吗？\n\n删除后可以在“设置 → 最近删除”里找回，保留 30 天。')) {
+      if (s.originalRaw == null || (await ask({
+        title: '这一天什么都没记了',
+        message: '正文和心情都清空了。要删除这一天的日记吗？删除后可以在“设置 → 最近删除”里找回，保留 30 天。',
+        ok: '删除', cancel: '留着', danger: true,
+      }))) {
         await deleteEntryToTrash(date)
         syncAfterEdit()
       }
@@ -153,8 +158,17 @@ export function useEntrySession(date: string) {
     }
     if (!hasContent(body) && hasContent(s.originalBody) && s.originalRaw != null) {
       // 原来有正文、现在删光了只剩心情：自动保存已经写了盘，问一下要不要恢复原来的正文
-      const keep = window.confirm('正文已经删光了。\n\n确定：只保留这天的心情\n取消：恢复原来的正文')
-      if (!keep) {
+      // 返回键关掉提示框时按“恢复”：不丢字
+      const pick = await choose({
+        title: '正文已经删光了',
+        message: '这天还记着心情。要只留下心情，还是把原来的正文找回来？',
+        options: [
+          { label: '只保留心情', value: 'keep', kind: 'primary' },
+          { label: '恢复原来的正文', value: 'restore', kind: 'ghost' },
+        ],
+        dismiss: 'restore',
+      })
+      if (pick === 'restore') {
         await enqueue(async () => {
           await repo.writeAtomic(entryPath(date), s.originalRaw!)
           await refreshDate(date)

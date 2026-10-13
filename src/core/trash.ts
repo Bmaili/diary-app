@@ -22,6 +22,10 @@ export interface TrashItem {
   files: string[]
   preview: string
   mood?: number
+  /** 删的是一封信（2026-10-13 加入）；没有这个字段的是日记 */
+  kind?: 'letter'
+  /** 信的编号（kind 为 letter 时） */
+  letterId?: string
 }
 
 const DAY = 86400000
@@ -81,6 +85,26 @@ export async function trashEntry(repo: DiaryRepo, date: string, now = new Date()
   return item
 }
 
+/** 把一封信移到最近删除（拆过的信，或者撤回的信）。date 记写信的日期 */
+export async function trashLetter(store: FileStore, letterId: string, preview: string, now = new Date()): Promise<TrashItem | null> {
+  const rel = `letters/${letterId}.md`
+  if (!(await store.stat(`${ROOT}/${rel}`))) return null
+  const item: TrashItem = {
+    id: `letter_${letterId}_${now.getTime()}`,
+    date: letterId.slice(0, 10),
+    deletedAt: now.getTime(),
+    files: [rel],
+    preview: preview.replace(/\s+/g, ' ').slice(0, 80),
+    kind: 'letter',
+    letterId,
+  }
+  const dir = `${TRASH}/${item.id}`
+  await store.mkdirp(dir)
+  await store.writeText(`${dir}/info.json`, JSON.stringify(item))
+  await move(store, `${ROOT}/${rel}`, `${dir}/${rel}`)
+  return item
+}
+
 export async function listTrash(store: FileStore): Promise<TrashItem[]> {
   const out: TrashItem[] = []
   for (const f of await store.list(TRASH)) {
@@ -102,6 +126,14 @@ export async function restoreTrash(repo: DiaryRepo, id: string): Promise<string>
   const dir = `${TRASH}/${id}`
   const info = JSON.parse((await store.readText(`${dir}/info.json`)) ?? 'null') as TrashItem | null
   if (!info) throw new Error('找不到这条删除记录')
+  if (info.kind === 'letter') {
+    for (const rel of info.files) {
+      if (await store.stat(`${ROOT}/${rel}`)) throw new Error('同名的信已经在了，没有覆盖它')
+      await move(store, `${dir}/${rel}`, `${ROOT}/${rel}`)
+    }
+    await store.rmdir(dir)
+    return info.date
+  }
   if (await store.stat(entryPath(info.date))) {
     throw new Error(`${info.date} 已经有新写的日记了。要恢复旧的，先把新的删掉，或者把需要的内容复制过去。`)
   }

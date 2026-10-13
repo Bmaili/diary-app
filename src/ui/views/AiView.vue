@@ -15,6 +15,7 @@ import Sheet from '../components/Sheet.vue'
 import AnswerChart from '../components/AnswerChart.vue'
 import { splitAnswer, type GroupsChart } from '../../core/llm/charts'
 import { Capacitor } from '@capacitor/core'
+import { promptText } from '../dialog'
 
 defineOptions({ name: 'AiView' })
 
@@ -139,7 +140,7 @@ const pending = computed(() => {
   return index.needsExtraction().length
 })
 async function runBatch() {
-  if (!ensureConsent('extract')) return
+  if (!(await ensureConsent('extract'))) return
   await startBatch()
 }
 
@@ -154,10 +155,11 @@ watch(field, () => (selected.value = []))
 const mergeMsg = ref('')
 async function doMerge() {
   if (!selected.value.length) return
-  const to = window.prompt(
-    selected.value.length > 1 ? `把这 ${selected.value.length} 个写法合并成：` : `把“${selected.value[0]}”改名为：`,
-    selected.value[0],
-  )
+  const to = await promptText({
+    title: selected.value.length > 1 ? `把这 ${selected.value.length} 个写法合并成` : `把“${selected.value[0]}”改名为`,
+    value: selected.value[0],
+    label: '新的写法',
+  })
   if (!to?.trim()) return
   const n = await merge(field.value, selected.value, to.trim())
   mergeMsg.value = `已改写 ${n} 篇日记`

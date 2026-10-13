@@ -14,6 +14,7 @@ import { promptText, type PromptId } from './core/llm/prompts'
 import { imageForAi } from './imageService'
 import { mergeValues } from './core/vocab'
 import type { ListField } from './core/types'
+import { ask as askDialog } from './ui/dialog'
 
 export type Task = 'chat' | 'extract' | 'summary' | 'caption'
 export const TASK_LABEL: Record<Task, string> = { chat: '问答', extract: '抽取', summary: '总结', caption: '图片说明' }
@@ -62,7 +63,7 @@ export function profileConfig(p: LlmProfile, apiKey: string): LlmConfig {
 }
 
 /** 第一次把日记发给某个服务前，说明会发什么（规格第 8 节） */
-export function ensureConsent(task: Task): boolean {
+export async function ensureConsent(task: Task): Promise<boolean> {
   const p = profileFor(task)
   if (!p) return false
   if (prefs.ai.consented.includes(p.id)) return true
@@ -70,12 +71,14 @@ export function ensureConsent(task: Task): boolean {
   try {
     host = new URL(p.baseUrl).host
   } catch { /* 保持原样 */ }
-  const ok = window.confirm(
-    `第一次使用「${p.name}」（${host}）。\n\n` +
+  const ok = await askDialog({
+    title: `第一次使用「${p.name}」`,
+    message:
+      `服务地址：${host}\n\n` +
       '问答时会发送你的问题以及工具查到的相关日记片段；抽取会发送单篇日记全文；总结会发送整月的日记；' +
-      '图片说明会发送那张图片（缩小后）和这篇日记的开头。\n' +
-      '这些内容会经过该服务商的服务器。确定继续吗？',
-  )
+      '图片说明会发送那张图片（缩小后）和这篇日记的开头。这些内容会经过该服务商的服务器。',
+    ok: '继续', cancel: '不用了',
+  })
   if (ok) prefs.ai.consented.push(p.id)
   return ok
 }
@@ -151,7 +154,7 @@ export function stopAsking() {
 
 export async function askQuestion(q: string): Promise<void> {
   if (asking.busy || !q.trim()) return
-  if (!ensureConsent('chat')) return
+  if (!(await ensureConsent('chat'))) return
   await loadChats()
   let conv = current()
   if (!conv) {
@@ -221,7 +224,7 @@ export async function extractPreview(date: string): Promise<{ x: Extraction; mod
 export const batch = reactive<BatchState>({ running: false, paused: false, done: 0, total: 0, failed: [] })
 
 export async function startBatch() {
-  if (batch.running || !ensureConsent('extract')) return
+  if (batch.running || !(await ensureConsent('extract'))) return
   const cfg = await configFor('extract')
   const dates = index.needsExtraction().map((r) => r.date)
   await runBatch({
@@ -243,7 +246,7 @@ export const summarizing = reactive({ period: '', message: '' })
 export async function summarize(period: string): Promise<void> {
   if (summarizing.period) throw new Error(`正在写 ${summarizing.period} 的总结，等它写完再试`)
   // 没配服务时 configFor 会报错说明；用户在确认框里点了取消就什么都不做
-  if (profileFor('summary') && !ensureConsent('summary')) return
+  if (profileFor('summary') && !(await ensureConsent('summary'))) return
   summarizing.period = period
   summarizing.message = '正在写总结'
   try {

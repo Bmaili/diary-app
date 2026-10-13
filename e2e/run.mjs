@@ -1,6 +1,7 @@
 // 端到端测试：在手机尺寸的 Chromium 里跑真实界面（构建产物），验证阶段 1 的界面相关验收项，并截图。
 // 运行：npm run build && npm run e2e
 import { chromium } from 'playwright'
+import { autoDialog } from './autoDialog.mjs'
 import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync } from 'node:fs'
 import JSZip from 'jszip'
@@ -59,6 +60,7 @@ const device = {
 try {
   // ---------- 1. 首次打开、写第一篇 ----------
   const ctx = await browser.newContext(device)
+  await ctx.addInitScript(autoDialog)
   const page = await ctx.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
@@ -187,7 +189,6 @@ try {
   await editorReady(page)
   await toEdit(page)
   await ta.fill('')
-  page.once('dialog', (d) => d.accept())
   await page.getByRole('button', { name: '返回' }).click()
   await page.waitForURL(BASE + '#/')
   // 这天记了心情（2026-10-13 起只记心情也保存）：确认后只保留心情
@@ -197,7 +198,6 @@ try {
   await page.locator('.row[data-date="2026-10-01"]').click()
   await page.waitForURL(/entry\/2026-10-01/)
   await page.getByRole('button', { name: '不记' }).click()
-  page.once('dialog', (d) => d.accept())
   await page.getByRole('button', { name: '返回' }).click()
   await page.waitForURL(BASE + '#/')
   check('正文和心情都清空并确认后删除文件', (await waitFile(page, '2026-10-01', (r) => r === null)) === null)
@@ -205,6 +205,7 @@ try {
   // ---------- 7. 大量数据：生成 3650 篇、搜索、重建索引 ----------
   // 大数据部分用真实时钟的独立环境：假时钟会冻结浏览器 IndexedDB 层依赖的计时器
   const ctx2 = await browser.newContext(device)
+  await ctx2.addInitScript(autoDialog)
   const p2 = await ctx2.newPage()
   p2.on('pageerror', (e) => errors.push(e.message))
   await p2.goto(BASE)
@@ -304,6 +305,7 @@ try {
 
   // ---------- 10. 深色模式截图 ----------
   const dark = await browser.newContext({ ...device, colorScheme: 'dark' })
+  await dark.addInitScript(autoDialog)
   const dp = await dark.newPage()
   await dp.goto(BASE)
   await dp.getByText('还没有日记').waitFor()

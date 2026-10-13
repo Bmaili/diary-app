@@ -6,6 +6,7 @@ import './ui/settings.css'
 import { initSync } from './syncService'
 import { initLock } from './lockService'
 import { initReminder } from './reminderService'
+import { initLetters } from './lettersService'
 import { initHolidays } from './holidayService'
 import { initUpdate } from './updateService'
 import { applyMotionClass, installTransitions } from './ui/motion'
@@ -15,6 +16,7 @@ import { watch } from 'vue'
 initSync()
 initLock()
 initReminder()
+initLetters()
 initHolidays()
 initUpdate()
 
