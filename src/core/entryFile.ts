@@ -89,6 +89,7 @@ function coerceMeta(m: Record<string, unknown>, fallbackDate?: string): EntryMet
   const locked = strList(m.locked)
   if (locked) out.locked = locked
   if (m.ai_exclude === true || m.ai_exclude === 'true') out.ai_exclude = true
+  if (m.starred === true || m.starred === 'true') out.starred = true
   return out
 }
 
@@ -132,12 +133,21 @@ export function serializeEntry(e: EntryDoc): string {
   doc.contents = map as unknown as Document['contents']
   const yamlText = doc.toString({ lineWidth: 0, flowCollectionPadding: false })
   const body = e.body.replace(/\s+$/, '')
-  return `---\n${yamlText}---\n\n${body}\n`
+  // 只记了心情、没有正文的日子（2026-10-13 起）：只有 front matter
+  return body ? `---\n${yamlText}---\n\n${body}\n` : `---\n${yamlText}---\n`
 }
 
-/** 正文是否为空（规格 4.4 第 8 条：没有内容的日子不生成文件） */
+/** 正文是否为空（只有自动加的 `### HH:mm` 标题也算空） */
 export function hasContent(body: string): boolean {
   return body.replace(/^#{1,6}[ \t]+\d{1,2}:\d{2}[ \t]*$/gm, '').trim().length > 0
+}
+
+/**
+ * 这一天有没有记下东西（规格 4.4 第 8 条）：写了正文，或者拖了心情（2026-10-13 起只记心情也保存）。
+ * 自动填的位置、天气不算，否则点开编辑页看一眼就会生成一篇。
+ */
+export function hasRecord(doc: { body: string; meta: { mood?: number } }): boolean {
+  return hasContent(doc.body) || doc.meta.mood != null
 }
 
 /**

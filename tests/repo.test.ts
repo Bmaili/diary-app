@@ -29,9 +29,39 @@ describe('diary/ 文件夹', () => {
     )
   })
 
-  it('正文为空时不生成文件', async () => {
-    expect(await repo.saveEntry({ meta: { date: '2026-10-04', mood: 3 }, body: '  \n', extra: [] })).toBe(false)
+  it('没写正文、也没选心情时不生成文件；自动填的位置天气不算', async () => {
+    const meta = { date: '2026-10-04', weather: { text: '晴', temp_c: 20 }, location: { lat: 30, lng: 120 } }
+    expect(await repo.saveEntry({ meta, body: '  \n### 21:30\n', extra: [] })).toBe(false)
     expect(await store.stat(entryPath('2026-10-04'))).toBeNull()
+  })
+
+  it('只记了心情也保存（2026-10-13 起）：文件只有 front matter，读回来正文为空', async () => {
+    const now = new Date(2026, 9, 4, 21, 5, 0)
+    expect(await repo.saveEntry({ meta: { date: '2026-10-04', mood: 2 }, body: '', extra: [] }, now)).toBe(true)
+    const text = (await store.readText(entryPath('2026-10-04')))!
+    expect(text).toMatch(/^---\ndate: 2026-10-04\ncreated: [^\n]+\nupdated: [^\n]+\nmood: 2\n---\n$/)
+    const doc = parseEntry(text, '2026-10-04')
+    expect(doc.meta.mood).toBe(2)
+    expect(doc.body).toBe('')
+  })
+
+  it('只记了心情的日子再写：不加 ### 时间标题', async () => {
+    await repo.saveEntry({ meta: { date: '2026-10-04', mood: 2 }, body: '', extra: [] })
+    const s = await openSession(repo, '2026-10-04', { append: true, now: new Date(2026, 9, 4, 22, 0) })
+    expect(s.existed).toBe(true)
+    expect(s.appended).toBe(false)
+    expect(s.initialText).toBe('')
+  })
+
+  it('珍藏写成 starred: true，取消后不写这个字段', async () => {
+    await repo.saveEntry({ meta: { date: '2026-10-04', mood: 4, starred: true }, body: '海边', extra: [] })
+    const text = (await store.readText(entryPath('2026-10-04')))!
+    expect(text).toContain('\nstarred: true\n')
+    const doc = parseEntry(text, '2026-10-04')
+    expect(doc.meta.starred).toBe(true)
+    delete doc.meta.starred
+    await repo.saveEntry(doc)
+    expect(await store.readText(entryPath('2026-10-04'))).not.toContain('starred')
   })
 
   it('验收：手动加的未知字段，经 app 编辑保存后仍在', async () => {

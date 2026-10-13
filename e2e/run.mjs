@@ -190,7 +190,17 @@ try {
   page.once('dialog', (d) => d.accept())
   await page.getByRole('button', { name: '返回' }).click()
   await page.waitForURL(BASE + '#/')
-  check('删空正文并确认后删除文件', (await waitFile(page, '2026-10-01', (r) => r === null)) === null)
+  // 这天记了心情（2026-10-13 起只记心情也保存）：确认后只保留心情
+  const raw6 = await waitFile(page, '2026-10-01', (r) => r != null && !r.includes('外部编辑器'))
+  check('删空正文并确认后只保留心情（未知字段也在）', /\nmood: 2\n/.test(raw6 ?? '') && /my_custom: 别删我\n---\n$/.test(raw6 ?? ''), JSON.stringify(raw6))
+  // 再把心情也撤掉：确认后删除文件
+  await page.locator('.row[data-date="2026-10-01"]').click()
+  await page.waitForURL(/entry\/2026-10-01/)
+  await page.getByRole('button', { name: '不记' }).click()
+  page.once('dialog', (d) => d.accept())
+  await page.getByRole('button', { name: '返回' }).click()
+  await page.waitForURL(BASE + '#/')
+  check('正文和心情都清空并确认后删除文件', (await waitFile(page, '2026-10-01', (r) => r === null)) === null)
 
   // ---------- 7. 大量数据：生成 3650 篇、搜索、重建索引 ----------
   // 大数据部分用真实时钟的独立环境：假时钟会冻结浏览器 IndexedDB 层依赖的计时器

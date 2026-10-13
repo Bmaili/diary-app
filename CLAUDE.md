@@ -55,6 +55,8 @@ npm run cap:sync             # 构建并同步到 android/
 - AI 写回时不更新 `updated`，并记录 `ai.extracted_at`。手动改过的 `tags/people/places` 字段整个进入 `locked`，AI 不再覆盖。
 - 图片说明就是 Markdown 替代文字 `![说明](../../attachments/…)`，不新增字段。新插的图是长边 2560 的 `.webp`（2026-10-12 起），旧的 `.jpg` 原样保留；代码里不要假设附件是 JPEG。
 - 索引缓存在 `cache/index.json`，同步清单和状态在 `sync/`，问答记录在 `ai/chats.json`。这些都在 `diary/` 之外，可以重建。
+- 只记了心情也保存（2026-10-13 起）：文件只有 front matter。“记了没有”统一用 `hasRecord`（正文或心情），自动填的位置天气不算；索引里这种日子 `sections === 0`（`hasBody`），AI 批量标注跳过。
+- 珍藏是 `starred: true`（2026-10-13 加入），索引里 `starred`。
 - 日记可设 `ai_exclude: true`（不让 AI 读）：问答工具（`index.aiRows()`）、总结、批量抽取、图片说明都跳过它，月度总结的源哈希也不算它。
 - 删除的日记放在 `trash/<日期>_<时间戳>/`（在 `diary/` 之外，不同步），30 天后启动时清理。删除一律走 `deleteEntryToTrash`，不要直接调 `repo.deleteEntry`（开发者选项清测试数据除外）。
 - 详细规格见 `SPEC.md` 第 4 节。改了行为要同步更新 `SPEC.md` 和 `README.md`。
@@ -80,11 +82,15 @@ src/core/            与平台无关、有单元测试的逻辑
   update.ts（解析 Releases、比较版本）settingsBundle.ts（设置导出文件：age 密码加密的 JSON）
   hints.ts（首页小提示和提醒通知共用的句库：七十二候、时辰、交节、节日节气、彩蛋，分层抽取）
   diaryFacts.ts（首页小提示里引用日记的句子：只用心情 ≥3、非 ai_exclude 的日记）
+  wander.ts（随手翻）backupReminder.ts（首页备份提醒的条件）
+  zipReader.ts（按需读 zip：Blob 切片 + DecompressionStream，GBK 文件名）importDiary.ts（导入：先 planImport 再 applyImport）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream
 src/*Service.ts      应用层：sync、place、image、ai、lock、reminder、daily、holiday、launch、update（应用内更新）
                      （界面读农历要用 holidayService 的 `lunar()`，节假日数据更新后才会刷新）
+src/backupService.ts 导出 zip（设置页和首页备份提醒共用），记下导出时间
+src/importService.ts 导入日记的流程和状态（模块级，离开页面不中断）
 src/hintService.ts   首页小提示的换句节奏（回来时隔 30 分钟或跨时段换句，切页面不换）
 src/settingsTransfer.ts  导入导出设置：按类收集 prefs 和密钥、导入时整类覆盖（换了 Bucket / 仓库的同步后端先关着）
 src/appInfo.ts       应用名、slogan、作者邮箱、仓库地址、致谢列表（关于页用）
@@ -158,5 +164,15 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 编辑时删掉图片引用后，图片文件还留着（删除整篇日记时会带走这天的图片）。
 - 已有的图片还不能批量让 AI 写说明。
 - 锁定是整个字段锁：手动改过标签后，AI 就不再补标签。是否改成只保护手动加的那几个词，还没定。
-- 只拖了心情、没写正文的日子不保存。
 - 应用内更新从 GitHub 下载安装包，国内网络可能很慢或下不动；以后可以加一个国内镜像。
+- 编辑页从 `/entry/A` 直接跳到 `/entry/B` 时组件被复用、不会重新打开那一天（日期在 setup 里只读一次）。现在没有这种跳法；以后要加（比如日记里链到另一天）得先处理。
+- 插图选“相册”用的是网页选文件，新版安卓会交给系统照片选择器：只有按时间排的全部照片和几个固定相册，看不到其他文件夹，一次只能选一张。
+
+## 已商定的后续计划（2026-10-13 和用户确认）
+
+第一批（心情即记、珍藏、随手翻、导入、备份提醒、AI 空状态）已做。后面几批：
+
+1. 写给未来的信：存在 `diary/letters/`（新目录，会同步）。“到期才能看”只是界面上的封存，文件是明文；到期前 AI、搜索、首页提示都不能读。快捷日期（一年后、明年元日、三年后、自选），“到时提醒”默认开，通知只说“有一封信到了”；到期后打开 app 首页弹出信封。首页回顾条加第三个入口“寄往来日”。
+2. 原生代码一批：从别的 app 分享进来（先解锁，打开今天的编辑页、追加 `### HH:mm` 段落，可撤销；zip 分享进来走导入）；选图改用 `ACTION_PICK` 调起手机自带相册（能看到所有文件夹，不需要新权限），保留系统选择器作退路。两者共用“把 content:// 图片复制进日记”的代码。
+3. 年度日记本：用安卓系统打印（PrintManager）把排好的网页存成 PDF，不内置字体。可选全年或只要珍藏、放不放照片和总结。
+4. 朱批：手动“请批”，不自动触发；批语存 `diary/annotations/`，朱红楷体显示在阅读视图正文下面，可“换一句”“删去”。提示词进“系统提示词”可改；固定部分写明一两句、纯文本，以及心情“不好”“很差”的日子只陪伴、不批评不说教。跳过 `ai_exclude`。

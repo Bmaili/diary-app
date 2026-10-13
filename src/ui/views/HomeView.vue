@@ -19,6 +19,10 @@ import { addDays, daysBetween, parseYmd } from '../../core/time'
 import { pickHint, slotOf } from '../../core/hints'
 import { diaryFacts } from '../../core/diaryFacts'
 import { hintSeed, refreshHintSeed } from '../../hintService'
+import { pickWander } from '../../core/wander'
+import { backupDue } from '../../core/backupReminder'
+import { enabled as syncBackends } from '../../syncService'
+import { exportZip, exporting } from '../../backupService'
 
 defineOptions({ name: 'HomeView' })
 
@@ -216,6 +220,47 @@ async function checkPrompts() {
 watch([indexVersion, todayStr], () => void checkPrompts(), { immediate: true })
 onActivated(() => void checkPrompts())
 
+// ---------- 回顾条：随手翻、珍藏 ----------
+
+const starredCount = computed(() => {
+  void indexVersion.value
+  return index.starred().length
+})
+let lastWander: string | undefined
+function wander() {
+  const d = pickWander(rows.value, todayStr.value, lastWander)
+  if (!d) return
+  lastWander = d
+  router.push(`/entry/${d}`)
+}
+const canWander = computed(() => rows.value.some((r) => r.date < todayStr.value))
+
+// ---------- 备份提醒 ----------
+
+const showBackup = computed(() =>
+  backupDue({
+    entries: rows.value.length,
+    syncOn: syncBackends().length,
+    lastExport: prefs.backup.lastExport,
+    dismissed: prefs.backup.dismissed,
+    now: new Date(nowTs.value),
+  }),
+)
+const backupMsg = ref('')
+async function backupExport() {
+  backupMsg.value = ''
+  try {
+    await exportZip()
+  } catch (e) {
+    backupMsg.value = `导出失败：${(e as Error).message}`
+  }
+}
+function dismissBackup() {
+  if (window.confirm('不再提醒备份？\n\n以后可以在“设置 → 同步与备份”开启云端同步，或在“设置 → 导出为 zip”手动备份。')) {
+    prefs.backup.dismissed = true
+  }
+}
+
 const memoryDateLabel = (d: string) => {
   const x = parseYmd(d)
   return `${x.getFullYear()} 年 ${x.getMonth() + 1} 月 ${x.getDate()} 日`
@@ -259,7 +304,25 @@ const memoryDateLabel = (d: string) => {
       </div>
     </section>
 
-    <section v-if="prompts.length" class="prompts">
+    <nav v-if="rows.length" class="recall" aria-label="回顾">
+      <button class="recall-btn" :disabled="!canWander" @click="wander"><Icon name="shuffle" />随手翻</button>
+      <router-link to="/starred" class="recall-btn"><Icon name="star" />珍藏<span v-if="starredCount" class="num cnt">{{ starredCount }}</span></router-link>
+    </nav>
+
+    <section v-if="showBackup" class="backup" aria-label="备份提醒">
+      <button class="icon-btn close" aria-label="不再提醒" @click="dismissBackup"><Icon name="close" /></button>
+      <p class="b-title">这些日记还没有备份</p>
+      <p class="b-text">写了 <span class="num">{{ rows.length }}</span> 篇，都只在这台手机上。手机丢了、坏了或卸载重装，就找不回来了。</p>
+      <div class="b-acts">
+        <router-link to="/settings/sync" class="solid-btn b-btn">开启云端同步</router-link>
+        <button class="b-btn ghost" :disabled="exporting.busy" @click="backupExport">
+          {{ exporting.busy ? (exporting.total ? `${exporting.done}/${exporting.total}` : '打包中') : '导出 zip' }}
+        </button>
+      </div>
+      <p v-if="backupMsg" class="b-err">{{ backupMsg }}</p>
+    </section>
+
+    <section v-else-if="prompts.length" class="prompts">
       <router-link v-for="p in prompts" :key="p.period" :to="{ path: `/ai/summary/${p.period}`, query: { generate: '1' } }" class="prompt">
         <Icon name="sparkle" />
         <span>{{ p.label }}</span>
@@ -278,7 +341,7 @@ const memoryDateLabel = (d: string) => {
               <span class="muted">{{ memoryDateLabel(m.date) }}</span>
             </div>
           </div>
-          <p class="mem-text">{{ m.text.replace(/\s*\n+\s*/g, ' ') }}</p>
+          <p class="mem-text">{{ m.text.replace(/\s*\n+\s*/g, ' ') || '这天只记了心情。' }}</p>
         </router-link>
       </div>
     </section>
@@ -344,6 +407,49 @@ const memoryDateLabel = (d: string) => {
 .stars { margin: 2px 0 4px; }
 .sub { margin: 0; font-size: 14px; }
 .hint-line { margin: 3px 0 0; font-family: var(--kai); font-size: 15px; line-height: 1.6; letter-spacing: 0.04em; color: var(--ink); opacity: 0.8; }
+.recall {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 20px 14px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.recall-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 46px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  text-decoration: none;
+}
+.recall-btn + .recall-btn { border-left: 1px solid var(--line); }
+.recall-btn svg { width: 18px; height: 18px; color: var(--muted); }
+.recall-btn:disabled { color: var(--faint); }
+.recall-btn:active { opacity: 0.6; }
+.recall .cnt { color: var(--muted); font-size: 15px; }
+.backup {
+  position: relative;
+  margin: 0 16px 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.backup .close { position: absolute; top: 2px; right: 2px; color: var(--muted); }
+.backup .close svg { width: 18px; height: 18px; }
+.b-title { margin: 0; padding-right: 32px; font-weight: 700; }
+.b-text { margin: 6px 28px 0 0; font-size: 14px; line-height: 1.65; color: var(--muted); }
+.b-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.b-btn { min-height: 40px; padding: 0 16px; border-radius: 20px; font-size: 14px; display: inline-flex; align-items: center; text-decoration: none; }
+.b-btn.ghost { border: 1px solid var(--faint); background: none; color: var(--ink); font: inherit; font-size: 14px; }
+.b-btn.ghost:disabled { color: var(--faint); }
+.b-err { margin: 8px 0 0; font-size: 13px; color: var(--danger); }
 .prompts { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
 .prompt {
   display: flex;
@@ -447,6 +553,7 @@ const memoryDateLabel = (d: string) => {
 .fab.mini .fab-label { max-width: 0; margin-left: 0; opacity: 0; }
 .fab.mini svg { transform: rotate(-12deg) scale(1.1); }
 /* 首页顶部依次浮现（只在第一次打开时） */
+.intro .recall, .intro .backup { animation: rise-in 0.5s var(--ease-out) 0.06s backwards; }
 .intro .hello, .intro .prompts, .intro .memories { animation: rise-in 0.5s var(--ease-out) backwards; }
 .intro .prompts { animation-delay: 0.08s; }
 .intro .memories { animation-delay: 0.14s; }

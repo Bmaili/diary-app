@@ -8,7 +8,7 @@ import { parseEntry, plainText } from './entryFile'
 import { DiaryRepo, entryPath, type EntryFile } from './repo'
 
 export const INDEX_CACHE = 'cache/index.json'
-const CACHE_VERSION = 4
+const CACHE_VERSION = 5
 /** 建索引时同时读几个文件 */
 const LOAD_CONCURRENCY = 8
 
@@ -57,6 +57,7 @@ export async function rowFromRaw(f: EntryFile, raw: string): Promise<IndexRow> {
       ...(m.locked?.length ? { locked: m.locked } : {}),
       ...(test ? { test: true } : {}),
       ...(m.ai_exclude ? { aiExclude: true } : {}),
+      ...(m.starred ? { starred: true } : {}),
     }
   } catch (e) {
     return {
@@ -76,6 +77,8 @@ export interface SearchQuery {
   people?: string[]
   places?: string[]
   moods?: number[]
+  /** 只看珍藏 */
+  starred?: boolean
 }
 
 export interface Segment {
@@ -231,6 +234,7 @@ export class DiaryIndex {
       if (q.from && r.date < q.from) continue
       if (q.to && r.date > q.to) continue
       if (q.moods?.length && (r.mood == null || !q.moods.includes(r.mood))) continue
+      if (q.starred && !r.starred) continue
       if (q.tags?.length && !q.tags.every((t) => r.tags.includes(t))) continue
       if (q.people?.length && !q.people.every((t) => r.people.includes(t))) continue
       if (q.places?.length && !q.places.every((t) => r.places.includes(t))) continue
@@ -244,9 +248,14 @@ export class DiaryIndex {
     return hits
   }
 
-  /** 还没抽取过、或抽取后又改过的日记（规格 7.4） */
+  /** 还没抽取过、或抽取后又改过的日记（规格 7.4）；只记了心情的日子没有可抽取的正文，跳过 */
   needsExtraction(): IndexRow[] {
-    return this.all().filter((r) => !r.error && !r.aiExclude && needsExtraction(r))
+    return this.all().filter((r) => !r.error && !r.aiExclude && hasBody(r) && needsExtraction(r))
+  }
+
+  /** 珍藏的日记，新的在前 */
+  starred(): IndexRow[] {
+    return this.all().filter((r) => r.starred)
   }
 
   /** AI 能读的日记（去掉设置了“不让 AI 读”的），新的在前 */
@@ -273,6 +282,11 @@ function lazyHit(row: IndexRow, terms: string[]): SearchHit {
       return seg
     },
   }
+}
+
+/** 有正文（不是只记了心情的日子）。老缓存没有 sections，当作有 */
+export function hasBody(r: Pick<IndexRow, 'sections'>): boolean {
+  return r.sections !== 0
 }
 
 export function needsExtraction(r: Pick<IndexRow, 'extractedAt' | 'updated'>): boolean {

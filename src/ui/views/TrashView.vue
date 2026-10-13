@@ -77,7 +77,7 @@ async function purge(t: TrashItem) {
       <div v-for="t in items" :key="t.id" class="item">
         <div>
           <div class="num-date">{{ label(t.date) }}</div>
-          <div class="desc preview">{{ t.preview || '（无正文）' }}</div>
+          <div class="desc preview">{{ t.preview || (t.mood ? '只记了心情' : '（无正文）') }}</div>
           <div class="desc">{{ left(t) }}<template v-if="images(t)">，含 {{ images(t) }} 张图片</template></div>
           <div v-if="msg[t.id]" class="result bad">{{ msg[t.id] }}</div>
         </div>

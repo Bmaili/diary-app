@@ -4,7 +4,7 @@
 import type { DiaryIndex } from '../diaryIndex'
 import type { DiaryRepo } from '../repo'
 import type { FileStore, IndexRow, ListField } from '../types'
-import { needsExtraction } from '../diaryIndex'
+import { hasBody, needsExtraction } from '../diaryIndex'
 import { readSummary, summaryStatus } from '../summaries'
 import type { ToolDef } from './client'
 import { aggregate, GROUP_BY, moodSummary, WEATHER_KINDS, type AggregateResult } from './stats'
@@ -164,7 +164,7 @@ export class DiaryTools {
 
   get_stats(a: Record<string, unknown>) {
     const rows = this.rows(a.from, a.to)
-    const pending = rows.filter((r) => needsExtraction(r)).length
+    const pending = rows.filter((r) => hasBody(r) && needsExtraction(r)).length
     return {
       total: rows.length,
       extracted: rows.length - pending,
@@ -227,7 +227,7 @@ export class DiaryTools {
     return {
       days: dates.length,
       note: '单位是天：同一天提到多次只算一次',
-      unextracted_in_range: range.filter((r) => needsExtraction(r)).length,
+      unextracted_in_range: range.filter((r) => hasBody(r) && needsExtraction(r)).length,
       text_only_days: dates.filter((d) => d.via.length === 1 && d.via[0] === 'text').length,
       dates: dates.slice(0, 500),
     }

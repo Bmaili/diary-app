@@ -2,7 +2,7 @@
  * diary/ 文件夹的读写（规格 4.1、4.4）。这是唯一的数据源；索引与缓存都放在 diary/ 之外。
  */
 import type { FileStore } from './types'
-import { hasContent, parseEntry, serializeEntry, type EntryDoc } from './entryFile'
+import { hasRecord, parseEntry, serializeEntry, type EntryDoc } from './entryFile'
 import { isoLocal, isValidYmd } from './time'
 import { README_MD } from './readme'
 
@@ -91,11 +91,11 @@ export class DiaryRepo {
   }
 
   /**
-   * 保存一篇日记。正文为空时不写文件（规格 4.4 第 8 条），返回 false；
+   * 保存一篇日记。既没有正文也没有心情时不写文件（规格 4.4 第 8 条），返回 false；
    * 删除已有文件需要调用方确认后显式调用 deleteEntry。
    */
   async saveEntry(doc: EntryDoc, now = new Date(), opts: { touchUpdated?: boolean } = {}): Promise<boolean> {
-    if (!hasContent(doc.body)) return false
+    if (!hasRecord(doc)) return false
     const stamp = isoLocal(now)
     doc.meta.created ??= stamp
     // AI 写回、词表合并不算“你改了日记”，不更新 updated（否则会被判定为抽取后又改过）

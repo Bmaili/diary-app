@@ -96,6 +96,14 @@ export const prefs = reactive({
     /** 自动检查新版本（2026-10-10 加入）：每天最多一次，有新版只在设置里显示红点 */
     auto: true,
   },
+  /**
+   * 备份提醒（2026-10-13 加入）：只是这台手机的状态，导入导出设置时不带。
+   * lastExport 上次导出 zip 的时间；dismissed 点过“不再提醒”
+   */
+  backup: {
+    lastExport: '',
+    dismissed: false,
+  },
   /** 已显示过的一次性提示 */
   seen: [] as string[],
 })

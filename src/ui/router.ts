@@ -23,6 +23,8 @@ export const router = createRouter({
     { path: '/settings/trash', component: () => import('./views/TrashView.vue') },
     { path: '/settings/transfer', component: () => import('./views/SettingsTransferView.vue') },
     { path: '/settings/restore', component: () => import('./views/RestoreView.vue') },
+    { path: '/starred', component: () => import('./views/StarredView.vue') },
+    { path: '/settings/import', component: () => import('./views/ImportView.vue') },
     { path: '/entry/:date', component: () => import('./views/EditorView.vue') },
   ],
   scrollBehavior(_to, _from, saved) {

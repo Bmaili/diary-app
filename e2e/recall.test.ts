@@ -1,0 +1,258 @@
+/**
+ * 2026-10-13 这一批的端到端测试：只记心情、珍藏、随手翻、备份提醒、导入日记、AI 页的引导。
+ * 截图在 e2e/out/recall-*.png（亮色、暗色、360 宽小屏）。
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import JSZip from 'jszip'
+
+const OUT = new URL('./out/', import.meta.url).pathname
+mkdirSync(OUT, { recursive: true })
+const PORT = 4176
+const BASE = `http://127.0.0.1:${PORT}/`
+const DEVICE = {
+  viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+  locale: 'zh-CN', timezoneId: 'Asia/Shanghai', reducedMotion: 'reduce' as const,
+}
+
+let server: ChildProcess
+let browser: Browser
+
+type W = { __diary: { repo: { readEntryRaw(d: string): Promise<string | null>; store: { writeText(p: string, t: string): Promise<void> } }; index: { all(): { date: string; text: string; starred?: boolean }[] }; prefs: Record<string, any> } }
+
+async function newPage(opts: { dark?: boolean; width?: number } = {}): Promise<{ ctx: BrowserContext; page: Page; errors: string[] }> {
+  const ctx = await browser.newContext({
+    ...DEVICE,
+    ...(opts.width ? { viewport: { width: opts.width, height: 780 } } : {}),
+    colorScheme: opts.dark ? 'dark' : 'light',
+  })
+  // 外部请求（诗词、节假日、天气）一律不通，测试只看本地功能
+  await ctx.route(/^https?:\/\/(?!127\.0\.0\.1)/, (r) => r.abort())
+  const page = await ctx.newPage()
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  page.on('dialog', (d) => d.accept())
+  await page.goto(BASE)
+  await page.waitForFunction(() => (window as unknown as { __diary?: unknown }).__diary && document.querySelector('.shell'))
+  return { ctx, page, errors }
+}
+
+const today = () => {
+  const d = new Date(Date.now() - 4 * 3600e3 + 8 * 3600e3)
+  return d.toISOString().slice(0, 10)
+}
+
+async function seed(page: Page, files: Record<string, string>) {
+  await page.evaluate(async (fs) => {
+    const w = window as unknown as W
+    for (const [p, t] of Object.entries(fs)) await w.__diary.repo.store.writeText(p, t)
+  }, files)
+  await page.reload()
+  await page.waitForFunction(() => document.querySelector('.shell'))
+}
+
+const entry = (date: string, body: string, extra = '') => ({ [`diary/entries/${date.slice(0, 4)}/${date}.md`]: `---\ndate: ${date}\n${extra}---\n\n${body}\n` })
+
+beforeAll(async () => {
+  server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { stdio: 'ignore' })
+  await new Promise((r) => setTimeout(r, 2500))
+  browser = await chromium.launch()
+})
+
+afterAll(async () => {
+  await browser?.close()
+  server?.kill()
+})
+
+describe('只记心情、珍藏、随手翻', () => {
+  it('拖一下心情就保存；首页显示“只记了心情”；点开编辑又删光时不留文件', async () => {
+    const { ctx, page, errors } = await newPage()
+    await page.getByRole('button', { name: '写今天' }).click()
+    await page.getByLabel('日记正文').waitFor()
+    await expect(page.getByLabel('日记正文').getAttribute('placeholder')).resolves.toContain('拖一下心情也算记了')
+    await page.getByRole('button', { name: '不好', exact: true }).click()
+    await page.getByText('已记下心情').waitFor()
+    await page.screenshot({ path: OUT + 'recall-01-mood-only-editor.png' })
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.waitForURL(BASE + '#/')
+    const raw = await page.evaluate((d) => (window as unknown as W).__diary.repo.readEntryRaw(d), today())
+    expect(raw).toMatch(/^---\ndate: \d{4}-\d\d-\d\d\ncreated: .+\nupdated: .+\nmood: 2\n---\n$/)
+    await page.getByText('只记了心情：不好').waitFor()
+    await page.screenshot({ path: OUT + 'recall-02-home-mood-only.png' })
+
+    // 再点开、点“不记”撤掉心情：离开时问要不要删除（测试里自动确认），删除后移到最近删除
+    await page.getByRole('button', { name: '写今天' }).click()
+    await page.getByRole('button', { name: '不记' }).click()
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.waitForURL(BASE + '#/')
+    await expect.poll(() => page.evaluate((d) => (window as unknown as W).__diary.repo.readEntryRaw(d), today())).toBeNull()
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+
+  it('珍藏：顶栏点星，首页和珍藏集里都能看到；随手翻打开一篇旧日记', async () => {
+    const { ctx, page, errors } = await newPage()
+    await seed(page, {
+      ...entry('2026-06-01', '搬进新家的第一个晚上，坐在纸箱上吃了一碗面。', 'mood: 3\n'),
+      ...entry('2026-08-08', '和小雨去海边，看了日出。', 'mood: 5\nplaces: [海边]\npeople: [小雨]\n'),
+      ...entry('2025-12-31', '跨年在外婆家，她包的饺子还是那个味道。', 'mood: 5\nstarred: true\n'),
+    })
+    await page.locator('.row[data-date="2026-08-08"]').click()
+    // 编辑时不显示星（顶栏要放保存状态），阅读视图里才有
+    await page.getByRole('button', { name: '编辑' }).click()
+    await expect(page.getByRole('button', { name: '珍藏这一天' }).count()).resolves.toBe(0)
+    await page.getByRole('button', { name: '阅读视图' }).click()
+    await page.getByRole('button', { name: '珍藏这一天' }).click()
+    await page.locator('.star.on').waitFor()
+    await page.screenshot({ path: OUT + 'recall-03-editor-star.png' })
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.waitForURL(BASE + '#/')
+    await page.locator('.row[data-date="2026-08-08"] .starred').waitFor()
+    await page.screenshot({ path: OUT + 'recall-04-home-recall-bar.png' })
+
+    await page.locator('.recall a').click()
+    await page.waitForURL(/#\/starred$/)
+    await expect(page.locator('.row').evaluateAll((els) => els.map((e) => e.getAttribute('data-date')))).resolves.toEqual(['2026-08-08', '2025-12-31'])
+    await page.screenshot({ path: OUT + 'recall-05-starred.png' })
+
+    await page.goto(BASE + '#/')
+    await page.getByRole('button', { name: '随手翻' }).click()
+    await page.waitForURL(/#\/entry\/\d{4}-\d\d-\d\d$/)
+    expect(['2026-06-01', '2026-08-08', '2025-12-31']).toContain(page.url().split('/').pop())
+
+    // 搜索里也能只看珍藏
+    await page.goto(BASE + '#/search')
+    await page.getByRole('button', { name: '筛选' }).click()
+    await page.getByRole('button', { name: '只看珍藏' }).click()
+    await page.getByText('共 2 篇').waitFor()
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+
+  it('暗色和 360 宽小屏：编辑页顶栏放得下，珍藏集、首页不出错', async () => {
+    const { ctx, page } = await newPage({ dark: true, width: 360 })
+    await seed(page, {
+      ...entry('2026-08-08', '和小雨去海边，看了日出。今年最开心的一天。', 'mood: 5\nstarred: true\nplaces: [海边]\n'),
+      ...entry('2026-08-09', '', 'mood: 2\n'),
+    })
+    await page.screenshot({ path: OUT + 'recall-06-home-dark-360.png' })
+    await page.locator('.row[data-date="2026-08-08"]').click()
+    await page.locator('.star.on').waitFor()
+    // 顶栏不换行、不溢出：最后一个按钮的右边不超出屏幕
+    const right = await page.locator('.editor .topbar .icon-btn').last().evaluate((el) => el.getBoundingClientRect().right)
+    expect(right).toBeLessThanOrEqual(360)
+    const scrollW = await page.evaluate(() => document.documentElement.scrollWidth)
+    expect(scrollW).toBeLessThanOrEqual(360)
+    await page.screenshot({ path: OUT + 'recall-07-editor-dark-360.png' })
+    await page.getByRole('button', { name: '返回' }).click()
+    await page.waitForURL(BASE + '#/')
+    await page.locator('.row[data-date="2026-08-09"]').click()
+    await page.getByText('这天只记了心情').waitFor()
+    await page.screenshot({ path: OUT + 'recall-08-mood-only-read-dark.png' })
+    await page.goto(BASE + '#/starred')
+    await page.screenshot({ path: OUT + 'recall-09-starred-dark.png' })
+    await ctx.close()
+  })
+})
+
+describe('备份提醒', () => {
+  it('写满 10 篇、没开同步时首页提醒；点 × 后不再出现', async () => {
+    const { ctx, page, errors } = await newPage()
+    const files: Record<string, string> = {}
+    for (let i = 1; i <= 10; i++) Object.assign(files, entry(`2026-09-${String(i).padStart(2, '0')}`, `第 ${i} 篇`, 'mood: 3\n'))
+    await seed(page, files)
+    await page.getByText('这些日记还没有备份').waitFor()
+    await page.screenshot({ path: OUT + 'recall-10-backup.png' })
+    await page.getByRole('button', { name: '不再提醒' }).click()
+    await expect(page.getByText('这些日记还没有备份').count()).resolves.toBe(0)
+    expect(await page.evaluate(() => (window as unknown as W).__diary.prefs.backup.dismissed)).toBe(true)
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+
+  it('暗色下的备份提醒', async () => {
+    const { ctx, page } = await newPage({ dark: true })
+    const files: Record<string, string> = {}
+    for (let i = 1; i <= 12; i++) Object.assign(files, entry(`2026-09-${String(i).padStart(2, '0')}`, `第 ${i} 篇`, `mood: ${(i % 5) + 1}\n`))
+    await seed(page, files)
+    await page.getByText('这些日记还没有备份').waitFor()
+    await page.screenshot({ path: OUT + 'recall-11-backup-dark.png' })
+    await ctx.close()
+  })
+})
+
+describe('导入日记', () => {
+  it('导入 Markdown 文件夹的 zip：先看预览，再导入，日记和图片都进来了', async () => {
+    const zip = new JSZip()
+    zip.file('Journal/2024-01-02.md', '# 2024-01-02 星期二\n\n今天很冷。\n\n![猫](assets/cat.png)\n')
+    zip.file('Journal/随笔.md', '---\ndate: 2024-01-03\nmood: 4\n---\n\n读完了一本书。\n')
+    zip.file('Journal/读书清单.md', '- 某本书\n')
+    // 1x1 的 PNG
+    zip.file('Journal/assets/cat.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'))
+    const path = OUT + 'import-sample.zip'
+    writeFileSync(path, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }))
+
+    const { ctx, page, errors } = await newPage()
+    await seed(page, entry('2024-01-03', '手机上已经有的一篇', 'mood: 2\n'))
+    await page.goto(BASE + '#/settings')
+    await page.getByRole('link', { name: /导入日记/ }).click()
+    await page.waitForURL(/#\/settings\/import$/)
+    await page.screenshot({ path: OUT + 'recall-12-import-start.png' })
+    const chooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: '选择文件' }).click()
+    await (await chooser).setFiles(path)
+    await page.getByText('认不出日期的文件').waitFor()
+    await page.getByText('手机上也有、内容不同').waitFor()
+    await page.screenshot({ path: OUT + 'recall-13-import-preview.png', fullPage: true })
+    await page.getByRole('button', { name: /导入 1 篇/ }).click()
+    await page.getByText('导入完成').waitFor()
+    await page.screenshot({ path: OUT + 'recall-14-import-done.png', fullPage: true })
+
+    const raw = await page.evaluate(() => (window as unknown as W).__diary.repo.readEntryRaw('2024-01-02'))
+    expect(raw).toContain('今天很冷。')
+    expect(raw).toContain('](../../attachments/2024/2024-01-02_1.png)')
+    // 手机上原有的那天没被动
+    expect(await page.evaluate(() => (window as unknown as W).__diary.repo.readEntryRaw('2024-01-03'))).toContain('手机上已经有的一篇')
+    // 首页能看到导入的日记
+    await page.getByRole('button', { name: '回到日记' }).click()
+    await page.locator('.row[data-date="2024-01-02"]').waitFor()
+    // 阅读视图里图片能显示
+    await page.locator('.row[data-date="2024-01-02"]').click()
+    await page.locator('article.reading img').waitFor()
+    expect(await page.locator('article.reading img').evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
+    expect(errors).toEqual([])
+    await ctx.close()
+  })
+
+  it('暗色下的导入预览', async () => {
+    const { ctx, page } = await newPage({ dark: true })
+    await page.goto(BASE + '#/settings/import')
+    const chooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: '选择文件' }).click()
+    await (await chooser).setFiles(OUT + 'import-sample.zip')
+    await page.getByText('认不出日期的文件').waitFor()
+    await page.screenshot({ path: OUT + 'recall-15-import-preview-dark.png', fullPage: true })
+    await ctx.close()
+  })
+})
+
+describe('AI 页', () => {
+  it('还没接 AI 服务：示例问答和 DeepSeek 三步；点按钮进添加页时选好了 DeepSeek 模板', async () => {
+    for (const dark of [false, true]) {
+      const { ctx, page, errors } = await newPage({ dark })
+      await page.goto(BASE + '#/ai')
+      await page.getByText('接上一个 AI 服务，就能这样问你的日记').waitFor()
+      await page.screenshot({ path: OUT + `recall-16-ai-empty${dark ? '-dark' : ''}.png`, fullPage: true })
+      if (!dark) {
+        await page.getByRole('link', { name: '添加 AI 服务' }).click()
+        await page.waitForURL(/#\/settings\/ai\/new/)
+        await expect(page.locator('input.field').nth(0).inputValue()).resolves.toBe('DeepSeek')
+        await expect(page.getByPlaceholder('https://…/v1').inputValue()).resolves.toBe('https://api.deepseek.com/v1')
+      }
+      expect(errors).toEqual([])
+      await ctx.close()
+    }
+  })
+})

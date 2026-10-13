@@ -502,7 +502,7 @@ describe('阶段 4：AI', () => {
 
     // 添加服务
     await page.goto(BASE + '#/ai')
-    await page.getByText('先接上一个 AI 服务').waitFor()
+    await page.getByText('接上一个 AI 服务，就能这样问你的日记').waitFor()
     await page.screenshot({ path: OUT + '40-ai-empty.png' })
     await page.getByRole('link', { name: '添加 AI 服务' }).click()
     await page.getByRole('combobox').first().selectOption('DeepSeek')

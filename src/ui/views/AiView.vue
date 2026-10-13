@@ -13,7 +13,8 @@ import type { ListField } from '../../core/types'
 import Icon from '../components/Icon.vue'
 import Sheet from '../components/Sheet.vue'
 import AnswerChart from '../components/AnswerChart.vue'
-import { splitAnswer } from '../../core/llm/charts'
+import { splitAnswer, type GroupsChart } from '../../core/llm/charts'
+import { Capacitor } from '@capacitor/core'
 
 defineOptions({ name: 'AiView' })
 
@@ -37,6 +38,21 @@ const conv = computed(() => current())
 const q = ref('')
 const input = ref<HTMLTextAreaElement | null>(null)
 const showHistory = ref(false)
+
+/** 还没接 AI 服务时的示例：每月和小雨出门的天数（虚构） */
+const SAMPLE_CHART: GroupsChart = {
+  type: 'groups', title: '今年和小雨出门的天数', group_by: 'month',
+  series: [{
+    label: '',
+    groups: [1, 1, 0, 2, 1, 1, 2, 1, 4, 1].map((days, i) => ({ key: `2026-${String(i + 1).padStart(2, '0')}`, label: `${i + 1}月`, days, avg_mood: days ? 4 : null })),
+  }],
+}
+
+/** 外部链接交给系统浏览器 */
+function openLink(url: string) {
+  if (Capacitor.isNativePlatform()) window.location.href = url
+  else window.open(url, '_blank', 'noopener')
+}
 
 const SUGGEST = ['过去一年我去过几次健身房？', '我最近一个月心情怎么样？', '这一年我和谁见面最多？', '帮我回顾一下上个月']
 
@@ -169,17 +185,27 @@ function toggleSel(v: string) {
         :aria-selected="tab === t[0]" :class="{ on: tab === t[0] }" @click="setTab(t[0])">{{ t[1] }}</button>
     </div>
 
-    <!-- 还没配置 -->
+    <!-- 还没配置：一段示例问答，加上接 DeepSeek 的三步 -->
     <div v-if="!hasProfile" class="wrap">
-      <!-- 圆相：一笔画成的墨圈，中间一方朱印 -->
-      <svg class="enso" viewBox="0 0 150 150" aria-hidden="true">
-        <path d="M 112 38 C 132 62 128 104 96 120 C 64 136 26 118 22 82 C 18 48 46 22 80 24 C 94 25 104 30 110 36" pathLength="1" />
-      </svg>
-      <p class="lead">先接上一个 AI 服务</p>
-      <p class="muted center">
-        之后可以直接问“过去一年去过几次某家饭店”“这几年都发生了什么”，也能让它帮你标注人物和地点、写月度和年度总结。
-      </p>
-      <div class="center"><router-link to="/settings/ai/new" class="solid-btn link-btn">添加 AI 服务</router-link></div>
+      <section class="sample" aria-label="示例对话">
+        <span class="sample-tag">示例</span>
+        <p class="s-q">今年和小雨出去了几次？哪次最开心？</p>
+        <div class="s-a">
+          <p>今年有 <b class="num">14</b> 天写到和小雨一起出门，九月最多。心情最好的是 <span class="s-date">9 月 8 日</span>，你们去海边看了日出。</p>
+          <AnswerChart :data="SAMPLE_CHART" kind="bar" class="s-chart" />
+          <p class="s-note">次数由 app 在手机上数，不靠模型估。</p>
+        </div>
+      </section>
+
+      <p class="lead">接上一个 AI 服务，就能这样问你的日记</p>
+      <p class="muted center">还能标注人物和地点、写月度和年度总结。以 DeepSeek 为例，三步：</p>
+      <ol class="steps3">
+        <li><span class="sn num">1</span><span>在 <a href="#" @click.prevent="openLink('https://platform.deepseek.com')">DeepSeek 开放平台</a> 注册，先充一点钱（按用量付费）。</span></li>
+        <li><span class="sn num">2</span><span>在“API Keys”里新建一个，复制下来。</span></li>
+        <li><span class="sn num">3</span><span>点下面的按钮，粘贴 API Key，模型名照 DeepSeek 文档里写的填，点“测试”。</span></li>
+      </ol>
+      <div class="center"><router-link :to="{ path: '/settings/ai/new', query: { preset: 'DeepSeek' } }" class="solid-btn link-btn">添加 AI 服务</router-link></div>
+      <p class="muted small center">也可以用通义千问、Kimi、智谱等。第一次把日记发给某个服务前会先问你。</p>
       <p v-if="stats.count" class="muted small center">
         目前有 <span class="num">{{ stats.count }}</span> 篇日记，从 <span class="num">{{ stats.first }}</span> 到
         <span class="num">{{ stats.last }}</span>。
@@ -322,13 +348,20 @@ function toggleSel(v: string) {
 .tabs button.on, .seg button.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 700; }
 .wrap { padding: 8px 24px; }
 .center { text-align: center; }
-.enso { display: block; width: 140px; height: 140px; margin: 8px auto 16px; }
-.enso path {
-  fill: none; stroke: var(--ink); stroke-width: 7; stroke-linecap: round; opacity: 0.85;
-  stroke-dasharray: 1; stroke-dashoffset: 1; animation: enso 1.6s cubic-bezier(0.5, 0, 0.2, 1) 0.2s forwards;
-}
-@keyframes enso { to { stroke-dashoffset: 0; } }
-.no-motion .enso path { stroke-dashoffset: 0; }
+.sample { position: relative; margin: 4px 0 22px; padding: 14px; border: 1px dashed var(--faint); border-radius: 16px; }
+.sample-tag { display: inline-block; padding: 0 6px; border: 1px solid var(--faint); border-radius: 4px; font-size: 12px; color: var(--muted); }
+.s-q { margin: 10px 0 0 36px; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: var(--ink); color: var(--bg); line-height: 1.6; }
+.s-a { margin-top: 10px; line-height: 1.7; }
+.s-a p { margin: 0; }
+.s-date { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.s-chart { margin-top: 8px; pointer-events: none; }
+/* 示例图表不能点：去掉“点柱子看数值”和“看数据” */
+.s-chart :deep(.data), .s-chart :deep(.info) { display: none; }
+.s-note { margin-top: 4px !important; font-size: 12px; color: var(--muted); }
+.steps3 { list-style: none; margin: 14px 0 18px; padding: 0; display: flex; flex-direction: column; gap: 12px; line-height: 1.6; }
+.steps3 li { display: flex; gap: 12px; align-items: flex-start; }
+.steps3 .sn { flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin-top: 1px; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent); font-size: 13px; }
+.steps3 a { color: var(--accent); }
 .lead { font-size: 20px; font-weight: 800; margin: 0 0 8px; text-align: center; }
 .link-btn { display: inline-flex; align-items: center; margin: 16px 0; text-decoration: none; }
 .small { font-size: 13px; }

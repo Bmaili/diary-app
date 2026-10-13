@@ -13,7 +13,7 @@ import { deleteEntryToTrash, enqueue, refreshDate, repo, today } from '../../app
 import { syncAfterEdit, syncOnHide } from '../../syncService'
 import { bodyFor, openSession, revertedRaw, type EditSession } from '../../core/session'
 import { entryPath } from '../../core/repo'
-import { hasContent } from '../../core/entryFile'
+import { hasContent, hasRecord } from '../../core/entryFile'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'empty' | 'error'
 
@@ -39,8 +39,8 @@ export function useEntrySession(date: string) {
     if (readOnly.value) return '只读'
     switch (status.value) {
       case 'saving': return '保存中'
-      case 'saved': return '已保存'
-      case 'empty': return '写点内容才会保存'
+      case 'saved': return session.value && !hasContent(bodyFor(session.value, text.value)) ? '已记下心情' : '已保存'
+      case 'empty': return '写一句或选个心情，就会保存'
       case 'error': return '保存失败'
       default: return ''
     }
@@ -61,7 +61,7 @@ export function useEntrySession(date: string) {
     const body = bodyFor(s, text.value)
     return enqueue(async () => {
       if (body === savedBody && !metaDirty) return
-      if (!hasContent(body)) {
+      if (!hasRecord({ body, meta: s.doc.meta })) {
         status.value = 'empty'
         return
       }
@@ -119,7 +119,7 @@ export function useEntrySession(date: string) {
     const s = session.value
     if (!s?.existed || !window.confirm(confirmText)) return false
     // 先把最后一秒的输入存下来，回收站里的才是完整版本
-    if (hasContent(bodyFor(s, text.value))) await flush()
+    if (hasRecord({ body: bodyFor(s, text.value), meta: s.doc.meta })) await flush()
     left = true
     deleted = true
     await deleteEntryToTrash(date)
@@ -143,12 +143,25 @@ export function useEntrySession(date: string) {
     if (!s || s.error || deleted) return true
     if (timer) clearTimeout(timer)
     const body = bodyFor(s, text.value)
-    if (!hasContent(body) && s.existed) {
-      if (window.confirm('正文已清空。要删除这一天的日记吗？\n\n删除后可以在“设置 → 最近删除”里找回，保留 30 天。')) {
+    if (!hasRecord({ body, meta: s.doc.meta }) && s.existed) {
+      // 这次才记下、又全部撤掉了（比如拖了心情又点“不记”）：悄悄移到最近删除，不用再问
+      if (s.originalRaw == null || window.confirm('这一天的正文和心情都清空了。要删除这一天的日记吗？\n\n删除后可以在“设置 → 最近删除”里找回，保留 30 天。')) {
         await deleteEntryToTrash(date)
         syncAfterEdit()
       }
       return true
+    }
+    if (!hasContent(body) && hasContent(s.originalBody) && s.originalRaw != null) {
+      // 原来有正文、现在删光了只剩心情：自动保存已经写了盘，问一下要不要恢复原来的正文
+      const keep = window.confirm('正文已经删光了。\n\n确定：只保留这天的心情\n取消：恢复原来的正文')
+      if (!keep) {
+        await enqueue(async () => {
+          await repo.writeAtomic(entryPath(date), s.originalRaw!)
+          await refreshDate(date)
+        })
+        syncAfterEdit()
+        return true
+      }
     }
     await flush()
     syncAfterEdit()

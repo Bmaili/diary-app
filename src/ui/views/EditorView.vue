@@ -10,7 +10,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '../markdown'
 import { index, indexVersion, today } from '../../app'
 import { bodyFor } from '../../core/session'
-import { setListFieldManually } from '../../core/entryFile'
+import { hasContent, setListFieldManually } from '../../core/entryFile'
 import { isValidYmd, parseYmd, weekday } from '../../core/time'
 import { lunar as lunarDay } from '../../holidayService'
 import { resolveImages } from '../../imageService'
@@ -149,6 +149,25 @@ const mood = computed({
   },
 })
 
+/** 阅读视图里点星、勾待办后不显示“已保存”：顶栏窄，农历日期会被挤掉；保存中、保存失败照常显示 */
+const shownStatus = computed(() => (mode.value === 'read' && status.value === 'saved' ? '' : statusText.value))
+
+/** 珍藏这一天（front matter 的 starred） */
+function toggleStar() {
+  const m = meta.value
+  if (!m || readOnly.value) return
+  if (m.starred) delete m.starred
+  else m.starred = true
+  metaChanged()
+}
+
+/** 只记了心情、没写正文 */
+const moodOnly = computed(() => !!session.value && meta.value?.mood != null && !hasContent(bodyFor(session.value, text.value)))
+const placeholder = computed(() => {
+  if (meta.value?.mood != null) return '心情已经记下了。想写的时候，写一句就好。'
+  return isToday.value ? '今天过得怎么样？拖一下心情也算记了。' : '这一天发生了什么？'
+})
+
 /** 不让 AI 读这篇：问答、总结、抽取、图片说明都跳过 */
 function toggleAiExclude() {
   const m = meta.value
@@ -211,10 +230,15 @@ function goBack() {
         <span class="sub">
           <span class="sub-text">{{ subtitle }}</span>
           <Transition name="status" mode="out-in">
-            <span v-if="statusText" :key="statusText" class="status" aria-live="polite">{{ statusText }}</span>
+            <span v-if="shownStatus" :key="shownStatus" class="status" aria-live="polite">{{ shownStatus }}</span>
           </Transition>
         </span>
       </div>
+      <!-- 珍藏只放在阅读视图：编辑时顶栏还要显示保存状态，小屏放不下第四个按钮 -->
+      <button v-if="session?.existed && meta && !readOnly && mode === 'read'" class="icon-btn star" :class="{ on: meta.starred }" :aria-pressed="!!meta.starred"
+        :aria-label="meta.starred ? '已珍藏（点一下取消）' : '珍藏这一天'" @click="toggleStar">
+        <Icon name="star" />
+      </button>
       <button v-if="session?.existed" class="icon-btn" aria-label="删除这篇日记" @click="removeEntry">
         <Icon name="trash" />
       </button>
@@ -266,12 +290,13 @@ function goBack() {
       <main class="paper" :class="{ 'with-tools': mode === 'write' && focused }"
         :style="mode === 'write' && focused && keyboard ? { paddingBottom: `calc(96px + ${keyboard}px)` } : undefined">
         <textarea v-show="mode === 'write'" ref="textarea" v-model="text" class="input prose" :readonly="readOnly"
-          :placeholder="isToday ? '今天过得怎么样？' : '这一天发生了什么？'" aria-label="日记正文" @input="onInput"
+          :placeholder="placeholder" aria-label="日记正文" @input="onInput"
           @focus="onFocus" @blur="onBlur" @beforeinput="onBeforeInput" />
         <!-- eslint-disable-next-line vue/no-v-html -->
         <article v-if="mode === 'read'" class="prose reading" :class="{ editable: !readOnly }" @change="onReadingChange" @click="onReadingClick"
           @dblclick="onReadingDblClick" v-html="rendered" />
-        <p v-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑，点图片看大图</p>
+        <p v-if="mode === 'read' && !readOnly && moodOnly" class="mood-only" @dblclick="toggleMode">这天只记了心情。想写的时候，点右上角的笔写几句。</p>
+        <p v-else-if="mode === 'read' && !readOnly" class="read-hint">双击正文或点右上角的笔开始编辑，点图片看大图</p>
       </main>
       <EditorToolbar v-if="mode === 'write' && !readOnly && focused" :img-busy="imgBusy" @action="onTool" />
     </template>
@@ -376,6 +401,10 @@ function goBack() {
 /* 打开后图标下面写一个小字，免得只看图标猜不出意思 */
 .ai-ex::after { content: 'AI'; position: absolute; left: 50%; bottom: -1px; transform: translateX(-50%); font-size: 9px; font-weight: 700; letter-spacing: 0.05em; }
 .ai-ex.on::after { content: 'AI 不读'; white-space: nowrap; }
+.star { color: var(--faint); }
+.star.on { color: var(--accent); }
+.star.on :deep(path) { fill: currentColor; }
+.mood-only { margin: 8px 0 0; font-size: 16px; line-height: 1.8; color: var(--muted); }
 .read-hint { animation: fade-in 0.6s 0.4s backwards; margin: 24px 0 0; font-size: 12px; color: var(--faint); text-align: center; }
 .ci { width: 16px; height: 16px; flex: none; }
 .place-note { margin: -4px 20px 10px; font-size: 12px; color: var(--faint); }

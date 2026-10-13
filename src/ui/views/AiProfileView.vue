@@ -56,6 +56,13 @@ const testing = ref(false)
 
 onMounted(async () => {
   if (existing) f.key = await getSecret(`llm.${existing.id}`)
+  // 从 AI 页的引导进来时带着服务商（如 ?preset=DeepSeek），直接选好模板
+  const q = route.query.preset
+  if (isNew && typeof q === 'string' && PRESETS.some((p) => p.name === q)) {
+    preset.value = q
+    applyPreset()
+    if (!f.name) f.name = q
+  }
 })
 
 function applyPreset() {

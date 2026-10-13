@@ -23,9 +23,10 @@ const f = reactive({
   tags: [] as string[],
   people: [] as string[],
   places: [] as string[],
+  starred: false,
 })
 const filterCount = computed(
-  () => (f.from ? 1 : 0) + (f.to ? 1 : 0) + f.moods.length + f.tags.length + f.people.length + f.places.length,
+  () => (f.from ? 1 : 0) + (f.to ? 1 : 0) + f.moods.length + f.tags.length + f.people.length + f.places.length + (f.starred ? 1 : 0),
 )
 function toggle<T>(arr: T[], v: T) {
   const i = arr.indexOf(v)
@@ -38,6 +39,7 @@ function clearFilters() {
   f.tags.splice(0)
   f.people.splice(0)
   f.places.splice(0)
+  f.starred = false
 }
 
 const options = computed(() => {
@@ -58,6 +60,7 @@ const hits = computed(() => {
     tags: f.tags,
     people: f.people,
     places: f.places,
+    starred: f.starred,
   })
 })
 const limit = ref(50)
@@ -102,6 +105,12 @@ const groups: { key: ListField; label: string }[] = [
           </button>
         </div>
       </div>
+      <div class="frow">
+        <span class="flabel">珍藏</span>
+        <div class="opts">
+          <button class="chip" :class="{ on: f.starred }" :aria-pressed="f.starred" @click="f.starred = !f.starred">只看珍藏</button>
+        </div>
+      </div>
       <div v-for="g in groups" :key="g.key" class="frow">
         <span class="flabel">{{ g.label }}</span>
         <div class="opts">
@@ -126,6 +135,7 @@ const groups: { key: ListField; label: string }[] = [
             <span v-for="tag in h.row.tags" :key="tag" class="muted small">#{{ tag }}</span>
           </div>
           <p class="snip">
+            <template v-if="h.row.sections === 0">只记了心情</template>
             <template v-for="(s, i) in h.snippet" :key="i">
               <mark v-if="s.hit" class="hl">{{ s.text }}</mark>
               <template v-else>{{ s.text }}</template>
