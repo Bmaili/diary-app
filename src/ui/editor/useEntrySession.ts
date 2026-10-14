@@ -9,7 +9,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
-import { deleteEntryToTrash, enqueue, refreshDate, repo, today } from '../../app'
+import { deleteEntryToTrash, enqueue, refreshDate, repo, sweepRemovedImages, today } from '../../app'
 import { syncAfterEdit, syncOnHide } from '../../syncService'
 import { bodyFor, openSession, revertedRaw, type EditSession } from '../../core/session'
 import { entryPath } from '../../core/repo'
@@ -32,6 +32,9 @@ export function useEntrySession(date: string) {
   /** 已经删除：之后不再写盘 */
   let deleted = false
   let pauseHandle: PluginListenerHandle | null = null
+  /** 打开的时刻：之后新存的这一天的图片，算这次插的 */
+  let openedAt = 0
+  let swept = false
 
   const meta = computed(() => session.value?.doc.meta)
   const readOnly = computed(() => !!session.value?.error)
@@ -105,6 +108,7 @@ export function useEntrySession(date: string) {
   }
 
   async function open(append: boolean): Promise<EditSession> {
+    openedAt = Date.now()
     const s = await openSession(repo, date, { append })
     session.value = s
     savedBody = s.originalBody
@@ -146,6 +150,14 @@ export function useEntrySession(date: string) {
     status.value = 'idle'
   }
 
+  /** 这次去掉的图片移到最近删除（排在最后一次保存之后）；删掉整篇时图片已经随日记走了 */
+  function sweep() {
+    const s = session.value
+    if (swept || !s || s.error || deleted) return
+    swept = true
+    sweepRemovedImages(date, s.originalBody, openedAt)
+  }
+
   /** 页面已关闭（比如别的流程结束后），之后的回调不要再改东西 */
   const isLeft = () => left
 
@@ -153,7 +165,10 @@ export function useEntrySession(date: string) {
     document.removeEventListener('visibilitychange', onHidden)
     window.removeEventListener('pagehide', onHidden)
     pauseHandle?.remove()
-    if (!left) void flush()
+    if (!left) {
+      void flush()
+      sweep()
+    }
   })
 
   onBeforeRouteLeave(async () => {
@@ -171,7 +186,7 @@ export function useEntrySession(date: string) {
       }))) {
         await deleteEntryToTrash(date)
         syncAfterEdit()
-      }
+      } else sweep()
       return true
     }
     if (!hasContent(body) && hasContent(s.originalBody) && s.originalRaw != null) {
@@ -192,11 +207,13 @@ export function useEntrySession(date: string) {
           await refreshDate(date)
         })
         syncAfterEdit()
+        sweep()
         return true
       }
     }
     await flush()
     syncAfterEdit()
+    sweep()
     return true
   })
 

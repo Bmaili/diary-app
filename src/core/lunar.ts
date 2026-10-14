@@ -92,3 +92,19 @@ export function nextJieqi(now: Date): { name: string; at: Date } {
   const t = j.getSolar()
   return { name: j.getName(), at: new Date(t.getYear(), t.getMonth() - 1, t.getDay(), t.getHour(), t.getMinute(), t.getSecond()) }
 }
+
+/** 公历某月里的节气（一般两个）和日子，按日期先后（年度日记本的月扉页用） */
+export function monthTerms(year: number, month: number): { name: string; day: number }[] {
+  const out: { name: string; day: number }[] = []
+  const days = new Date(year, month, 0).getDate()
+  for (let d = 1; d <= days; d++) {
+    const name = Solar.fromYmd(year, month, d).getLunar().getJieQi()
+    if (name) out.push({ name, day: d })
+  }
+  return out
+}
+
+/** 某个公历年大半落在哪个干支年（取年中），如 2026 → 丙午 */
+export function ganzhiYear(year: number): string {
+  return Solar.fromYmd(year, 7, 1).getLunar().getYearInGanZhi()
+}

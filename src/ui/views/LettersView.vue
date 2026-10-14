@@ -75,15 +75,15 @@ async function withdraw() {
       <h1>寄往来日</h1>
       <router-link to="/letters/new" class="write-btn"><Icon name="plus" />写一封</router-link>
     </header>
-    <p class="intro">写给以后的自己，到那天才能拆开。</p>
+    <p class="intro">尺素一封，寄与来日。</p>
 
     <div v-if="letters.loaded && !letters.list.length" class="empty">
       <svg class="env-art" viewBox="0 0 140 96" aria-hidden="true">
         <rect x="2" y="2" width="136" height="92" rx="4" />
         <path d="M2 4 L70 52 L138 4" />
       </svg>
-      <p>还没有写过信。</p>
-      <p class="muted">生日、新年、或者只是一年后的今天。写几句给那时的自己。</p>
+      <p>匣中尚无来信。</p>
+      <p class="muted">生日、新年，或只是一年后的今天——写几句给那时的自己。</p>
       <router-link to="/letters/new" class="solid-btn link-btn">写一封信</router-link>
     </div>
 
@@ -119,7 +119,7 @@ async function withdraw() {
       </router-link>
     </section>
 
-    <p v-if="letters.list.length" class="foot-note">封着的信只是在 app 里看不到，文件本身没有加密。到期前，AI、搜索和首页提示都不会读它。</p>
+    <p v-if="letters.list.length" class="foot-note">云中谁寄锦书来——是从前的你。</p>
 
     <Sheet :open="!!editing" title="这封信" @close="editing = null">
       <template v-if="editing">
@@ -171,7 +171,7 @@ async function withdraw() {
 .opened-row:last-child { border-bottom: 1px solid var(--line); }
 .opened-row .line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opened-row .small { flex: none; font-size: 13px; color: var(--muted); }
-.foot-note { margin: 22px 24px 0; font-size: 13px; line-height: 1.6; color: var(--muted); text-align: center; }
+.foot-note { margin: 22px 24px 0; font-family: var(--kai); font-size: 14px; line-height: 1.6; color: var(--muted); text-align: center; }
 .empty { display: flex; flex-direction: column; align-items: center; padding: 30px 32px; text-align: center; }
 .empty p { margin: 4px 0; }
 .empty p:first-of-type { margin-top: 18px; font-weight: 700; }

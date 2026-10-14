@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import {
-  diaryChanged, enqueue, index, indexProgress, indexVersion, reloadIndex, repo, setCutoffHour, setDevMode, settings, store, today,
+  diaryChanged, enqueue, index, indexProgress, indexVersion, reloadIndex, repo, scanOrphans, setCutoffHour, setDevMode, settings, store, today, trashOrphans,
 } from '../../app'
 import { listTrash } from '../../core/trash'
 import { exportZip, exporting } from '../../backupService'
@@ -48,6 +48,23 @@ async function run(key: string, fn: () => Promise<string>) {
     busy.value = ''
   }
 }
+
+/** 清理没被用到的图片：先找、说清楚有多少，确认后移到最近删除 */
+const doOrphans = () =>
+  run('orphans', async () => {
+    const found = await scanOrphans()
+    if (!found.length) return '没有找到没用到的图片。'
+    const mb = found.reduce((n, f) => n + f.size, 0) / 1048576
+    const ok = await ask({
+      title: `找到 ${found.length} 张没用到的图片`,
+      message: `共 ${mb < 0.1 ? '不到 0.1' : mb.toFixed(1)} MB，哪篇日记都没有引用它们。移到“最近删除”后保留 30 天，在那里恢复时会接回那天日记的末尾。`,
+      ok: '移到最近删除',
+    })
+    if (!ok) return ''
+    const n = await trashOrphans(found)
+    trashCount.value = (await listTrash(store)).length
+    return n ? `已把 ${n} 张图片移到最近删除。` : '刚才这些图又被用上了，没有移动。'
+  })
 
 /** 导出进度：已打包的文件数 / 总数 */
 const exportProgress = exporting
@@ -291,6 +308,14 @@ const syncLine = computed(() => {
         <button class="text-btn" :disabled="!!busy" @click="doRebuild">
           {{ busy === 'rebuild' ? (indexProgress.total ? `${indexProgress.done}/${indexProgress.total}` : '重建中') : '重建' }}
         </button>
+      </div>
+      <div class="item">
+        <div>
+          <div>清理没用到的图片</div>
+          <div class="desc">编辑时删掉图片后，旧版本会把图片文件留在手机里。找出来移到最近删除，腾点地方。</div>
+          <div v-if="msg.orphans" class="result">{{ msg.orphans }}</div>
+        </div>
+        <button class="text-btn" :disabled="!!busy" @click="doOrphans">{{ busy === 'orphans' ? '查找中' : '查找' }}</button>
       </div>
       <div v-if="stats.broken.length" class="item broken">
         <div>

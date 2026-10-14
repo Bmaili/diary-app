@@ -8,7 +8,7 @@ import {
 import { annotateEntry } from '../src/core/llm/annotate'
 import { ANNOTATE_FIXED, PROMPTS } from '../src/core/llm/prompts'
 import { listTrash, restoreTrash, trashEntry, trashLetter } from '../src/core/trash'
-import { bookImages, buildYearbook, cnYear, estimatePages } from '../src/core/yearbook'
+import { bookImages, buildYearbook, cnChars, cnInt, cnYear, estimatePages, yearStats } from '../src/core/yearbook'
 import type { LlmConfig } from '../src/core/llm/client'
 import { startLlmMock, type LlmMock } from './mocks/llmServer'
 import { NodeStore } from './nodeStore'
@@ -141,14 +141,23 @@ describe('年度日记本', () => {
     expect(html).toContain('写了 2 天')
     expect(html).toContain('2026.09.08 — 2026.10.03')
     expect(html.match(/<section class="month">/g)).toHaveLength(2)
-    expect(html).toContain('<h2>九月</h2>')
+    expect(html).toContain('<div class="mn kai">九<span class="yue">月</span></div>')
+    // 月扉页：这个月的两个节气、应季的诗（九月第一个节气白露）
+    expect(html).toContain('<em>白露</em>九月七日')
+    expect(html).toContain('<em>秋分</em>九月二十三日')
+    expect(html).toContain('九月八日<span class="wd">')
     expect(html).toContain('农历七月十七 · 晴 19° · 心情不错')
-    expect(html).toContain('<span class="star">珍藏</span>')
+    expect(html).toContain('<span class="star" title="珍藏">藏</span>')
+    // 扉页、牌记
+    expect(html).toContain('浮生若梦，为欢几何。')
+    expect(html).toContain('二〇二六 · 岁次丙午')
+    expect(html).toContain('凡二篇')
+    expect(html).toContain('二〇二六年十月十三日排印')
     expect(html).toContain('十月的总结')
     expect(html).toContain('这一年的总结')
     expect(html).toContain('家里的饭最香。')
     // 十月一日是周四：前面空三格；三号有心情色
-    const oct = html.slice(html.indexOf('<h2>十月</h2>'))
+    const oct = html.slice(html.indexOf('<div class="mn kai">十<span'))
     expect(oct.indexOf('<i class="e"></i><i class="e"></i><i class="e"></i><i>')).toBeGreaterThan(0)
     expect(oct).toContain('background:#e3a33b')
   })
@@ -158,7 +167,34 @@ describe('年度日记本', () => {
       year: '2025', entries: [entry('2025-03-01', '<p>a</p>', { starred: true })], moods: {}, photos: true, starredOnly: true, today: '2026-10-13',
     })
     expect(html).toContain('珍藏的 1 天')
-    expect(html).not.toContain('<span class="star">')
+    expect(html).not.toContain('<span class="star"')
+  })
+
+  it('这一年：几个数、一月一枝、常去常提起；短的月度总结放在月扉页上，长的另起', () => {
+    const rows = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-05', '2026-03-01'].map((date, i) => ({
+      date, chars: 1000 * (i + 1), images: i % 2, places: i < 3 ? ['西湖'] : ['书店'], people: i < 2 ? ['阿禾'] : [], tags: ['散步'],
+    }))
+    const st = yearStats(rows)
+    expect(st).toMatchObject({ longest: 3, chars: 15000, photos: 2, places: ['西湖', '书店'], people: ['阿禾'], tags: ['散步'] })
+    const html = buildYearbook({
+      year: '2026', entries: [entry('2026-01-01', '<p>a</p>'), entry('2026-03-01', '<p>b</p>')], moods: { '2026-01-01': 5 },
+      monthly: { '01': '<p>短的总结</p>', '03': `<p>${'长'.repeat(400)}</p>` },
+      stats: st, photos: true, starredOnly: false, today: '2026-10-14',
+    })
+    expect(html).toContain('写了<b>5</b>天，最长一次连着写了<b>3</b>天')
+    expect(html).toContain('<b>1.5</b>万字，存了<b>2</b>张照片')
+    expect(html).toContain('常去西湖、书店；常提起阿禾；常写散步。')
+    expect(html.match(/<div class="twig">/g)).toHaveLength(12)
+    expect(html).toContain('<div class="msum"><p>短的总结</p></div>')
+    expect(html).toContain('<div class="summary"><p class="sl">这个月</p><p>长')
+  })
+
+  it('汉字数目', () => {
+    expect([10, 12, 20, 101, 110, 1010, 10086, 186000, 1000000].map(cnInt)).toEqual(
+      ['十', '十二', '二十', '一百零一', '一百一十', '一千零一十', '一万零八十六', '十八万六千', '一百万'],
+    )
+    expect(cnChars(254)).toBe('二百五十四字')
+    expect(cnChars(186432)).toBe('约十八万六千字')
   })
 
   it('照片：不要时去掉，要时把说明印在图下面', () => {

@@ -10,7 +10,7 @@ import { ROOT } from './core/repo'
 import { hasRecord } from './core/entryFile'
 import { annotationPath, parseAnnotation } from './core/annotation'
 import { readSummary } from './core/summaries'
-import { buildYearbook, estimatePages, type YearbookEntry } from './core/yearbook'
+import { buildYearbook, estimatePages, yearStats, type YearbookEntry } from './core/yearbook'
 import { renderMarkdown } from './ui/markdown'
 import { lunar } from './holidayService'
 import { mimeOfPath } from './imageService'
@@ -42,19 +42,24 @@ export function yearbookDates(year: string, starredOnly: boolean): string[] {
 /** 每篇的字数和图片数（估页数用），按日期缓存，文件改了（mtime 变了）重新数 */
 const sizes = new Map<string, { mtime: number; chars: number; images: number }>()
 
+async function sizeOf(d: string): Promise<{ chars: number; images: number } | null> {
+  const r = index.get(d)
+  if (!r) return null
+  let s = sizes.get(d)
+  if (!s || s.mtime !== r.mtime) {
+    const raw = (await store.readText(r.path)) ?? ''
+    s = { mtime: r.mtime, chars: r.text.length, images: (raw.match(/!\[[^\]]*\]\(\.\.\/\.\.\/attachments\//g) ?? []).length }
+    sizes.set(d, s)
+  }
+  return s
+}
+
 export async function estimateYearbook(o: YearbookOptions): Promise<number> {
   const dates = yearbookDates(o.year, o.starredOnly)
   const list: { chars: number; images: number }[] = []
   for (const d of dates) {
-    const r = index.get(d)
-    if (!r) continue
-    let s = sizes.get(d)
-    if (!s || s.mtime !== r.mtime) {
-      const raw = (await store.readText(r.path)) ?? ''
-      s = { mtime: r.mtime, chars: r.text.length, images: (raw.match(/!\[[^\]]*\]\(\.\.\/\.\.\/attachments\//g) ?? []).length }
-      sizes.set(d, s)
-    }
-    list.push(s)
+    const s = await sizeOf(d)
+    if (s) list.push(s)
   }
   const months = new Set(dates.map((d) => d.slice(0, 7))).size
   return estimatePages(list, months, o.photos, o.summaries ? months : 0)
@@ -100,6 +105,14 @@ export async function buildYearbookHtml(o: YearbookOptions, onProgress?: (done: 
   }
   const moods: Record<string, number> = {}
   for (const r of index.all()) if (r.date.startsWith(`${o.year}-`) && r.mood != null) moods[r.date] = r.mood
+  // “这一年”那页的数：整年记了的日子（只要珍藏时也是整年）
+  const rows = []
+  for (const d of yearbookDates(o.year, false)) {
+    const r = index.get(d)
+    const s = await sizeOf(d)
+    if (r && s) rows.push({ date: d, chars: s.chars, images: s.images, places: r.places, people: r.people, tags: r.tags })
+  }
+  const stats = yearStats(rows)
   let monthly: Record<string, string> | undefined
   let yearly: string | undefined
   if (o.summaries) {
@@ -112,7 +125,7 @@ export async function buildYearbookHtml(o: YearbookOptions, onProgress?: (done: 
     if (y?.body.trim()) yearly = renderMarkdown(y.body)
   }
   const html = buildYearbook({
-    year: o.year, entries, moods, monthly, yearly, photos: o.photos, starredOnly: o.starredOnly, today: today(),
+    year: o.year, entries, moods, monthly, yearly, stats, photos: o.photos, starredOnly: o.starredOnly, today: today(),
     lunar: (d) => {
       const l = lunar(d)
       return [l.full, l.jieqi, l.festival].filter(Boolean).join(' ')

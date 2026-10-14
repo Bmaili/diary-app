@@ -10,7 +10,8 @@ import { setHttpImpl, setStreamImpl } from './core/http'
 import { nativeHttpImpl } from './platform/nativeHttp'
 import { nativeStreamImpl } from './platform/nativeStream'
 import { loadPrefs } from './prefs'
-import { purgeTrash, trashEntry } from './core/trash'
+import { purgeTrash, trashEntry, trashImages } from './core/trash'
+import { findOrphans, mdFor, removedInSession, type OrphanImage } from './core/orphans'
 
 export const store = new CapacitorStore()
 export const repo = new DiaryRepo(store)
@@ -102,6 +103,37 @@ export async function deleteEntryToTrash(date: string): Promise<void> {
     await refreshDate(date)
   })
   diaryChanged()
+}
+
+/**
+ * 离开编辑页后：这次从正文里去掉的图片移到最近删除（规格 4.10）。在写入队列里排在最后一次保存之后，
+ * 只有真的去掉了图才会去翻其他日记，平时不花时间。
+ */
+export function sweepRemovedImages(date: string, originalBody: string, openedAt: number): void {
+  void enqueue(async () => {
+    const removed = await removedInSession(repo, date, originalBody, openedAt)
+    return removed.length ? trashImages(store, removed, date, 'edit') : null
+  })
+    .then((item) => item && diaryChanged())
+    .catch(() => {})
+}
+
+/** 设置里的“清理没用到的图片”：先找 */
+export function scanOrphans(): Promise<OrphanImage[]> {
+  return enqueue(() => findOrphans(repo))
+}
+
+/** 再移到最近删除（一次一条） */
+export async function trashOrphans(images: OrphanImage[]): Promise<number> {
+  const n = await enqueue(async () => {
+    // 从找到到确认之间可能又写了日记：移动前再核对一遍，只动两次都没被用到的
+    const still = new Set((await findOrphans(repo)).map((o) => o.rel))
+    const go = images.filter((i) => still.has(i.rel))
+    await trashImages(store, go.map((i) => ({ rel: i.rel, md: mdFor(i.rel) })), today(), 'cleanup')
+    return go.length
+  })
+  if (n) diaryChanged()
+  return n
 }
 
 export async function refreshDate(date: string) {

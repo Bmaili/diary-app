@@ -290,7 +290,7 @@ describe('写给未来的信', () => {
     await page.screenshot({ path: OUT + 'recall-29-calendar-post.png' })
     await page.getByLabel('寄往来日').getByRole('link', { name: '信匣' }).click()
     await page.waitForURL(/#\/letters$/)
-    await page.getByText('还没有写过信').waitFor()
+    await page.getByText('匣中尚无来信').waitFor()
     await page.screenshot({ path: OUT + 'recall-30-letters-empty.png' })
     await page.getByRole('link', { name: '写一封', exact: true }).click()
     await page.waitForURL(/#\/letters\/new$/)
@@ -324,7 +324,7 @@ describe('写给未来的信', () => {
     // 撤回
     await page.locator('.env').first().click()
     await page.getByRole('button', { name: '撤回这封信' }).click()
-    await page.getByText('还没有写过信').waitFor()
+    await page.getByText('匣中尚无来信').waitFor()
     await page.goto(BASE + '#/settings/trash')
     await page.getByText('写的信').waitFor()
     expect(await page.locator('.settings').innerText()).not.toContain('刚换了工作')

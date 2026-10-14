@@ -217,13 +217,14 @@ async function displayUrl(src: string): Promise<string> {
   return pathUrl(repoPath(src))
 }
 
-/** 仓库里任意一张图（如信里的照片 diary/letters/img/…）的显示地址 */
+/** 数据目录里任意一张图（如信里的照片 diary/letters/img/…、最近删除里的 trash/…）的显示地址 */
 export async function pathUrl(path: string): Promise<string> {
   if (Capacitor.isNativePlatform()) {
     const st = await store.stat(path)
     if (!st) return ''
-    rootUri ??= (await Filesystem.getUri({ path: ROOT, directory: Directory.Data })).uri.replace(/\/+$/, '')
-    return `${Capacitor.convertFileSrc(`${rootUri}/${path.slice(ROOT.length + 1)}`)}?v=${st.mtime}`
+    // 数据根目录：取 diary/ 的地址再去掉最后一段
+    rootUri ??= (await Filesystem.getUri({ path: ROOT, directory: Directory.Data })).uri.replace(/\/+$/, '').replace(/\/[^/]+$/, '')
+    return `${Capacitor.convertFileSrc(`${rootUri}/${path}`)}?v=${st.mtime}`
   }
   const hit = webCache.get(path)
   if (hit) {

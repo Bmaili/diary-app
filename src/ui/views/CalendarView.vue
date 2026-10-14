@@ -228,7 +228,7 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
       <div class="stamp" :class="{ arrived: arrivedLetter }" aria-hidden="true"><span>{{ arrivedLetter ? '启' : '寄' }}<small>往来日</small></span></div>
       <div class="post-text">
         <p class="post-title">寄往来日</p>
-        <p class="post-sub">{{ arrivedLetter ? '有一封信到了，还没拆。' : '写几句给以后的自己，到那天才能拆开。' }}</p>
+        <p class="post-sub">{{ arrivedLetter ? '有一封信到了，还没拆。' : '尺素一封，寄与来日。' }}</p>
       </div>
       <div class="post-acts">
         <router-link v-if="arrivedLetter" :to="`/letters/${arrivedLetter.id}`" class="post-btn accent">拆开</router-link>

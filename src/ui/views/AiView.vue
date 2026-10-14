@@ -286,6 +286,7 @@ function toggleSel(v: string) {
         <div class="row">
           <button v-if="!batch.running" class="solid-btn" :disabled="!pending" @click="runBatch">开始标注</button>
           <button v-else class="text-btn" :disabled="batch.paused" @click="pauseBatch">暂停</button>
+          <router-link to="/ai/tagged" class="text-btn see">标注一览<Icon name="right" /></router-link>
         </div>
         <p v-if="batch.paused && !batch.running && batch.done < batch.total" class="muted small">已暂停。随时可以继续，会从没做完的接着做。</p>
         <ul v-if="batch.failed.length" class="fails">
@@ -441,6 +442,8 @@ function toggleSel(v: string) {
 .num-line { margin: 6px 0 12px; }
 .num.big { font-size: 30px; font-weight: 600; }
 .row { display: flex; gap: 8px; align-items: center; }
+.see { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; padding-right: 6px; color: var(--muted); font-weight: 400; text-decoration: none; }
+.see svg { width: 16px; height: 16px; }
 .fails { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--danger); }
 .fails a { color: inherit; }
 .seg { display: flex; gap: 6px; margin-bottom: 12px; }

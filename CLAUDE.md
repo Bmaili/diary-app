@@ -61,7 +61,7 @@ npm run cap:sync             # 构建并同步到 android/
 - 朱批在 `diary/annotations/YYYY/YYYY-MM-DD.md`（2026-10-13 加入，SPEC 4.9）：front matter 有 `date`、`created`、`model`，正文是批语。不进索引；删除日记时一起进最近删除。
 - 写给未来的信在 `diary/letters/<写信日期>_<编号>.md`（2026-10-13 加入，SPEC 4.8）：front matter 有 `written`、`open_on`、`remind`、`opened`；随信的照片在 `letters/img/`，信里写 `![](img/…)`（不放 attachments/，免得删日记时被带走）。不进日记索引，所以 AI、搜索、提示读不到；删除和撤回走 `trashLetter`（最近删除里不露封着的信的内容）。
 - 日记可设 `ai_exclude: true`（不让 AI 读）：问答工具（`index.aiRows()`）、总结、批量抽取、图片说明都跳过它，月度总结的源哈希也不算它。
-- 删除的日记放在 `trash/<日期>_<时间戳>/`（在 `diary/` 之外，不同步），30 天后启动时清理。删除一律走 `deleteEntryToTrash`，不要直接调 `repo.deleteEntry`（开发者选项清测试数据除外）。
+- 删除的日记放在 `trash/<日期>_<时间戳>/`（在 `diary/` 之外，不同步），30 天后启动时清理。没被用到的图片（编辑时去掉的、设置里清理出的，2026-10-14 起，SPEC 4.10）也进最近删除：`trash/images_…/`，`kind: images`，`refs` 记原来的写法，恢复时接回那天日记末尾。删除一律走 `deleteEntryToTrash`，不要直接调 `repo.deleteEntry`（开发者选项清测试数据除外）。
 - 详细规格见 `SPEC.md` 第 4 节。改了行为要同步更新 `SPEC.md` 和 `README.md`。
 
 ## 代码结构
@@ -89,7 +89,8 @@ src/core/            与平台无关、有单元测试的逻辑
   zipReader.ts（按需读 zip：Blob 切片 + DecompressionStream，GBK 文件名）importDiary.ts（导入：先 planImport 再 applyImport）
   letters.ts（信的格式、状态、快捷日期、到期提醒的排法）
   shareIn.ts（分享进来的文字怎么拼、接在哪）annotation.ts（朱批的格式、发给模型的内容、清理输出）
-  yearbook.ts（年度日记本的排版：纯函数出整本 HTML）  llm/annotate.ts（朱批）
+  yearbook.ts（年度日记本的“水墨”排版：纯函数出整本 HTML，梅枝、远山、圆相都是 SVG；yearStats 算“这一年”的数）  llm/annotate.ts（朱批）
+  orphans.ts（没被用到的图片：离开编辑页时去掉的、手动清理）extractOverview.ts（AI 标注一览的分组）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
                      secrets（WebCrypto 不可导出密钥）、privacy、exportShare、biometric、nativeStream、
@@ -110,6 +111,7 @@ src/ui/              views/ 各页面，components/，style.css（主题）setti
                      editor/ 编辑页的组合式函数：useEntrySession（打开/自动保存/离开/删除）
                      usePlaceWeather useTextarea（自动增高时保持滚动、光标不被键盘挡住）useImages（插图、说明、看大图）useAiExtract
                      useShareIn（收下分享进来的内容、撤销）useAnnotation（朱批）
+                     views/AiTaggedView.vue（AI 标注一览）
                      components/ImageViewer.vue（全屏看图）AnswerChart.vue（问答图表，手写 SVG）
                      backStack.ts（安卓返回键先关覆盖层）
                      dialog.ts + components/AppDialog.vue（app 自己的提示框：ask / choose / tell / promptText；
@@ -177,15 +179,16 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 ## 已知限制与待办
 
 - 没做：桌面小组件、把日记放到手机公共目录（SAF），都需要较多原生代码。
-- 编辑时删掉图片引用后，图片文件还留着（删除整篇日记时会带走这天的图片）。
 - 已有的图片还不能批量让 AI 写说明。
 - 锁定是整个字段锁：手动改过标签后，AI 就不再补标签。是否改成只保护手动加的那几个词，还没定。
 - 应用内更新从 GitHub 下载安装包，国内网络可能很慢或下不动；以后可以加一个国内镜像。
 - 编辑页按完整地址（含 query）区分组件（`App.vue` 里 router-view 的 key），从一天跳到另一天、或者又分享进来一次时会重新打开。注意同一路由只改 query 时旧页面不走 `onBeforeRouteLeave`，靠 `onBeforeUnmount` 保存。
 - “从相册选”靠手机自带相册响应 `ACTION_PICK` 并临时授权读图；个别相册不给授权时退回系统选择器。真机效果以用户反馈为准（云端没法真机测）。
-- 年度日记本靠系统打印：照片很多时排版慢、占内存；页数是估的。
+- 年度日记本靠系统打印：照片很多时排版慢、占内存；页数是估的。封面、扉页用无边距的命名页（`@page bare`），书末不要再从普通页换到命名页（Chromium 会多插一张空白页）。楷体靠手机自带，没有就显示成宋体。
 
 ## 已商定的后续计划（2026-10-13 和用户确认）
+
+2026-10-14：寄往来日的文字改成文艺的说法（界面上不讲文件、加密；信是明文这件事写在 SPEC 4.8 和 README 里）、AI 标注一览、去掉的图片进最近删除和手动清理、年度日记本改成用户从三套样张里选的“水墨”版式。
 
 第一批（心情即记、珍藏、随手翻、导入、备份提醒、AI 空状态）、第二批（写给未来的信、首页旧页卡片、app 自己的提示框）和后面的原生一批、年度日记本、朱批都已做（2026-10-13），下面留作记录。之后又按用户意见改了布局：底部导航只剩日记、日历、AI，搜索是首页“写今天”上方的悬浮按钮，珍藏是搜索框右边的星星（没有单独的珍藏集页面了）；寄往来日在日历页下面，故意不显示信的数量和日期，留着到期那天的惊喜；首页诗词和旧页都默认打开。后面几批：
 
