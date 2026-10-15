@@ -2,12 +2,15 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '../markdown'
-import { index, indexVersion, store } from '../../app'
+import { index, indexVersion, store, today } from '../../app'
 import { prefs } from '../../prefs'
 import {
-  asking, askQuestion, batch, chats, current, deleteConversation, ensureConsent, loadChats, merge, newConversation,
-  pauseBatch, profileFor, startBatch, stopAsking, type ChatTurn,
+  asking, askQuestion, batch, chats, current, deleteConversation, ensureConsent, isPinned, loadChats, merge, newConversation,
+  pauseBatch, profileFor, startBatch, stopAsking, togglePin, type ChatTurn,
 } from '../../aiService'
+import { answerDates, cnDay, linkNames, markQuotes, quoteFound, splitRelated } from '../../core/answer'
+import { suggestQuestions, type SuggestKind } from '../../core/suggest'
+import DayNotes from '../components/DayNotes.vue'
 import { summaryStatus, type SummaryStatus } from '../../core/summaries'
 import type { ListField } from '../../core/types'
 import Icon from '../components/Icon.vue'
@@ -55,14 +58,66 @@ function openLink(url: string) {
   else window.open(url, '_blank', 'noopener')
 }
 
-const SUGGEST = ['过去一年我去过几次健身房？', '我最近一个月心情怎么样？', '这一年我和谁见面最多？', '帮我回顾一下上个月']
+// ---------- 首屏：常问的、从日记里想到的（规格 7.3） ----------
+
+/** 推荐问题的随机种子：每次打开不同，点“换一批”再换 */
+const seed = ref(Math.floor(Math.random() * 1e6))
+const suggestions = computed(() => {
+  void indexVersion.value
+  return suggestQuestions(index.aiRows(), today(), seed.value)
+})
+const KIND_ICON: Record<SuggestKind, string> = { person: 'person', place: 'pin', tag: 'hash', time: '' }
+const pinned = computed(() => prefs.ai.pinned)
+function askAgain(q: string) {
+  newConversation()
+  void send(q)
+}
+function pinLast(at?: number) {
+  if (!at) return ''
+  const d = new Date(at)
+  return `上次问是 ${d.getMonth() + 1} 月 ${d.getDate()} 日`
+}
+
+// ---------- 回答的显示：引文核对、人名地名、日期（规格 7.3） ----------
+
+/** 引文核对的结果按（引文，日期）记下来：流式输出时同一段会渲染很多次 */
+const quoteMemo = new Map<string, string | null>()
+function findQuote(text: string, date?: string): string | null {
+  const key = `${date ?? ''}\u0000${text}`
+  if (quoteMemo.has(key)) return quoteMemo.get(key)!
+  let hit: string | null = null
+  const r = date ? index.get(date) : undefined
+  if (r && !r.aiExclude && quoteFound(text, r.text)) hit = r.date
+  else {
+    // 日期写错了也不要紧：在 AI 能读的日记里找到原句，就标上真正的那一天
+    for (const x of index.aiRows()) {
+      if (quoteFound(text, x.text)) {
+        hit = x.date
+        break
+      }
+    }
+  }
+  quoteMemo.set(key, hit)
+  return hit
+}
+watch(indexVersion, () => quoteMemo.clear())
+
+const names = computed(() => {
+  void indexVersion.value
+  return [
+    ...index.values('people').map((v) => ({ field: 'people' as const, value: v.value })),
+    ...index.values('places').map((v) => ({ field: 'places' as const, value: v.value })),
+  ]
+})
 
 function render(md: string): string {
-  const html = renderMarkdown(md)
+  const y = today().slice(0, 4)
+  const html = renderMarkdown(markQuotes(splitRelated(md).body, findQuote, (d) => cnDay(d, y)))
   // 把日期变成可点开对应日记的链接
-  return html.replace(/(^|[^\w/#-])(\d{4}-\d{2}-\d{2})(?![\w-])/g, (_, pre: string, d: string) =>
+  const dated = html.replace(/(^|[^\w/#-])(\d{4}-\d{2}-\d{2})(?![\w-])/g, (_, pre: string, d: string) =>
     index.get(d) ? `${pre}<a href="#/entry/${d}" class="dl">${d}</a>` : `${pre}${d}`,
   )
+  return linkNames(dated, names.value)
 }
 
 const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
@@ -163,12 +218,42 @@ async function doMerge() {
   if (!to?.trim()) return
   const n = await merge(field.value, selected.value, to.trim())
   mergeMsg.value = `已改写 ${n} 篇日记`
-  selected.value = []
+  setSelecting(false)
 }
 function toggleSel(v: string) {
   const i = selected.value.indexOf(v)
   if (i >= 0) selected.value.splice(i, 1)
   else selected.value.push(v)
+}
+/** 选择模式：选中几个合并或改名。平时点一下打开小传 */
+const selecting = ref(false)
+function setSelecting(on: boolean) {
+  selecting.value = on
+  if (!on) selected.value = []
+}
+watch(field, () => setSelecting(false))
+let pressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressed = false
+function pressStart(v: string) {
+  longPressed = false
+  pressTimer = setTimeout(() => {
+    longPressed = true
+    if (!selecting.value) setSelecting(true)
+    if (!selected.value.includes(v)) selected.value.push(v)
+    navigator.vibrate?.(15)
+  }, 500)
+}
+function pressEnd() {
+  if (pressTimer) clearTimeout(pressTimer)
+  pressTimer = null
+}
+function chipTap(v: string) {
+  if (longPressed) {
+    longPressed = false
+    return
+  }
+  if (selecting.value) toggleSel(v)
+  else router.push(`/who/${field.value}/${encodeURIComponent(v)}`)
 }
 </script>
 
@@ -217,11 +302,30 @@ function toggleSel(v: string) {
     <!-- 问答 -->
     <section v-else-if="tab === 'ask'" class="chat">
       <div v-if="!conv && !asking.busy" class="hello">
-        <p class="muted">用 {{ profileFor('chat')?.name }} 回答，查的是你手机上全部 {{ stats.count }} 篇日记。可以这样问：</p>
-        <button v-for="s in SUGGEST" :key="s" class="chip sug" @click="send(s)">{{ s }}</button>
+        <p class="muted lead2">用 {{ profileFor('chat')?.name }} 回答，查的是你手机上全部 <span class="num">{{ stats.count }}</span> 篇日记。</p>
+        <template v-if="pinned.length">
+          <h3 class="hsec">常问的</h3>
+          <div v-for="p in pinned" :key="p.q" class="pin">
+            <button class="pin-star" :aria-label="`不再收藏：${p.q}`" @click="togglePin(p.q)"><Icon name="star" /></button>
+            <button class="pin-q" @click="askAgain(p.q)">
+              <span class="t">{{ p.q }}</span>
+              <span v-if="p.at" class="last">{{ pinLast(p.at) }}<template v-if="p.brief">，答“{{ p.brief }}”</template></span>
+            </button>
+            <button class="pin-go" @click="askAgain(p.q)">再问一次<Icon name="redo" /></button>
+          </div>
+        </template>
+        <h3 class="hsec">{{ pinned.length ? '从你的日记里想到的' : '可以这样问' }}<button v-if="suggestions.length > 1" class="hact" @click="seed++"><Icon name="shuffle" />换一批</button></h3>
+        <div class="sugs">
+          <button v-for="s in suggestions" :key="s.q" class="chip sug" @click="send(s.q)"><Icon v-if="KIND_ICON[s.kind]" :name="KIND_ICON[s.kind]" class="sk" />{{ s.q }}</button>
+        </div>
+        <p v-if="!pinned.length" class="muted small tip">回答里点问题旁边的星，就能把常问的问题收在这里。</p>
       </div>
       <article v-for="(t, i) in conv?.turns ?? []" :key="i" class="turn">
-        <p class="q">{{ t.q }}</p>
+        <div class="qrow">
+          <p class="q">{{ t.q }}</p>
+          <button v-if="!t.error" class="fav" :class="{ on: isPinned(t.q) }" :aria-pressed="isPinned(t.q)"
+            :aria-label="isPinned(t.q) ? '不再收藏这个问题' : '收藏这个问题'" @click="togglePin(t.q, t.a, t.at)"><Icon name="star" /></button>
+        </div>
         <ul v-if="t.steps.length" class="steps">
           <li v-for="(s, j) in t.steps" :key="j">{{ s.summary }}</li>
         </ul>
@@ -232,6 +336,7 @@ function toggleSel(v: string) {
             <div v-if="'md' in p" class="prose" v-html="render(p.md)" />
             <AnswerChart v-else-if="t.charts?.[p.chart]" :data="t.charts[p.chart]" :kind="p.kind" />
           </template>
+          <DayNotes :dates="answerDates(t.a)" />
         </div>
         <p v-if="t.stopped" class="usage">你停止了这次回答</p>
         <p v-if="usageText(t)" class="usage">{{ usageText(t) }}</p>
@@ -296,20 +401,22 @@ function toggleSel(v: string) {
 
       <div class="card">
         <h2>词表</h2>
-        <p class="muted">同一个地方或人有几种写法时，选中它们合并成一个。只选一个可以改名。</p>
+        <p class="muted">点一个看它的小传。同一个地方或人有几种写法时，点“选择”（或长按）选中它们合并成一个；只选一个可以改名。</p>
         <div class="seg">
           <button v-for="f in (['places', 'people', 'tags'] as ListField[])" :key="f" :class="{ on: field === f }" @click="field = f">{{ FIELD_LABEL[f] }}</button>
+          <button v-if="values.length" class="sel-btn" :class="{ on: selecting }" :aria-pressed="selecting" @click="setSelecting(!selecting)">{{ selecting ? '完成' : '选择' }}</button>
         </div>
         <p v-if="!values.length" class="muted small">还没有{{ FIELD_LABEL[field] }}。</p>
         <div class="vals">
           <button v-for="v in values" :key="v.value" class="chip" :class="{ on: selected.includes(v.value) }"
-            :aria-pressed="selected.includes(v.value)" @click="toggleSel(v.value)">
+            :aria-pressed="selecting ? selected.includes(v.value) : undefined" @click="chipTap(v.value)"
+            @pointerdown="pressStart(v.value)" @pointerup="pressEnd" @pointerleave="pressEnd" @pointercancel="pressEnd" @contextmenu.prevent>
             {{ v.value }}<span class="num cnt">{{ v.count }}</span>
           </button>
         </div>
         <div v-if="selected.length" class="row">
           <button class="solid-btn" @click="doMerge">{{ selected.length > 1 ? `合并这 ${selected.length} 个` : '改名' }}</button>
-          <button class="text-btn" @click="selected = []">取消选择</button>
+          <button class="text-btn" @click="setSelecting(false)">取消选择</button>
         </div>
         <p v-if="mergeMsg" class="small ok">{{ mergeMsg }}</p>
       </div>
@@ -369,9 +476,34 @@ function toggleSel(v: string) {
 .link-btn { display: inline-flex; align-items: center; margin: 16px 0; text-decoration: none; }
 .small { font-size: 13px; }
 .chat { padding: 4px 20px 0; }
-.hello { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.hello p { margin: 4px 0 6px; font-size: 14px; }
-.sug { white-space: normal; text-align: left; height: auto; padding: 6px 14px; }
+.hello { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
+.hello p { margin: 4px 0 2px; font-size: 14px; }
+.hsec { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 0; font-size: 13px; font-weight: 400; color: var(--muted); }
+.hact { display: inline-flex; align-items: center; gap: 3px; min-height: 32px; padding: 0 4px; border: 0; background: none; color: var(--muted); font-size: 13px; }
+.hact svg { width: 15px; height: 15px; }
+.pin { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.pin-star { flex: none; display: grid; place-items: center; width: 36px; height: 40px; border: 0; background: none; color: var(--accent); }
+.pin-star svg { width: 17px; height: 17px; fill: currentColor; }
+.pin-q { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 6px 0; border: 0; background: none; color: inherit; text-align: left; font-size: 15px; line-height: 1.45; }
+.pin-q .last { font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pin-go { flex: none; display: inline-flex; align-items: center; gap: 3px; min-height: 36px; padding: 0 6px; border: 0; background: none; color: var(--accent); font-size: 13px; }
+.pin-go svg { width: 15px; height: 15px; }
+.sugs { display: flex; flex-wrap: wrap; gap: 8px; }
+.sug { display: inline-flex; align-items: center; gap: 5px; white-space: normal; text-align: left; height: auto; min-height: 36px; padding: 6px 14px; line-height: 1.45; }
+.sk { flex: none; width: 15px; height: 15px; color: var(--faint); }
+.tip { margin-top: 6px !important; }
+.qrow { display: flex; align-items: flex-start; gap: 6px; }
+.qrow .q { flex: 1; }
+.fav { flex: none; display: grid; place-items: center; width: 36px; height: 36px; margin: -7px -8px 0 0; border: 0; background: none; color: var(--faint); }
+.fav svg { width: 20px; height: 20px; }
+.fav.on { color: var(--accent); }
+.fav.on svg { fill: currentColor; }
+.a :deep(blockquote.yin) { margin: 10px 0 12px; padding: 2px 0 2px 14px; border-left: 2px solid var(--accent); font-family: var(--kai); font-size: 16.5px; line-height: 1.75; }
+.a :deep(blockquote.yin p) { margin: 0; }
+.a :deep(blockquote.yin cite) { display: block; margin-top: 2px; font-style: normal; font-family: var(--serif); font-size: 12px; }
+.a :deep(blockquote.yin cite a) { color: var(--faint); text-decoration: none; }
+.a :deep(a.who) { color: inherit; text-decoration: none; border-bottom: 1px dashed var(--faint); }
+.sel-btn { margin-left: auto; }
 .turn { padding: 12px 0 8px; border-bottom: 1px solid var(--line); }
 .q { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
 .steps { list-style: none; margin: 0 0 8px; padding: 0; font-size: 13px; color: var(--muted); }

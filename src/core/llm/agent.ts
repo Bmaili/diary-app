@@ -5,7 +5,7 @@ import { AbortedError, chatText, DEFAULT_CONTEXT_TOKENS, LlmError, withInstructi
 const ANSWER_MAX_OUTPUT = 4000
 import { TOOL_DEFS, type DiaryTools } from './tools'
 import { chartRefs, type ChartData } from './charts'
-import { CHART_RULES, PROMPTS } from './prompts'
+import { CHART_RULES, PROMPTS, QUOTE_RULES } from './prompts'
 
 export interface Step {
   tool: string
@@ -28,7 +28,7 @@ export interface AskResult {
 
 /** 问答的系统提示词：可编辑的部分（prompts.ts）后面接上今天的日期和日记概况 */
 export function systemPrompt(today: string, first: string | null, last: string | null, total: number, base: string = PROMPTS.chat.text): string {
-  return `${base.trim()}\n\n${CHART_RULES}\n\n今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。`
+  return `${base.trim()}\n\n${CHART_RULES}\n\n${QUOTE_RULES}\n\n今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。`
 }
 
 const AGG_LABEL: Record<string, string> = {

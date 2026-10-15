@@ -5,6 +5,12 @@ import { reactive, watch } from 'vue'
 import { Preferences } from '@capacitor/preferences'
 import type { PromptOverride } from './core/llm/prompts'
 
+export interface PinnedQuestion {
+  q: string
+  at?: number
+  brief?: string
+}
+
 export interface LlmProfile {
   id: string
   name: string
@@ -58,9 +64,11 @@ export const prefs = reactive({
      * 改过的系统提示词（2026-10-07 加入），没改的是 null（用默认）。
      * 键要事先列全：读取设置时只合并已有的键。
      */
-    prompts: { chat: null, extract: null, monthly: null, monthlyPart: null, yearly: null, caption: null, annotate: null } as Record<
-      'chat' | 'extract' | 'monthly' | 'monthlyPart' | 'yearly' | 'caption' | 'annotate', PromptOverride | null
+    prompts: { chat: null, extract: null, monthly: null, monthlyPart: null, yearly: null, caption: null, annotate: null, portrait: null } as Record<
+      'chat' | 'extract' | 'monthly' | 'monthlyPart' | 'yearly' | 'caption' | 'annotate' | 'portrait', PromptOverride | null
     >,
+    /** 问答里收藏的“常问的”问题（2026-10-15 加入）：at 上次问的时间，brief 上次回答的第一句 */
+    pinned: [] as PinnedQuestion[],
   },
   reminder: {
     enabled: false,

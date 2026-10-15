@@ -156,9 +156,10 @@ describe('README 截图与关于页', () => {
     await page.goto(BASE + '#/ai')
     await page.getByLabel('问题', { exact: true }).fill(`${lm} 月我和小雨都去了哪些地方？`)
     await page.getByRole('button', { name: '发送' }).click()
-    await page.getByText(/相关日期|一起出门/).first().waitFor()
+    await page.getByText(/一起出门/).first().waitFor()
     await page.locator('.a table').waitFor()
-    expect(await page.locator('a.dl').count()).toBe(withYu.length)
+    await page.locator('.note-row').first().waitFor()
+    expect(await page.locator('.note-row').count()).toBe(Math.min(3, withYu.length))
     // 从顶上拍：标签页、问题、查询步骤和回答都在一屏里
     await page.evaluate(() => {
       window.scrollTo(0, 0)

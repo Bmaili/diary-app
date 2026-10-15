@@ -20,7 +20,7 @@ const showTaskNotes = ref(tasks.some((t) => prefs.ai.taskNotes[t]?.trim()))
 const desc: Record<Task, string> = {
   chat: '在 AI 页提问。需要支持工具调用的模型。',
   extract: '从日记里标出人物、地点、标签。可以用便宜一些的模型。',
-  summary: '写月度和年度总结。',
+  summary: '写月度和年度总结，以及小传里的“请 AI 写几句”。',
   caption: '看图给插图写一句说明。要选能看图的模型，如 qwen-vl、glm-4v、gpt-4o、Claude。',
   annotate: '阅读视图里点“请批”，给这一篇写一两句批语。',
 }

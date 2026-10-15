@@ -19,6 +19,9 @@ import { annotateEntry } from './core/llm/annotate'
 import { annotationPath, parseAnnotation, serializeAnnotation, type Annotation } from './core/annotation'
 import { isoLocal } from './core/time'
 import { syncAfterEdit } from './syncService'
+import { writePortrait } from './core/llm/portrait'
+import { briefOf } from './core/answer'
+import { buildBio } from './core/bio'
 
 export type Task = 'chat' | 'extract' | 'summary' | 'caption' | 'annotate'
 export const TASK_LABEL: Record<Task, string> = { chat: '问答', extract: '抽取', summary: '总结', caption: '图片说明', annotate: '朱批' }
@@ -80,7 +83,7 @@ export async function ensureConsent(task: Task): Promise<boolean> {
     message:
       `服务地址：${host}\n\n` +
       '问答时会发送你的问题以及工具查到的相关日记片段；抽取会发送单篇日记全文；总结会发送整月的日记；' +
-      '图片说明会发送那张图片（缩小后）和这篇日记；朱批会发送你请批的那一篇。这些内容会经过该服务商的服务器。',
+      '图片说明会发送那张图片（缩小后）和这篇日记；朱批会发送你请批的那一篇；小传会发送提到那个人或地方的日记。这些内容会经过该服务商的服务器。',
     ok: '继续', cancel: '不用了',
   })
   if (ok) prefs.ai.consented.push(p.id)
@@ -189,6 +192,9 @@ export async function askQuestion(q: string): Promise<void> {
       a: r.answer, steps: r.steps, dates: r.dates, usage: r.usage,
       ...(r.compacted ? { compacted: true } : {}), ...(r.charts ? { charts: r.charts } : {}),
     })
+    // 收藏过的问题：记下这次问的时间和回答的第一句
+    const pin = prefs.ai.pinned.find((p) => p.q === turn.q)
+    if (pin) Object.assign(pin, { at: turn.at, brief: briefOf(r.answer) })
   } catch (e) {
     turn.steps = [...asking.steps]
     if (e instanceof AbortedError || controller?.signal.aborted) {
@@ -270,6 +276,13 @@ export async function summarize(period: string): Promise<void> {
 export async function merge(field: ListField, from: string[], to: string): Promise<number> {
   const n = await enqueue(() => mergeValues(repo, index, field, from, to, (d) => refreshDate(d)))
   diaryChanged()
+  // 小传里 AI 写的几句跟着改名（合并时留第一个写法的）
+  await loadPortraits()
+  const old = from.map((v) => portraits.map[portraitKey(field, v)]).find(Boolean)
+  let changed = false
+  for (const v of from) if (v !== to && portraits.map[portraitKey(field, v)]) (delete portraits.map[portraitKey(field, v)], (changed = true))
+  if (old && !portraits.map[portraitKey(field, to)]) (portraits.map[portraitKey(field, to)] = old, (changed = true))
+  if (changed) await savePortraits()
   return n
 }
 
@@ -308,4 +321,78 @@ export async function requestAnnotation(date: string, avoid?: string): Promise<A
 export async function deleteAnnotation(date: string): Promise<void> {
   await enqueue(() => store.remove(annotationPath(date)).catch(() => {}))
   syncAfterEdit()
+}
+
+// ---------- 常问的问题 ----------
+
+export const PIN_MAX = 6
+
+export function isPinned(q: string): boolean {
+  return prefs.ai.pinned.some((p) => p.q === q.trim())
+}
+
+/** 收藏或取消收藏一个问题。收藏时带上这次回答的第一句 */
+export function togglePin(q: string, answer?: string, at?: number): boolean {
+  const t = q.trim()
+  const i = prefs.ai.pinned.findIndex((p) => p.q === t)
+  if (i >= 0) {
+    prefs.ai.pinned.splice(i, 1)
+    return false
+  }
+  if (prefs.ai.pinned.length >= PIN_MAX) prefs.ai.pinned.pop()
+  prefs.ai.pinned.unshift({ q: t, ...(at ? { at } : {}), ...(answer ? { brief: briefOf(answer) } : {}) })
+  return true
+}
+
+// ---------- 小传：AI 写的几句，只存在本机（ai/portraits.json），不进 diary/，不同步 ----------
+
+export interface Portrait {
+  text: string
+  model: string
+  at: number
+  /** 写的时候一共写到几天 */
+  total: number
+}
+
+const PORTRAITS = 'ai/portraits.json'
+export const portraits = reactive({ map: {} as Record<string, Portrait>, loaded: false })
+export const portraitKey = (field: ListField, value: string) => `${field}:${value}`
+
+export async function loadPortraits() {
+  if (portraits.loaded) return
+  try {
+    portraits.map = JSON.parse((await store.readText(PORTRAITS)) ?? '{}') ?? {}
+  } catch {
+    portraits.map = {}
+  }
+  portraits.loaded = true
+}
+
+async function savePortraits() {
+  await store.mkdirp('ai')
+  await store.writeText(PORTRAITS, JSON.stringify(portraits.map))
+}
+
+/** 请 AI 写几句。只读 AI 能读的日记（ai_exclude 的跳过） */
+export async function requestPortrait(field: ListField, value: string): Promise<Portrait> {
+  await loadPortraits()
+  const cfg = await configFor('summary')
+  const bio = buildBio(index.aiRows(), field, value)
+  if (!bio.days.length) throw new Error('提到它的日记都设了不让 AI 读')
+  const entries = []
+  for (const d of bio.days) {
+    const doc = await repo.readEntry(d.date).catch(() => null)
+    entries.push({ date: d.date, text: doc?.body ?? index.get(d.date)?.text ?? '', ...(d.mood ? { mood: d.mood } : {}) })
+  }
+  const r = await writePortrait(cfg, { field, value, entries, total: bio.days.length, first: bio.first!, last: bio.last! }, prompt('portrait'))
+  const p: Portrait = { text: r.text, model: cfg.model, at: Date.now(), total: bio.days.length }
+  portraits.map[portraitKey(field, value)] = p
+  await savePortraits()
+  return p
+}
+
+export async function deletePortrait(field: ListField, value: string): Promise<void> {
+  await loadPortraits()
+  delete portraits.map[portraitKey(field, value)]
+  await savePortraits()
 }

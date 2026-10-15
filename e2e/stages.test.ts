@@ -515,10 +515,12 @@ describe('阶段 4：AI', () => {
     await page.getByRole('button', { name: '发送' }).click()
     await page.getByText(/你去了老王烧烤/).waitFor()
     expect(await page.locator('.a strong').first().textContent()).toBe('6 天')
-    expect(await page.locator('a.dl').count()).toBe(6)
+    // “相关日期”画成日记小笺（2026-10-15 起）：先显示 3 天，其余折叠
+    expect(await page.locator('.note-row').count()).toBe(3)
+    await page.getByRole('button', { name: '还有 3 天' }).waitFor()
     await page.getByText(/统计了/).waitFor()
     await page.screenshot({ path: OUT + '42-ai-answer.png' })
-    await page.locator('a.dl').first().click()
+    await page.locator('.note-row').first().click()
     await page.waitForURL(/#\/entry\/\d{4}-\d{2}-\d{2}/)
     await page.goBack()
 
@@ -531,6 +533,8 @@ describe('阶段 4：AI', () => {
 
     // 词表合并：把“阿杰”改名为“杰哥”
     await page.getByRole('button', { name: '人物' }).click()
+    // 2026-10-15 起点一下打开小传，要先点“选择”
+    await page.getByRole('button', { name: '选择' }).click()
     await page.getByRole('button', { name: /^阿杰/ }).click()
     await page.evaluate(() => ((window as unknown as { __dialogRule: unknown }).__dialogRule = { input: '杰哥' }))
     await page.getByRole('button', { name: '改名' }).click()
