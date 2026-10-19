@@ -214,27 +214,34 @@ export class SyncEngine {
     const total = uploads.length + deletes.length
     const manifest = await this.readManifest(remote.id)
     const { meta } = enc ? await this.wanted(opts) : { meta: new Map<string, Uint8Array>() }
-    const items: Upload[] = []
+    const sizeOf = new Map((await this.localFiles()).map((f) => [f.path, f.bytes ?? 0]))
     const localOf = new Map<string, string>()
-    for (const path of uploads) {
-      let bytes = meta.get(path)
-      if (!bytes) {
-        const b64 = await this.store.readBase64(`${ROOT}/${path}`)
-        if (b64 == null) continue
-        bytes = fromBase64(b64)
-      }
-      const hash = await sha256Hex(bytes)
-      const body = enc && !isMeta(path) ? await opts.crypto!.encrypt(bytes) : bytes
+    /** 实际传上去的内容的明文哈希：读的时候才算，防止上传过程中文件被改（成功后写进清单） */
+    const hashOf = new Map<string, string>()
+    // 不在这里读内容：上传到哪个才读哪个，免得几百张照片一起进内存（2026-10-19 起）
+    const items: Upload[] = uploads.map((path) => {
       const rp = remotePathOf(path, enc)
       localOf.set(rp, path)
-      items.push({ path: rp, bytes: body, hash })
-    }
+      return {
+        path: rp,
+        size: meta.get(path)?.length ?? sizeOf.get(path) ?? 0,
+        read: async () => {
+          let bytes = meta.get(path)
+          if (!bytes) {
+            const b64 = await this.store.readBase64(`${ROOT}/${path}`)
+            if (b64 == null) return null
+            bytes = fromBase64(b64)
+          }
+          hashOf.set(rp, await sha256Hex(bytes))
+          return enc && !isMeta(path) ? opts.crypto!.encrypt(bytes) : bytes
+        },
+      }
+    })
     const remoteDeletes = deletes.map((p) => {
       const rp = remotePathOf(p, enc)
       localOf.set(rp, p)
       return rp
     })
-    const hashOf = new Map(items.map((u) => [u.path, u.hash]))
     let done = 0
     let dirty = 0
     const persist = async (force = false) => {
@@ -243,8 +250,10 @@ export class SyncEngine {
         await this.writeManifest(remote.id, manifest)
       }
     }
+    let uploaded = 0
     try {
       await remote.apply(items, remoteDeletes, async (rp, kind) => {
+        if (kind === 'upload') uploaded++
         const p = localOf.get(rp) ?? rp
         if (kind === 'upload') manifest[p] = hashOf.get(rp)!
         else delete manifest[p]
@@ -254,7 +263,7 @@ export class SyncEngine {
     } finally {
       await persist(true)
     }
-    return { uploaded: items.length, deleted: deletes.length }
+    return { uploaded, deleted: deletes.length }
   }
 
   /** 删掉另一种形态的云端文件：加密时删明文副本，明文时删 .age 副本和 _encryption/ */

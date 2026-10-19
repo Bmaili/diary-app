@@ -376,11 +376,15 @@ const memoryDateLabel = (d: string) => {
         <span class="wk">星期{{ titleDate.wd }}</span>
         <Seal :text="lunar.day" :size="30" class="today-seal" />
       </h1>
-      <router-link to="/settings/sync" class="icon-btn sync" :class="sync.kind" :aria-label="syncLabel">
-        <Icon :name="syncIcon" />
-        <span v-if="sync.kind === 'pending' || (sync.kind === 'error' && sync.pending)" class="badge num">{{ sync.pending > 99 ? '99+' : sync.pending }}</span>
-      </router-link>
-      <router-link to="/settings" class="icon-btn" aria-label="设置"><Icon name="settings" /></router-link>
+      <!-- 右上角：同步、搜索、设置（2026-10-19 起搜索从悬浮按钮挪到这里），之间留出间距免得点错 -->
+      <div class="acts">
+        <router-link to="/settings/sync" class="icon-btn sync" :class="sync.kind" :aria-label="syncLabel">
+          <Icon :name="syncIcon" />
+          <span v-if="sync.kind === 'pending' || (sync.kind === 'error' && sync.pending)" class="badge num">{{ sync.pending > 99 ? '99+' : sync.pending }}</span>
+        </router-link>
+        <router-link to="/search" class="icon-btn" aria-label="搜索"><Icon name="search" /></router-link>
+        <router-link to="/settings" class="icon-btn" aria-label="设置"><Icon name="settings" /></router-link>
+      </div>
     </header>
 
     <section class="hello">
@@ -501,10 +505,6 @@ const memoryDateLabel = (d: string) => {
       </Transition>
     </Teleport>
 
-    <router-link to="/search" class="fab fab-search" :class="{ mini: fabMini }" aria-label="搜索">
-      <Icon name="search" />
-      <span class="fab-label">搜索</span>
-    </router-link>
     <button class="fab solid-btn" :class="{ mini: fabMini }" aria-label="写今天" @click="writeToday">
       <Icon name="pen" />
       <span class="fab-label">写今天</span>
@@ -513,6 +513,7 @@ const memoryDateLabel = (d: string) => {
 </template>
 
 <style scoped>
+.acts { display: flex; align-items: center; gap: 12px; margin-right: 4px; }
 .sync { position: relative; color: var(--muted); }
 .sync.error { color: var(--danger); }
 .sync.off { color: var(--accent); }
@@ -725,7 +726,7 @@ const memoryDateLabel = (d: string) => {
 .fab {
   position: fixed;
   right: 18px;
-  bottom: calc(var(--nav-h) + var(--safe-bottom) + 34px);
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 54px);
   z-index: 25;
   display: inline-flex;
   align-items: center;
@@ -743,22 +744,6 @@ const memoryDateLabel = (d: string) => {
 .fab.mini { padding: 0 18px; }
 .fab.mini .fab-label { max-width: 0; margin-left: 0; opacity: 0; }
 .fab.mini svg { transform: rotate(-12deg) scale(1.1); }
-/* 搜索：在“写今天”上面，浅色，不和主按钮抢 */
-.fab-search {
-  bottom: calc(var(--nav-h) + var(--safe-bottom) + 34px + 56px + 12px);
-  min-height: 48px;
-  padding: 0 18px 0 16px;
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  background: var(--surface);
-  color: var(--ink);
-  font-weight: 700;
-  text-decoration: none;
-  box-shadow: 0 8px 20px -12px rgba(18, 24, 52, 0.5);
-}
-.fab-search svg { width: 18px; height: 18px; }
-.fab-search.mini { padding: 0 14px; }
-.fab-search.mini svg { transform: none; }
 /* 首页顶部依次浮现（只在第一次打开时） */
 .intro .oldpage, .intro .backup { animation: rise-in 0.5s var(--ease-out) 0.06s backwards; }
 .intro .hello, .intro .prompts, .intro .memories { animation: rise-in 0.5s var(--ease-out) backwards; }

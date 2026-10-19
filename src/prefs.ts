@@ -37,8 +37,9 @@ export const prefs = reactive({
     quietMin: 2,
     /** 切到后台时，有没传的改动就立即同步（app 在后台可能被系统清掉，计时器不一定能走完） */
     syncOnHide: true,
-    oss: { enabled: false, endpoint: '', bucket: '', prefix: 'diary/', accessKeyId: '', encrypt: false },
-    github: { enabled: false, owner: '', repo: '', branch: 'main', apiBase: 'https://api.github.com', prefix: '', encrypt: false },
+    // 云端加密 2026-10-19 起默认打开（新开的后端）；已经在用明文的不自动改
+    oss: { enabled: false, endpoint: '', bucket: '', prefix: 'diary/', accessKeyId: '', encrypt: true },
+    github: { enabled: false, owner: '', repo: '', branch: 'main', apiBase: 'https://api.github.com', prefix: '', encrypt: true },
   },
   place: {
     autoLocate: true,
@@ -113,8 +114,10 @@ export const prefs = reactive({
     oldPage: true,
   },
   update: {
-    /** 自动检查新版本（2026-10-10 加入）：每天最多一次，有新版只在设置里显示红点 */
+    /** 自动检查新版本（2026-10-10 加入）：每天最多一次 */
     auto: true,
+    /** 有新版时打开 app 弹窗提醒（2026-10-19 加入）；关掉的话只在设置里显示红点 */
+    popup: true,
   },
   /**
    * 备份提醒（2026-10-13 加入）：只是这台手机的状态，导入导出设置时不带。
@@ -162,6 +165,17 @@ export async function loadPrefs() {
   if (!prefs.seen.includes('daily-on-1013')) {
     if (prefs.seen.includes('daily-off-1013')) prefs.daily.mode = 'local'
     prefs.seen.push('daily-on-1013')
+  }
+  // 2026-10-19 起云端加密默认打开：以前存下来的设置里都是 false，没开过、也没填过配置的后端改成默认加密；
+  // 开着的、填过配置的（云端可能已经有明文）保持原样，由用户自己决定
+  if (!prefs.seen.includes('encrypt-default-1019')) {
+    if (v) {
+      const o = prefs.sync.oss
+      if (!o.enabled && !o.endpoint && !o.bucket) o.encrypt = true
+      const g = prefs.sync.github
+      if (!g.enabled && !g.owner && !g.repo) g.encrypt = true
+    }
+    prefs.seen.push('encrypt-default-1019')
   }
   // 1.0.25 起“防止截屏”单独一项、默认开：以前开着应用锁、特意关掉“在最近任务里隐藏内容”的，沿用关掉
   if (!prefs.seen.includes('privacy-1013')) {

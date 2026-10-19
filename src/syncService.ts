@@ -98,6 +98,18 @@ export async function changePassphrase(passphrase: string): Promise<void> {
   await refreshPending()
 }
 
+/**
+ * 打开或关闭一个后端的加密（2026-10-19 从同步设置页挪到这里，两个页面共用）。
+ * 打开时还没有加密密码就返回 'need-keys'，由界面带去设密码。
+ */
+export async function setEncrypt(id: BackendId, on: boolean): Promise<'ok' | 'need-keys'> {
+  if (on && !(await loadKeys())) return 'need-keys'
+  prefs.sync[id].encrypt = on
+  await refreshPending()
+  if (prefs.sync[id].enabled) void syncNow(true, [id])
+  return 'ok'
+}
+
 /** 本机密钥丢了（或换了手机）但云端是加密的：用密码从云端找回 */
 export async function recoverKeys(id: BackendId, passphrase: string): Promise<void> {
   await saveKeys(await unlockRemote(await buildRemote(id), passphrase))

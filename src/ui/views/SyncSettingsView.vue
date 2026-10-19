@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
 import {
-  BACKENDS, canDecrypt, checkNow, encState, manifestEmpty, preview, refreshPending, syncNow, syncState, type BackendId,
+  BACKENDS, canDecrypt, checkNow, encState, loadKeys, manifestEmpty, preview, refreshPending, setEncrypt, syncNow, syncState, type BackendId,
 } from '../../syncService'
 import { hasSecret } from '../../platform/secrets'
 import Icon from '../components/Icon.vue'
@@ -36,7 +36,7 @@ async function toggle(id: BackendId, on: boolean) {
       if (p.entries > 0) {
         const pick = await choose({
           title: `云端已有 ${p.entries} 篇日记`,
-          message: `最新一篇是 ${p.latest}。建议先从云端恢复，再开启同步；直接开启的话，同名的日记以手机上的为准。`,
+          message: `最新一篇是 ${p.latest}。建议先从云端恢复，再开启同步；直接开启的话，同名的日记以手机上的为准。${!p.encrypted && prefs.sync[id].encrypt ? '\n\n云端现在是明文，开启后会全部换成加密文件。' : ''}`,
           options: [
             { label: '先去恢复', value: 'restore', kind: 'primary' },
             { label: '直接开启同步', value: 'enable', kind: 'ghost' },
@@ -62,6 +62,11 @@ async function toggle(id: BackendId, on: boolean) {
       if (!(await ask({ title: `连不上${id === 'oss' ? ' OSS' : ' GitHub'}`, message: `${(e as Error).message}\n\n仍然开启吗？`, ok: '仍然开启' }))) return
     }
   }
+  // 加密（默认开）但手机上还没有加密密码：先设一个，设好再开同步（2026-10-19 起）
+  if (prefs.sync[id].encrypt && !encState.hasKeys && !(await loadKeys())) {
+    router.push({ path: '/settings/sync/encryption', query: { then: id, enable: '1' } })
+    return
+  }
   prefs.sync[id].enabled = true
   await refreshPending()
   void syncNow(true, [id])
@@ -70,29 +75,18 @@ async function toggle(id: BackendId, on: boolean) {
 /** 中文和英文之间加空格：“阿里云 OSS ”、“ GitHub ” */
 const pad = (label: string) => label.replace(/^([A-Za-z])/, ' $1').replace(/([A-Za-z])$/, '$1 ')
 
-async function toggleEncrypt(id: BackendId, on: boolean) {
+/** 给明文的后端打开加密（关闭在“加密密码”页最下面，2026-10-19 起） */
+async function encryptNow(id: BackendId) {
   const label = pad(BACKENDS.find((b) => b.id === id)!.label)
-  if (on) {
-    const warn = id === 'github'
-      ? 'GitHub 的提交历史里仍然保留着以前的明文。想彻底不留明文，建议新建一个仓库，在 GitHub 设置里改好仓库名后再打开加密。'
-      : '如果 Bucket 开了版本控制，以前的明文会作为历史版本保留。想彻底清除，需要在 OSS 控制台删除历史版本。'
-    if (!(await ask({
-      title: `为${label.trim()}打开加密？`,
-      message: `云端的文件会全部换成加密版本，旧的明文文件会被删除。\n\n${warn}`,
-      ok: '打开加密',
-    }))) return
-    if (!encState.hasKeys) {
-      router.push({ path: '/settings/sync/encryption', query: { then: id } })
-      return
-    }
-  } else if (!(await ask({
-    title: `关闭${label.trim()}的加密？`,
-    message: '云端会全部换回明文文件，加密文件和 _encryption 文件夹会被删除。',
-    ok: '关闭加密', danger: true,
+  const warn = id === 'github'
+    ? 'GitHub 的提交历史里仍然保留着以前的明文。想彻底不留明文，建议新建一个仓库，在 GitHub 设置里改好仓库名后再打开加密。'
+    : '如果 Bucket 开了版本控制，以前的明文会作为历史版本保留。想彻底清除，需要在 OSS 控制台删除历史版本。'
+  if (!(await ask({
+    title: `为${label.trim()}打开加密？`,
+    message: `云端的文件会全部换成加密版本，旧的明文文件会被删除。\n\n${warn}`,
+    ok: '打开加密',
   }))) return
-  prefs.sync[id].encrypt = on
-  await refreshPending()
-  if (prefs.sync[id].enabled) void syncNow(true, [id])
+  if ((await setEncrypt(id, true)) === 'need-keys') router.push({ path: '/settings/sync/encryption', query: { then: id } })
 }
 
 function ago(t: number | null): string {
@@ -235,12 +229,14 @@ const QUIET = [
       </router-link>
       <div v-for="b in BACKENDS" :key="b.id" class="item">
         <div>
-          <div>加密{{ pad(b.label) }}上的副本</div>
-          <div class="desc">{{ prefs.sync[b.id].encrypt ? '云端只有加密文件' : '云端是明文，可以在网页上直接看' }}</div>
+          <div>{{ pad(b.label).trim() }}上的副本</div>
+          <div class="desc" :class="{ warn: !prefs.sync[b.id].encrypt && prefs.sync[b.id].enabled }">
+            {{ prefs.sync[b.id].encrypt ? '加密，云端只有加密文件' : prefs.sync[b.id].enabled ? '明文，能登录账号的人可以直接看到，建议加密' : '明文' }}
+          </div>
         </div>
-        <Switch :model-value="prefs.sync[b.id].encrypt" :label="`加密${pad(b.label)}上的副本`" @update:model-value="toggleEncrypt(b.id, $event)" />
+        <button v-if="!prefs.sync[b.id].encrypt" class="text-btn" @click="encryptNow(b.id)">加密</button>
       </div>
-      <p class="desc pad" style="margin-top: 8px">默认关闭。可以只加密其中一个，比如加密 GitHub、OSS 保持明文。</p>
+      <p class="desc pad" style="margin-top: 8px">新开的同步默认加密，所有云端共用一个加密密码。</p>
     </section>
 
     <section>
@@ -257,6 +253,7 @@ const QUIET = [
 </template>
 
 <style scoped>
+.desc.warn { color: var(--accent); }
 .bad-text { color: var(--danger); }
 .sel { width: auto; min-height: 38px; padding: 0 8px; }
 </style>

@@ -90,7 +90,7 @@ async function go() {
     </section>
 
     <section v-if="restoreState.error" class="pad">
-      <p class="result bad">恢复失败：{{ restoreState.error }}。手机上的日记没有改动，可以稍后再试。</p>
+      <p class="result bad">恢复失败：{{ restoreState.error }}。手机上的日记没有改动<template v-if="!restoreState.error.includes('不用重下')">，再点“开始恢复”时，已经下好的文件不用重下</template>。</p>
     </section>
 
     <section v-if="restoreState.result" class="pad">

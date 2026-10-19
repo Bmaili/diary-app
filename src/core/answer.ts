@@ -10,6 +10,14 @@
 
 const DATE = /\d{4}-\d{2}-\d{2}/g
 
+/**
+ * “接着问”是用户点一下发给 AI 的，要用“我”问。模型偶尔写反（“你后来还去过吗？”），
+ * 有“你”却没有“我”的当成是在问用户，不显示（2026-10-19 起）。
+ */
+export function askingUser(q: string): boolean {
+  return /[你您]/.test(q) && !/[我咱]/.test(q)
+}
+
 const RELATED = /^(?:\*\*)?相关日期(?:\*\*)?\s*[：:]/
 const NEXT = /^(?:\*\*)?接着问(?:\*\*)?\s*[：:]\s*/
 
@@ -39,7 +47,8 @@ export function splitTail(md: string, streaming = false): { body: string; dates:
     }
     if (!seenNext && NEXT.test(l)) {
       seenNext = true
-      next = l.replace(NEXT, '').split(/[｜|]/).map((q) => q.trim().replace(/^[“"「]|[”"」]$/g, '').trim()).filter((q) => q.length >= 2 && q.length <= 40).slice(0, 3)
+      next = l.replace(NEXT, '').split(/[｜|]/).map((q) => q.trim().replace(/^[“"「]|[”"」]$/g, '').trim())
+        .filter((q) => q.length >= 2 && q.length <= 40 && !askingUser(q)).slice(0, 3)
       end = i
       continue
     }

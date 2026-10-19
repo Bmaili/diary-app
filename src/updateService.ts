@@ -1,7 +1,10 @@
 /**
  * 应用内更新（2026-10-10 加入）。
  * - 自动检查：只在手机上、设置里开着（默认开）时，启动和回到前台时检查，两次至少隔一天。
- *   有新版只在“设置 → 关于浮生记”那一行显示红点，别的页面不打扰。点“暂不”后这个版本不再显示红点。
+ *   有新版时“设置 → 关于浮生记”那一行显示红点；点“暂不”后这个版本不再显示红点。
+ * - 弹窗提醒（2026-10-19 加入，默认开，可以关）：打开 app、或离开超过 30 分钟后回来时弹一次，
+ *   “更新”去关于页开始下载，“暂不”这一版不再弹，按返回键关掉的下次进来还弹。
+ *   正在写日记、写信时不弹；有应用锁时解锁以后再弹；正在下载时不弹。
  * - 用户点“更新”才下载（原生插件，带进度、可取消），下完核对 sha256 和签名，再调起系统安装界面。
  * - 断点续传（2026-10-12）：失败、取消、app 被关掉后，下了一半的文件留着，下次接着下；
  *   换了版本（或同一版本的安装包变了）就作废，从头下。断线时原生端悄悄重试一次。
@@ -9,7 +12,8 @@
  * - 浏览器里（开发预览）不自动检查；手动检查后点“更新”打开 Releases 网页。
  * 检查结果存在 Preferences（diary/ 之外）。
  */
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
+import type { Router } from 'vue-router'
 import { App as CapApp } from '@capacitor/app'
 import { Preferences } from '@capacitor/preferences'
 import { http } from './core/http'
@@ -18,7 +22,8 @@ import { RELEASES_API, RELEASES_URL } from './appInfo'
 import { enqueue, index, onStarted } from './app'
 import { prefs } from './prefs'
 import { AppUpdate, inAppUpdateSupported } from './platform/appUpdate'
-import { expectExternal } from './lockService'
+import { expectExternal, lock } from './lockService'
+import { showDialog } from './ui/dialog'
 
 const KEY = 'update.v1'
 export const currentVersion = __APP_VERSION__
@@ -75,11 +80,81 @@ export async function checkUpdate(manual = true): Promise<void> {
   }
 }
 
-function autoCheck() {
+async function autoCheck(): Promise<void> {
   if (!inAppUpdateSupported || !prefs.update.auto) return
   if (Date.now() - updateState.lastCheck < AUTO_CHECK_MS) return
-  void checkUpdate(false)
+  await checkUpdate(false)
 }
+
+// ---------- 弹窗提醒 ----------
+
+/** 离开多久再回来算“进入软件” */
+export const PROMPT_AWAY_MS = 30 * 60 * 1000
+/** 这些页面上不弹：正在写日记、写信，或者本来就在关于页 */
+const QUIET = [/^\/entry\//, /^\/letters\/new/, /^\/settings\/about/]
+let routerRef: Router | null = null
+let prompting = false
+
+/** 现在该不该弹：开着自动检查和弹窗、有没点过“暂不”的新版本、没在下载、不在写东西的页面 */
+export function shouldPrompt(path: string): boolean {
+  return prefs.update.auto && prefs.update.popup && showBadge.value && updateState.phase === 'idle' && !QUIET.some((r) => r.test(path))
+}
+
+/** 进入软件时调用：锁着的话等解锁以后再看 */
+export async function promptUpdate(): Promise<void> {
+  if (lock.locked) {
+    const stop = watch(() => lock.locked, (l) => {
+      if (l) return
+      stop()
+      void promptUpdate()
+    })
+    return
+  }
+  const r = routerRef
+  if (!r || prompting || !shouldPrompt(r.currentRoute.value.path)) return
+  prompting = true
+  try {
+    const v = updateState.latest!.version
+    const notes = updateState.latest!.notes.trim()
+    const res = await showDialog({
+      title: `新版本 ${v}`,
+      message: `${notes ? `${notes.length > 240 ? `${notes.slice(0, 240)}…` : notes}\n\n` : ''}覆盖安装，日记不会丢。`,
+      buttons: [
+        { label: '暂不', value: 'later', kind: 'ghost' },
+        { label: '更新', value: 'update', kind: 'primary' },
+      ],
+      dismiss: 'close',
+    })
+    if (res.value === 'later') dismissUpdate()
+    else if (res.value === 'update') {
+      await r.push('/settings/about')
+      void startDownload()
+    }
+  } finally {
+    prompting = false
+  }
+}
+
+/** 弹窗要用路由（去关于页、看现在在哪个页面），由 App.vue 交进来 */
+export function initUpdatePrompt(router: Router) {
+  routerRef = router
+  let hiddenAt = 0
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+    else if (hiddenAt && Date.now() - hiddenAt >= PROMPT_AWAY_MS) {
+      // 回来时可能顺便检查了更新：等检查完再看
+      void autoCheck().finally(() => void promptUpdate())
+    }
+  })
+  onStarted(() => void ready.then(() => promptUpdate()))
+  // 端到端测试里直接调用
+  const w = window as unknown as { __diary?: Record<string, unknown> }
+  if (w.__diary) Object.assign(w.__diary, { promptUpdate, updateState })
+}
+
+/** 启动时读完缓存、做完自动检查 */
+let markReady: () => void = () => {}
+const ready = new Promise<void>((r) => (markReady = r))
 
 export function dismissUpdate() {
   if (!updateState.latest) return
@@ -192,7 +267,8 @@ export function initUpdate() {
     } catch { /* 坏了就当没检查过 */ }
     // 已经装上了新版、或者下了一半的不是要下的版本：清掉；还是要下的这一版就留着接着下
     void refreshPartial()
-    autoCheck()
+    await autoCheck().catch(() => {})
+    markReady()
   })
-  if (inAppUpdateSupported) void CapApp.addListener('resume', autoCheck)
+  if (inAppUpdateSupported) void CapApp.addListener('resume', () => void autoCheck())
 }

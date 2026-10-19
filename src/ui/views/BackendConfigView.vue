@@ -134,7 +134,7 @@ async function save() {
           <li><b>用户名或组织</b>和<b>仓库名</b>：就是仓库地址 <code>github.com/用户名/仓库名</code> 里的两段。</li>
           <li>填好后点“测试连接”，成功后回到上一页打开开关。每次同步是一个 commit，在 GitHub 网页上能直接看日记。</li>
         </ol>
-        <p class="tip">国内访问 GitHub 不稳定，失败会自动重试，不影响 OSS。也可以在“API 地址”里填你自建的反向代理。仓库是私有的，但 GitHub 能看到明文，介意的话可以在同步设置里打开加密。</p>
+        <p class="tip">国内访问 GitHub 不稳定，失败会自动重试，不影响 OSS。也可以在“API 地址”里填你自建的反向代理。默认加密上传，GitHub 和拿到 Token 的人都看不到日记内容。</p>
       </HelpTip>
       <label><span>用户名或组织</span><input v-model="gh.owner" class="field" placeholder="your-name" autocapitalize="off" /></label>
       <label><span>仓库名</span><input v-model="gh.repo" class="field" placeholder="diary" autocapitalize="off" /></label>

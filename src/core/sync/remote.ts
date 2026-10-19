@@ -5,13 +5,21 @@ import { http, NetworkError, type HttpRequest, type HttpResponse } from '../http
 export interface RemoteFile {
   path: string
   size: number
+  /** 内容的指纹（GitHub 的 blob sha、OSS 的 ETag）：恢复中断后再来，指纹没变的不用重下 */
+  etag?: string
 }
 
+/**
+ * 要上传的一个文件（2026-10-19 起按需读取）：以前先把所有要传的文件读进内存再上传，
+ * 第一次同步、开关加密全部重传时照片一多就会内存不足闪退。现在上传到哪个读哪个。
+ */
 export interface Upload {
+  /** 云端路径（加密时带 .age） */
   path: string
-  bytes: Uint8Array
-  /** 本地内容的 sha256，成功后写入清单 */
-  hash: string
+  /** 本地文件的大小（估算分批用，加密后会大一点） */
+  size: number
+  /** 读出要上传的内容（加密时是密文）；文件在这期间被删了返回 null，跳过它 */
+  read(): Promise<Uint8Array | null>
 }
 
 export interface ApplyResult {
@@ -25,13 +33,21 @@ export interface RemoteStore {
   /** 列出云端全部文件 */
   list(): Promise<RemoteFile[]>
   /**
-   * 上传与删除。OSS 逐个文件进行，每完成一个就回调；GitHub 打成一个 commit，全部成功后统一回调。
+   * 上传与删除。OSS 逐个文件进行，每完成一个就回调；GitHub 分批打成 commit（每批最多 100 个文件或 20 MB），
+   * 每批提交成功后回调这一批，中途失败的话已提交的批次不用重传。
    */
   apply(uploads: Upload[], deletes: string[], onDone: (path: string, kind: 'upload' | 'delete') => Promise<void>): Promise<void>
   /** 下载一个文件，不存在时返回 null */
   get(path: string): Promise<Uint8Array | null>
-  /** 下载全部文件（恢复用），逐个回调 */
-  downloadAll(onFile: (path: string, bytes: Uint8Array) => Promise<void>, onProgress?: (done: number, total: number) => void): Promise<number>
+  /**
+   * 下载全部文件（恢复用）：一个一个下，下好一个回调一个，内存里只放正在下的那个。
+   * skip(path, etag) 返回 true 的不下（上次恢复中断前已经下好的）。
+   */
+  downloadAll(
+    onFile: (path: string, bytes: Uint8Array, etag?: string) => Promise<void>,
+    onProgress?: (done: number, total: number) => void,
+    skip?: (path: string, etag?: string) => boolean,
+  ): Promise<number>
   /** 写入并删除一个临时文件，验证配置 */
   test(): Promise<void>
 }

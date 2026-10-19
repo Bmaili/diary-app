@@ -12,6 +12,12 @@ export interface GitHubMock {
   files: () => Map<string, Buffer>
   commits: () => { message: string }[]
   failZipball: boolean
+  /** 建了这么多个 blob 之后再建就返回 500（模拟上传到一半断网）；null 不出错 */
+  failBlobPostAfter: number | null
+  /** 下载了这么多个 blob 之后返回 403 限流（模拟用完每小时 5000 次）；null 不限流 */
+  rateLimitAfter: number | null
+  /** 统计：建 blob、下 blob、下 zipball 的次数 */
+  counts: { blobPost: number; blobGet: number; zipball: number }
   close: () => Promise<void>
 }
 
@@ -45,6 +51,9 @@ export async function startGitHubMock(opts: { owner: string; repo: string; token
     },
     commits: () => order.map((s) => ({ message: commits.get(s)!.message })),
     failZipball: false,
+    failBlobPostAfter: null,
+    rateLimitAfter: null,
+    counts: { blobPost: 0, blobGet: 0, zipball: 0 },
     close: () => new Promise((r) => server.close(() => r())),
   }
 
@@ -82,14 +91,28 @@ export async function startGitHubMock(opts: { owner: string; repo: string; token
       })
     }
     if (p === '/git/blobs' && req.method === 'POST') {
+      if (mock.failBlobPostAfter != null && mock.counts.blobPost >= mock.failBlobPostAfter) return send(500, { message: 'boom' })
+      mock.counts.blobPost++
       const b = Buffer.from(body.content, body.encoding === 'base64' ? 'base64' : 'utf8')
       const s = blobSha(b)
       blobs.set(s, b)
       return send(201, { sha: s })
     }
     if ((r = m(/^\/git\/blobs\/(\w+)$/)) && req.method === 'GET') {
+      if (mock.rateLimitAfter != null && mock.counts.blobGet >= mock.rateLimitAfter) {
+        res.writeHead(403, { 'Content-Type': 'application/json', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 1800) })
+          .end(JSON.stringify({ message: 'API rate limit exceeded' }))
+        return
+      }
+      mock.counts.blobGet++
       const b = blobs.get(r[1])
-      return b ? send(200, { content: b.toString('base64'), encoding: 'base64' }) : send(404, { message: 'Not Found' })
+      if (!b) return send(404, { message: 'Not Found' })
+      // 要 raw 的给原始字节，否则给 base64 的 JSON（和 GitHub 一样）
+      if (String(req.headers.accept ?? '').includes('raw')) {
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream' }).end(b)
+        return
+      }
+      return send(200, { content: b.toString('base64'), encoding: 'base64' })
     }
     if (p === '/git/trees' && req.method === 'POST') {
       const t = new Map(trees.get(body.base_tree) ?? [])
@@ -123,6 +146,7 @@ export async function startGitHubMock(opts: { owner: string; repo: string; token
       return send(201, { content: { sha: s } })
     }
     if ((r = m(/^\/zipball\/(\w+)$/)) && req.method === 'GET') {
+      mock.counts.zipball++
       if (mock.failZipball) return send(500, { message: 'boom' })
       const c = commits.get(r[1])
       if (!c) return send(404, { message: 'Not Found' })

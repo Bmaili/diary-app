@@ -12,6 +12,23 @@ import type { RemoteStore } from './remote'
 import { META_IDENTITY, META_INFO, isMeta, localPathOf, unwrapIdentity, type KeyBundle, type SyncCrypto } from './crypto'
 
 const TMP = 'restore-tmp'
+/** 恢复进度：哪些云端文件已经下进临时目录（云端路径 → 指纹、本地路径、明文哈希、是不是加密的） */
+const PROGRESS = `${TMP}/.progress.json`
+
+interface Progress {
+  remote: string
+  mode: string
+  files: Record<string, { etag: string; path: string; hash: string; enc: boolean }>
+}
+
+async function readProgress(store: FileStore): Promise<Progress | null> {
+  try {
+    const p = JSON.parse((await store.readText(PROGRESS)) ?? 'null') as Progress | null
+    return p && typeof p.files === 'object' ? p : null
+  } catch {
+    return null
+  }
+}
 
 export interface RestorePreview {
   files: number
@@ -75,23 +92,61 @@ export async function restoreFrom(
   onProgress?: (done: number, total: number) => void,
   crypto: SyncCrypto | null = null,
 ): Promise<RestoreResult> {
-  await store.rmdir(TMP)
   const downloaded = new Map<string, string>() // 本地路径 → 明文 sha256
   const fromEncrypted = new Set<string>()
-  await remote.downloadAll(async (raw, bytes) => {
-    if (raw.includes('..')) return
-    const lp = localPathOf(raw)
-    if (!lp) return
-    // 同一篇既有明文又有加密副本（切换加密中途）：以加密的为准
-    if (!lp.encrypted && fromEncrypted.has(lp.path)) return
-    if (lp.encrypted) {
-      if (!crypto) throw new Error('云端的日记是加密的，需要先输入同步加密密码')
-      bytes = await crypto.decrypt(bytes)
-      fromEncrypted.add(lp.path)
-    }
-    await store.writeBase64(`${TMP}/${lp.path}`, toBase64(bytes))
-    downloaded.set(lp.path, await sha256Hex(bytes))
-  }, onProgress)
+  // 接着上次没做完的恢复（2026-10-19 起）：同一个后端、同一种形态，指纹没变的文件不用重下
+  const mode = modeOf({ crypto })
+  let prog = await readProgress(store)
+  if (!prog || prog.remote !== remote.id || prog.mode !== mode) {
+    await store.rmdir(TMP)
+    prog = { remote: remote.id, mode, files: {} }
+  }
+  const p = prog
+  for (const f of Object.values(p.files)) if (f.enc) fromEncrypted.add(f.path)
+  /** 这次云端实际有的文件、这次新下的文件 */
+  const seen = new Set<string>()
+  const fresh = new Set<string>()
+  await store.mkdirp(TMP)
+  let unsaved = 0
+  const saveProgress = async (force = false) => {
+    if (!force && ++unsaved < 20) return
+    unsaved = 0
+    await store.writeText(PROGRESS, JSON.stringify(p))
+  }
+  try {
+    await remote.downloadAll(async (raw, bytes, etag) => {
+      if (raw.includes('..')) return
+      const lp = localPathOf(raw)
+      if (!lp) return
+      // 同一篇既有明文又有加密副本（切换加密中途）：以加密的为准
+      if (!lp.encrypted && fromEncrypted.has(lp.path)) return
+      if (lp.encrypted) {
+        if (!crypto) throw new Error('云端的日记是加密的，需要先输入同步加密密码')
+        bytes = await crypto.decrypt(bytes)
+        fromEncrypted.add(lp.path)
+      }
+      await store.writeBase64(`${TMP}/${lp.path}`, toBase64(bytes))
+      const hash = await sha256Hex(bytes)
+      downloaded.set(lp.path, hash)
+      fresh.add(raw)
+      if (etag) {
+        p.files[raw] = { etag, path: lp.path, hash, enc: lp.encrypted }
+        await saveProgress()
+      }
+    }, onProgress, (raw, etag) => {
+      seen.add(raw)
+      return !!etag && p.files[raw]?.etag === etag
+    })
+  } finally {
+    // 中途失败（断网、GitHub 限流）：记下已经下好的，下次接着下
+    await saveProgress(true).catch(() => {})
+  }
+  // 上次已经下好、这次跳过的；云端已经没有了的不算
+  for (const [raw, f] of Object.entries(p.files)) {
+    if (!seen.has(raw) || fresh.has(raw)) continue
+    if (!f.enc && fromEncrypted.has(f.path)) continue
+    downloaded.set(f.path, f.hash)
+  }
   if (!downloaded.has('format.json')) {
     await store.rmdir(TMP)
     throw new Error('云端没有 format.json，看起来不是这个 app 的日记文件夹，已取消恢复')
@@ -100,7 +155,7 @@ export async function restoreFrom(
   const replacedAll = !(await localHasEntries(store))
   const result: RestoreResult = { restored: [], skipped: [], identical: 0, replacedAll }
   // 本地清单若是另一种形态（明文 / 另一把密钥）留下的，作废重来
-  const sameMode = (await engine.readState(remote.id)).mode === modeOf({ crypto })
+  const sameMode = (await engine.readState(remote.id)).mode === mode
   const manifest = sameMode ? await engine.readManifest(remote.id) : {}
   for (const [path, hash] of downloaded) {
     const target = `${ROOT}/${path}`
@@ -127,7 +182,7 @@ export async function restoreFrom(
     for (const m of await crypto.metaFiles()) manifest[m.path] = m.hash
   }
   await engine.writeManifest(remote.id, manifest)
-  await engine.writeState(remote.id, { ...(await engine.readState(remote.id)), mode: modeOf({ crypto }), cleanup: true })
+  await engine.writeState(remote.id, { ...(await engine.readState(remote.id)), mode, cleanup: true })
   await store.rmdir(TMP)
   return result
 }

@@ -15,6 +15,11 @@ describe('回答末尾的两行', () => {
     expect(splitRelated(md)).toEqual({ body: '那天你们去了海边。', dates: ['2026-09-08', '2026-10-03'] })
     expect(nextQuestions('**接着问**：一｜二二｜三三三｜四四四四')).toEqual(['二二', '三三三', '四四四四'])
   })
+  it('接着问是用户问 AI 的：有“你”没“我”的（AI 在问用户）不显示', () => {
+    expect(nextQuestions('好。\n接着问：你后来还去过吗？｜我第一次去西湖是什么时候？｜那天你开心吗？｜外婆家的桂树还开吗？'))
+      .toEqual(['我第一次去西湖是什么时候？', '外婆家的桂树还开吗？'])
+    expect(nextQuestions('好。\n接着问：你还记得我第一次去海边吗？')).toEqual(['你还记得我第一次去海边吗？'])
+  })
   it('不在末尾的不动；流式输出时写到一半的那行先藏起来', () => {
     expect(splitTail('接着问：甲甲｜乙乙\n后面还有话').next).toEqual([])
     expect(splitTail('你好。\n接着', true).body).toBe('你好。')

@@ -1,6 +1,19 @@
 <script setup lang="ts">
-defineProps<{ open: boolean; title: string }>()
+/** 从底部弹出的面板。打开时接上安卓返回键：先关面板，不让底下的页面返回（2026-10-19 起） */
+import { onBeforeUnmount, onDeactivated, watch } from 'vue'
+import { pushBack } from '../backStack'
+
+const props = defineProps<{ open: boolean; title: string }>()
 const emit = defineEmits<{ close: [] }>()
+
+let removeBack: (() => void) | null = null
+watch(() => props.open, (on) => {
+  removeBack?.()
+  removeBack = on ? pushBack(() => emit('close')) : null
+}, { immediate: true })
+onBeforeUnmount(() => removeBack?.())
+// 所在的页面被缓存起来（keep-alive，切到了别的页面）时也收起，免得面板留在别的页面上
+onDeactivated(() => props.open && emit('close'))
 </script>
 
 <template>

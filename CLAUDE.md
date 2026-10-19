@@ -70,8 +70,9 @@ npm run cap:sync             # 构建并同步到 android/
 src/core/            与平台无关、有单元测试的逻辑
   entryFile.ts repo.ts diaryIndex.ts session.ts time.ts   文件格式、仓库、索引、编辑会话
   sync/              engine.ts（清单增量、核对云端 reconcile、加密形态切换）
-                     oss.ts（V4 签名）github.ts（一次同步一个 commit）
-                     restore.ts crypto.ts（age 加密）remote.ts
+                     oss.ts（V4 签名）github.ts（一次同步一般一个 commit，文件多时每 100 个 / 20 MB 一批）
+                     restore.ts（逐个下载、restore-tmp/.progress.json 断点续传）crypto.ts（age 加密）remote.ts
+                     （Upload 是按需读取的 read()：上传和恢复都不能把全部文件一起读进内存）
   geo/               坐标转换、高德 Web 服务、和风天气 / Open-Meteo
   llm/               client.ts（OpenAI 兼容与 Anthropic 两种协议；chatText 要正文：空输出报错、截断自动加倍重试；
                      chatJson 要 JSON：约束解码 → 宽松解析 → 请它重写；去掉 <think>）
@@ -119,7 +120,7 @@ src/ui/              views/ 各页面，components/，style.css（主题）setti
                      AiTaggedView.vue（整理过的，原“AI 标注一览”）WhoView.vue（小传，/who/<field>/<词>）
                      components/DayNotes.vue（“提到的日子”小笺列表）
                      components/ImageViewer.vue（全屏看图）AnswerChart.vue（问答图表，手写 SVG）
-                     backStack.ts（安卓返回键先关覆盖层）
+                     backStack.ts（安卓返回键先关覆盖层；Sheet.vue 打开时自动登记，新的覆盖层也要登记）
                      dialog.ts + components/AppDialog.vue（app 自己的提示框：ask / choose / tell / promptText；
                      不要再用 window.confirm / alert / prompt。返回键按 dismiss，dismiss 要设成安全的选项）
 tests/               单元测试；tests/mocks/ 下是 OSS、GitHub、LLM 的本地模拟服务器
@@ -185,6 +186,8 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 | 日期时区 | 统一用 `src/core/time.ts`，按设备时区和“一天切换时刻”计算日记日期 |
 | 搜索 | 内存里逐篇子串匹配就够快，不要引入全文索引或分词库 |
 | CapacitorHttp 的 fetch 补丁 | 会损坏二进制请求体（图片上传），直接调插件 |
+| 一次读入全部文件 | 同步上传、恢复下载都逐个文件处理（`Upload.read()`、`downloadAll` 逐个回调）；GitHub 恢复不用 zipball；照片多了整包进内存会闪退 |
+| 覆盖层和返回键 | 自己写的弹层要 `pushBack`，否则返回键会让底下的页面返回，弹层还留在屏幕上 |
 
 ## 已知限制与待办
 
@@ -197,6 +200,8 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 年度日记本靠系统打印：照片很多时排版慢、占内存；页数是估的。封面、扉页用无边距的命名页（`@page bare`），书末不要再从普通页换到命名页（Chromium 会多插一张空白页）。楷体靠手机自带，没有就显示成宋体。
 
 ## 已商定的后续计划（2026-10-13 和用户确认）
+
+2026-10-19（第二批）：接着问改成用户问 AI（提示词 + 过滤“有你没我”的）；有新版时弹窗提醒（打开 app 或离开超 30 分钟回来，编辑页不弹，解锁后再弹，“暂不”后这一版不再弹，关于页可关）；返回键先关底部面板；GitHub 恢复逐个下载可续传；同步上传随传随读、GitHub 分批提交；搜索挪到首页右上角（同步、搜索、设置）；云端加密默认开（新开的后端；所有后端共用一个密码；已在用明文的不自动改；改成明文在加密密码页最下面并说明后果）。
 
 2026-10-19：AI 页改名“灯下”，问答加人物（老友默认、知音、说书人、损友、元气同桌、猫，可自己添加；内置的不能改）、输入框上面的问候、“接着问”；心情交给模型时用文字，不报分数；页面说法去技术化。用户决定同步合并提交先不做（担心的是 GitHub 仓库空间，算下来提交记录一年只有几 MB 到几十 MB，照片才是大头），“云端已用”也不做。
 

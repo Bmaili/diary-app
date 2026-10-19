@@ -139,6 +139,16 @@ afterAll(async () => {
   await Promise.all([oss?.close(), gh?.close(), llm?.close()])
 })
 
+/**
+ * 开同步时（2026-10-19 起默认加密，还没有加密密码会先去设密码）选“不加密，直接开启同步”：
+ * 这几个测试要看云端的明文内容
+ */
+async function enablePlain(page: Page) {
+  await page.waitForURL(/#\/settings\/sync\/encryption\?/)
+  await page.getByRole('button', { name: '不加密，直接开启同步' }).click()
+  await page.waitForURL(/#\/settings\/sync$/)
+}
+
 describe('阶段 2：同步与恢复', () => {
   it('配置 OSS、测试连接、开启后写一篇并退出编辑页，几秒内出现在 Bucket 中', async () => {
     const { ctx, page, errors } = await newPage()
@@ -153,6 +163,7 @@ describe('阶段 2：同步与恢复', () => {
     await page.getByRole('button', { name: '保存' }).click()
     await page.waitForURL(/#\/settings\/sync$/)
     await page.getByRole('switch', { name: '同步到阿里云 OSS' }).click()
+    await enablePlain(page)
     await page.locator('[role=switch][aria-label="同步到阿里云 OSS"][aria-checked="true"]').waitFor()
 
     await writeToday(page, '开了 OSS 同步之后写的第一篇。')
@@ -207,8 +218,10 @@ describe('阶段 2：同步与恢复', () => {
     // 云端 OSS 已有上一个测试留下的日记，开启时会建议先恢复：这里选“直接开启”
     await page.evaluate(() => ((window as unknown as { __dialogRule: unknown }).__dialogRule = { pick: { when: '建议先从云端恢复', label: '直接开启同步' } }))
     await page.getByRole('switch', { name: '同步到阿里云 OSS' }).click()
+    await enablePlain(page)
     await page.locator('[role=switch][aria-label="同步到阿里云 OSS"][aria-checked="true"]').waitFor()
     await page.getByRole('switch', { name: '同步到GitHub' }).click()
+    await enablePlain(page)
     await page.locator('[role=switch][aria-label="同步到GitHub"][aria-checked="true"]').waitFor()
     // 等初次同步完全结束（空仓库会先有一个初始化 commit，再有一次同步 commit）
     await page.waitForFunction(() => {
@@ -709,6 +722,9 @@ describe('核对云端、加密、编辑快捷栏', () => {
     const { ctx, page, errors } = await newPage()
     await configureOss(page)
     await page.getByRole('switch', { name: '同步到阿里云 OSS' }).click()
+    await enablePlain(page)
+    // 明文的后端：同步页给一句“建议加密”
+    await page.getByText('明文，能登录账号的人可以直接看到，建议加密').waitFor()
     await writeToday(page, '加密之前写的一篇。')
     expect(await until(() => entryKeys().length === 1)).toBe(true)
     const key = entryKeys()[0]
@@ -721,7 +737,7 @@ describe('核对云端、加密、编辑快捷栏', () => {
     expect(await until(() => oss.objects.has(key))).toBe(true)
 
     // 打开加密：先去设置密码，回来后自动把云端换成加密文件
-    await page.getByRole('switch', { name: '加密阿里云 OSS 上的副本' }).click()
+    await page.getByRole('button', { name: '加密', exact: true }).click()
     await page.waitForURL(/#\/settings\/sync\/encryption/)
     await page.screenshot({ path: OUT + '60-encryption-setup.png', fullPage: true })
     await page.getByLabel('密码', { exact: true }).fill(PASS)
@@ -759,12 +775,42 @@ describe('核对云端、加密、编辑快捷栏', () => {
     expect(texts.some((t) => t.includes('加密之前写的一篇。'))).toBe(true)
     // 恢复后继续加密同步，而且不需要重传
     await b.page.goto(BASE + '#/settings/sync')
-    await b.page.locator('[role=switch][aria-label="加密阿里云 OSS 上的副本"][aria-checked="true"]').waitFor()
+    await b.page.getByText('加密，云端只有加密文件').first().waitFor()
     await b.page.getByText(/^已同步|^已关闭/).first().waitFor()
     const pending = await b.page.evaluate(() => (window as unknown as { __diary: { syncState: { oss: { pending: number } } } }).__diary.syncState.oss.pending)
     expect(pending).toBe(0)
     expect(b.errors).toEqual([])
     await b.ctx.close()
+  })
+
+  it('新开的同步默认加密：先设一个加密密码，设好就开始同步（2026-10-19）', async () => {
+    oss.objects.clear()
+    const { ctx, page, errors } = await newPage()
+    await configureOss(page)
+    await page.getByRole('switch', { name: '同步到阿里云 OSS' }).click()
+    await page.waitForURL(/#\/settings\/sync\/encryption\?/)
+    await page.getByText(/新开的同步默认加密，先设一个加密密码/).waitFor()
+    await page.screenshot({ path: OUT + '63-encryption-first.png', fullPage: true })
+    await page.getByLabel('密码', { exact: true }).fill(PASS)
+    await page.getByLabel('再输一次密码').fill(PASS)
+    await page.getByRole('checkbox').check()
+    await page.getByRole('button', { name: '设置' }).click()
+    await page.waitForURL(/#\/settings\/sync$/, { timeout: 30000 })
+    await page.locator('[role=switch][aria-label="同步到阿里云 OSS"][aria-checked="true"]').waitFor()
+    await writeToday(page, '默认加密的一篇。')
+    expect(await until(() => entryKeys().length === 1 && entryKeys()[0].endsWith('.age'), 30000)).toBe(true)
+    expect([...oss.objects.keys()].filter((k) => !k.includes('_encryption/') && !k.endsWith('.age'))).toEqual([])
+    // 改成明文在“加密密码”页最下面，先说清后果
+    await page.goto(BASE + '#/settings/sync/encryption')
+    await page.getByRole('heading', { name: '不加密' }).waitFor()
+    await page.evaluate(() => ((window as unknown as { __noAutoDialog: boolean }).__noAutoDialog = true))
+    await page.getByRole('button', { name: '改成明文' }).first().click()
+    const dlg = page.getByRole('alertdialog')
+    await dlg.getByText(/能登录这个账号、拿到 Token 或 AccessKey 的人/).waitFor()
+    await page.screenshot({ path: OUT + '64-to-plain.png' })
+    await dlg.getByRole('button', { name: '取消' }).click()
+    expect(errors).toEqual([])
+    await ctx.close()
   })
 
   it('编辑快捷栏：待办、列表续行、加粗；阅读视图里能勾选待办', async () => {

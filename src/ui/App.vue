@@ -11,6 +11,7 @@ import AppDialog from './components/AppDialog.vue'
 import { lock } from '../lockService'
 import { initLaunch } from '../launchService'
 import { initShare } from '../shareService'
+import { initUpdatePrompt } from '../updateService'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,17 +41,21 @@ onMounted(() => {
     .then(() => {
       initLaunch(router)
       initShare(router)
+      initUpdatePrompt(router)
     })
     .catch(() => {})
-  if (Capacitor.isNativePlatform()) {
-    // 安卓返回键：先关覆盖层（全屏看图）；首页退出 app，其他页面返回上一页
-    CapApp.addListener('backButton', () => {
-      if (!lock.locked && popBack()) return
-      if (lock.locked || route.path === '/') CapApp.exitApp()
-      else if (tab.value) router.replace('/')
-      else router.back()
-    })
+  // 安卓返回键：先关覆盖层（全屏看图、底部面板、提示框）；首页退出 app，其他页面返回上一页
+  const onBack = () => {
+    if (!lock.locked && popBack()) return
+    if (lock.locked || route.path === '/') {
+      if (Capacitor.isNativePlatform()) void CapApp.exitApp()
+    } else if (tab.value) router.replace('/')
+    else router.back()
   }
+  if (Capacitor.isNativePlatform()) CapApp.addListener('backButton', onBack)
+  // 端到端测试里按“返回键”
+  const w = window as unknown as { __diary?: Record<string, unknown> }
+  if (w.__diary) w.__diary.back = onBack
 })
 </script>
 

@@ -1,6 +1,6 @@
 /**
  * README 截图和“关于”页：用一份虚构的三个月日记，加一个会多轮查日记的模拟模型，
- * 拍下 AI 问答和月度总结的样子（e2e/out/readme-*.png），再看一眼关于页。
+ * 拍下首页、日历（暗色）、灯下的问答和图表、月度总结的样子（e2e/out/readme-*.png），再看一眼关于页。
  * 日记里的人名、地名都是虚构的。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -179,6 +179,13 @@ describe('README 截图与关于页', () => {
     await page.goto(BASE + '#/')
     await page.waitForTimeout(300)
     await page.screenshot({ path: OUT + 'readme-home.png' })
+    // 日历（暗色）：上个月整月都有日记
+    await page.goto(BASE + '#/calendar')
+    await page.getByRole('button', { name: '上个月' }).click()
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.waitForTimeout(400)
+    await page.screenshot({ path: OUT + 'readme-calendar-dark.png' })
+    await page.emulateMedia({ colorScheme: 'light' })
     if (sea) {
       await page.goto(BASE + `#/entry/${sea.date}`)
       await page.locator('article.reading').waitFor()

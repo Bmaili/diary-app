@@ -4,8 +4,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefs, savePrefsNow } from '../../prefs'
 import {
-  BACKENDS, changePassphrase, encState, loadKeys, recoverKeys, refreshPending, setupEncryption, syncNow, type BackendId,
+  BACKENDS, changePassphrase, encState, loadKeys, recoverKeys, refreshPending, setEncrypt, setupEncryption, syncNow, type BackendId,
 } from '../../syncService'
+import { ask } from '../dialog'
 import { checkPassphrase, generatePassphrase } from '../../core/sync/crypto'
 import Icon from '../components/Icon.vue'
 
@@ -13,6 +14,8 @@ const route = useRoute()
 const router = useRouter()
 /** 设置好之后要为哪个后端打开加密 */
 const then = route.query.then as BackendId | undefined
+/** 是从“开启同步”过来的：设好密码顺便把同步开起来（2026-10-19 起新开的同步默认加密） */
+const enableAfter = route.query.enable === '1'
 const recoverFrom = ref<BackendId | ''>((route.query.recover as BackendId) || '')
 
 const recipient = ref('')
@@ -70,13 +73,49 @@ async function submit() {
   try {
     if (mode.value === 'change') await changePassphrase(pass.value)
     else await setupEncryption(pass.value)
-    if (then) prefs.sync[then].encrypt = true
+    if (then) {
+      prefs.sync[then].encrypt = true
+      if (enableAfter) prefs.sync[then].enabled = true
+    }
     await finish(mode.value === 'change' ? '密码已修改，下次同步会更新云端的密钥文件。' : '加密密码已设置。')
   } catch (e) {
     fail((e as Error).message)
   } finally {
     busy.value = false
   }
+}
+
+const encrypted = computed(() => BACKENDS.filter((b) => prefs.sync[b.id].encrypt))
+/** 改成明文：放在这一页的最下面，先说清后果（2026-10-19 起） */
+/** 中英文之间加空格：“阿里云 OSS ”“ GitHub ” */
+const pad = (s: string) => s.replace(/^([A-Za-z])/, ' $1').replace(/([A-Za-z])$/, '$1 ')
+const label = (id: BackendId) => pad(BACKENDS.find((b) => b.id === id)!.label)
+async function toPlain(id: BackendId) {
+  const name = label(id)
+  const history = id === 'github'
+    ? 'GitHub 的提交历史会一直留着这份明文，以后再打开加密也删不掉。'
+    : '如果 Bucket 开了版本控制，明文会作为历史版本一直留着。'
+  if (!(await ask({
+    title: `把${name.trim()}上的副本改成明文？`,
+    message: `改了以后，日记和照片会以明文放在${name}上：能登录这个账号、拿到 Token 或 AccessKey 的人，还有服务商自己，都能直接看到。\n\n${history}\n\n云端会全部换回明文文件，加密文件会被删除。手机上的日记不受影响。`,
+    ok: '改成明文', danger: true,
+  }))) return
+  await setEncrypt(id, false)
+  await savePrefsNow()
+}
+
+/** 开同步时不想设密码：不加密直接开（藏在设密码页的最下面，先说清后果） */
+async function enablePlain() {
+  if (!then) return
+  const name = label(then)
+  if (!(await ask({
+    title: `不加密，直接开启${name.trim()}同步？`,
+    message: `日记和照片会以明文放在${name}上：能登录这个账号、拿到 Token 或 AccessKey 的人，还有服务商自己，都能直接看到。${then === 'github' ? 'GitHub 的提交历史会一直留着这份明文，以后再打开加密也删不掉。' : ''}\n\n以后想加密，可以在“同步与备份”里打开。`,
+    ok: '不加密，直接开启', danger: true,
+  }))) return
+  prefs.sync[then].encrypt = false
+  prefs.sync[then].enabled = true
+  await finish('已开启同步（不加密）。')
 }
 
 async function finish(text: string) {
@@ -159,16 +198,33 @@ async function finish(text: string) {
           {{ busy ? '正在计算，需要几秒…' : mode === 'recover' ? '取回密钥' : mode === 'change' ? '修改' : '设置' }}
         </button>
       </div>
-      <p v-if="then" class="hint">设置后会为{{ BACKENDS.find((b) => b.id === then)?.label }}打开加密，并把云端全部改成加密文件。</p>
+      <button v-if="then && enableAfter && mode === 'setup'" class="text-btn quiet" @click="enablePlain">不加密，直接开启同步</button>
+      <p v-if="then && enableAfter" class="hint">新开的同步默认加密，先设一个加密密码，设好就开始同步{{ BACKENDS.find((b) => b.id === then)?.label }}。以后再开别的云端，用的是同一个密码，不用再设。</p>
+      <p v-else-if="then" class="hint">设置后会为{{ BACKENDS.find((b) => b.id === then)?.label }}打开加密，并把云端全部改成加密文件。</p>
     </div>
 
     <p v-if="encState.hasKeys || mode === 'view'" class="desc pad" style="margin-top: 20px">
       提醒：AI 问答、标注和总结仍会把相关日记以明文发给你选的 AI 服务，这一点不受云端加密影响。
     </p>
+
+    <section v-if="mode === 'view' && encrypted.length" class="plain">
+      <h2>不加密</h2>
+      <p class="desc pad">不建议。云端改成明文后，能登录账号的人和服务商都能直接看到日记。</p>
+      <div v-for="b in encrypted" :key="b.id" class="item">
+        <div>
+          <div>{{ label(b.id).trim() }}上的副本</div>
+          <div class="desc">{{ prefs.sync[b.id].enabled ? '现在是加密的' : '还没开同步，开了以后会加密' }}</div>
+        </div>
+        <button class="text-btn danger" @click="toPlain(b.id)">改成明文</button>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
+.plain { margin-top: 36px; }
+.quiet { margin-top: 18px; padding-left: 0; font-weight: 400; color: var(--faint); font-size: 13px; }
+.text-btn.danger { color: var(--danger); }
 code { font-size: 0.9em; word-break: break-all; }
 .key { font-size: 12px; }
 .tabs { display: flex; gap: 6px; margin-top: 8px; }

@@ -104,9 +104,16 @@ function open(url: string) {
       <div class="item">
         <div>
           <div>自动检查更新</div>
-          <div class="desc">每天最多检查一次。有新版本时只在设置里显示一个小红点，不会弹窗。</div>
+          <div class="desc">每天最多检查一次。有新版本时设置里显示一个小红点。</div>
         </div>
         <Switch v-model="prefs.update.auto" label="自动检查更新" />
+      </div>
+      <div v-if="prefs.update.auto" class="item">
+        <div>
+          <div>有新版时弹窗提醒</div>
+          <div class="desc">打开 app 时问一下要不要更新；点“暂不”后这一版不再弹。写日记的时候不会弹。</div>
+        </div>
+        <Switch v-model="prefs.update.popup" label="有新版时弹窗提醒" />
       </div>
       <button class="item link" @click="open(REPO_URL)">
         <div>

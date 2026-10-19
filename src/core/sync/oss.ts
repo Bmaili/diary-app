@@ -149,7 +149,8 @@ export class OssStore implements RemoteStore {
       for (const b of blocks) {
         const key = xmlValues(b, 'Key')[0]
         if (!key || key.endsWith('/')) continue
-        out.push({ path: key.slice(this.prefix.length), size: Number(xmlValues(b, 'Size')[0] ?? 0) })
+        const etag = xmlValues(b, 'ETag')[0]?.replace(/&quot;|"/g, '')
+        out.push({ path: key.slice(this.prefix.length), size: Number(xmlValues(b, 'Size')[0] ?? 0), ...(etag ? { etag } : {}) })
       }
       token = xmlValues(xml, 'IsTruncated')[0] === 'true' ? (xmlValues(xml, 'NextContinuationToken')[0] ?? null) : null
     } while (token)
@@ -158,7 +159,9 @@ export class OssStore implements RemoteStore {
 
   async apply(uploads: Upload[], deletes: string[], onDone: (p: string, k: 'upload' | 'delete') => Promise<void>) {
     await pool(uploads, 4, async (u) => {
-      await this.request('PUT', this.prefix + u.path, { body: u.bytes, contentType: contentTypeOf(u.path) })
+      const body = await u.read()
+      if (!body) return
+      await this.request('PUT', this.prefix + u.path, { body, contentType: contentTypeOf(u.path) })
       await onDone(u.path, 'upload')
     })
     await pool(deletes, 4, async (p) => {
@@ -176,12 +179,18 @@ export class OssStore implements RemoteStore {
     }
   }
 
-  async downloadAll(onFile: (path: string, bytes: Uint8Array) => Promise<void>, onProgress?: (d: number, t: number) => void) {
+  async downloadAll(
+    onFile: (path: string, bytes: Uint8Array, etag?: string) => Promise<void>,
+    onProgress?: (d: number, t: number) => void,
+    skip?: (path: string, etag?: string) => boolean,
+  ) {
     const files = await this.list()
     let done = 0
-    await pool(files, 6, async (f) => {
+    const todo = files.filter((f) => !(skip?.(f.path, f.etag) && ++done))
+    if (done) onProgress?.(done, files.length)
+    await pool(todo, 6, async (f) => {
       const res = await this.request('GET', this.prefix + f.path, { bytes: true })
-      await onFile(f.path, res.bytes())
+      await onFile(f.path, res.bytes(), f.etag)
       onProgress?.(++done, files.length)
     })
     return files.length

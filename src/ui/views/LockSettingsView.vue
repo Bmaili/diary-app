@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { pushBack } from '../backStack'
 import { useRouter } from 'vue-router'
 import { prefs } from '../../prefs'
 import { checkPin, disableLock, lock, setPin } from '../../lockService'
@@ -14,6 +15,13 @@ const router = useRouter()
 /** 输 PIN 的流程：verify（输旧的）→ new → confirm */
 type Step = 'verify' | 'new' | 'confirm'
 const flow = ref<null | { purpose: 'enable' | 'disable' | 'change'; step: Step; first: string }>(null)
+// 输 PIN 时按返回键：先关掉输入框，不离开设置页（2026-10-19 起）
+let removeBack: (() => void) | null = null
+watch(() => !!flow.value, (on) => {
+  removeBack?.()
+  removeBack = on ? pushBack(() => (flow.value = null)) : null
+})
+onBeforeUnmount(() => removeBack?.())
 const shake = ref(0)
 const err = ref('')
 

@@ -24,7 +24,7 @@ function memRemote(): RemoteStore & { files: Map<string, number> } {
     id: 'oss', label: '内存', files,
     async list() { return [...files].map(([path, size]) => ({ path, size })) },
     async apply(up: Upload[], del: string[], onDone) {
-      for (const u of up) { files.set(u.path, u.bytes.length); await onDone(u.path, 'upload') }
+      for (const u of up) { const b = await u.read(); if (b) { files.set(u.path, b.length); await onDone(u.path, 'upload') } }
       for (const d of del) { files.delete(d); await onDone(d, 'delete') }
     },
     async get() { return null },

@@ -190,6 +190,28 @@ describe('同步到 GitHub', () => {
     expect(await engine.pending('github')).toBe(0)
   })
 
+  it('要传的文件很多时分批提交，内容按需读取；中途断网的话已提交的批次不用重传（2026-10-19）', async () => {
+    const { repo, engine, store } = await setup()
+    for (let i = 0; i < 250; i++) await store.writeBase64(`diary/attachments/2026/2026-01-01_${i}.webp`, Buffer.from(`img-${i}`).toString('base64'))
+    await write(repo, '2026-10-04', '一篇')
+    const remote = new GitHubStore(ghCfg())
+    const total = await engine.pending('github')
+    // 第 150 个文件时断网：第一批 100 个已经提交，记进了清单
+    gh.failBlobPostAfter = 150
+    await expect(engine.sync(remote)).rejects.toThrow()
+    const left = await engine.pending('github')
+    expect(left).toBeLessThanOrEqual(total - 100)
+    expect(left).toBeGreaterThan(0)
+    gh.failBlobPostAfter = null
+    const before = gh.counts.blobPost
+    await engine.sync(remote)
+    expect(await engine.pending('github')).toBe(0)
+    // 第二次只传剩下的（第一批不重传）
+    expect(gh.counts.blobPost - before).toBeLessThanOrEqual(left + 1)
+    expect(gh.files().get('attachments/2026/2026-01-01_249.webp')!.toString()).toBe('img-249')
+    expect(gh.commits().some((c) => /\(\d+ files, \d\/\d\)$/.test(c.message))).toBe(true)
+  })
+
   it('Token 错误、仓库不存在时给出明确提示', async () => {
     await expect(new GitHubStore(ghCfg({ token: 'bad' })).test()).rejects.toThrow(/Token 无效/)
     await expect(new GitHubStore(ghCfg({ repo: 'nope' })).test()).rejects.toThrow(/仓库不存在/)
@@ -244,6 +266,29 @@ describe('从云端恢复（规格 6.6）', () => {
       expect(await b.engine.pending(remoteB.id)).toBe(0)
     })
   }
+
+  it('GitHub 恢复逐个下载、不下整包；用完每小时的请求次数时停下，再来时接着下（2026-10-19）', async () => {
+    const a = await setup()
+    await generateTestEntries(a.repo, { count: 60, endDate: '2026-10-04' })
+    await a.engine.sync(new GitHubStore(ghCfg()))
+    const original = await snapshot(a.store, a.repo)
+    const total = gh.files().size
+
+    const b = await setup()
+    gh.rateLimitAfter = 25
+    await expect(restoreFrom(new GitHubStore(ghCfg()), b.store, b.engine)).rejects.toThrow(/5000 次.*以后再试/)
+    expect(gh.counts.zipball).toBe(0)
+    // 手机上的日记没动
+    expect(await b.repo.listEntryFiles()).toEqual([])
+    gh.rateLimitAfter = null
+    const got = gh.counts.blobGet
+    const r = await restoreFrom(new GitHubStore(ghCfg()), b.store, b.engine)
+    expect(r.replacedAll).toBe(true)
+    // 第二次只下剩下的
+    expect(gh.counts.blobGet - got).toBe(total - 25)
+    expect(await snapshot(b.store, b.repo)).toEqual(original)
+    expect(await b.engine.pending('github')).toBe(0)
+  })
 
   it('本地已有日记时：只补入本地没有的，同名不同内容的保留本地并列出', async () => {
     const a = await setup()
