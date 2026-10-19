@@ -32,7 +32,7 @@ const tabIndex = computed(() => Math.max(0, tabs.findIndex((t) => t.key === tab.
 const tabs = [
   { key: 'home', path: '/', label: '日记', icon: 'book' },
   { key: 'calendar', path: '/calendar', label: '日历', icon: 'calendar' },
-  { key: 'ai', path: '/ai', label: 'AI', icon: 'brush' },
+  { key: 'ai', path: '/ai', label: '灯下', icon: 'lamp' },
 ]
 
 onMounted(() => {

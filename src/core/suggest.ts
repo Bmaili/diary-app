@@ -10,9 +10,10 @@ export interface Suggestion {
   kind: SuggestKind
 }
 
-const PERSON = ['今年和{x}见了几次？', '上次提到{x}是什么时候？', '和{x}在一起的日子，心情怎么样？', '我和{x}都一起做过什么？']
-const PLACE = ['{x}都是什么时候去的？', '今年去了几次{x}？', '在{x}的那些天，都发生了什么？']
-const TAG = ['写到“{x}”的日子，心情怎么样？', '最近一次写到“{x}”是什么时候？']
+// 2026-10-19 起少问统计、多问有故事的：问题什么样，回答就什么样
+const PERSON = ['我和{x}都一起做过什么？', '上次见{x}是什么时候，那天怎么样？', '和{x}在一起最开心的是哪天？', '今年和{x}见了几次？']
+const PLACE = ['在{x}的那些天，都发生了什么？', '第一次去{x}是什么时候？', '今年去了几次{x}？']
+const TAG = ['说说我写“{x}”的那些日子', '最近一次写到“{x}”是什么时候？']
 
 function top(rows: IndexRow[], pick: (r: IndexRow) => string[], n: number): string[] {
   const c = new Map<string, number>()
@@ -57,13 +58,14 @@ export function suggestQuestions(rows: IndexRow[], today: string, seed: number, 
 
   const time: Suggestion[] = []
   const recent = rows.some((r) => r.date >= shiftDays(today, -31))
-  if (recent) time.push({ q: '最近一个月心情怎么样？', kind: 'time' }, { q: '帮我回顾一下上个月', kind: 'time' })
+  if (recent) time.push({ q: '最近有什么让我高兴的小事？', kind: 'time' }, { q: '帮我回顾一下上个月', kind: 'time' }, { q: '最近一个月过得怎么样？', kind: 'time' })
   const lastYear = shiftDays(today, -365)
   if (rows.some((r) => r.date >= shiftDays(lastYear, -20) && r.date <= shiftDays(lastYear, 20))) {
     time.push({ q: '去年这个时候我在忙什么？', kind: 'time' })
   }
   if (people.length) time.push({ q: '这一年我和谁见面最多？', kind: 'time' })
-  if (rows.length >= 30) time.push({ q: '星期几我的心情最好？', kind: 'time' })
+  if (rows.some((r) => r.date === lastYear)) time.push({ q: '去年今天我写了什么？', kind: 'time' })
+  if (rows.length >= 30) time.push({ q: '这些日子里，我最开心的是哪几天？', kind: 'time' })
   if (!time.length && rows.length) time.push({ q: '帮我回顾一下我写过的日记', kind: 'time' })
   pool.push(time.sort(() => R() - 0.5))
 

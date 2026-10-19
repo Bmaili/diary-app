@@ -497,7 +497,7 @@ describe('阶段 4：AI', () => {
 
     // 添加服务
     await page.goto(BASE + '#/ai')
-    await page.getByText('接上一个 AI 服务，就能这样问你的日记').waitFor()
+    await page.getByText('接上一个 AI 服务，就能在灯下这样聊你的日记').waitFor()
     await page.screenshot({ path: OUT + '40-ai-empty.png' })
     await page.getByRole('link', { name: '添加 AI 服务' }).click()
     await page.getByRole('combobox').first().selectOption('DeepSeek')
@@ -518,7 +518,7 @@ describe('阶段 4：AI', () => {
     // “相关日期”画成日记小笺（2026-10-15 起）：先显示 3 天，其余折叠
     expect(await page.locator('.note-row').count()).toBe(3)
     await page.getByRole('button', { name: '还有 3 天' }).waitFor()
-    await page.getByText(/统计了/).waitFor()
+    await page.getByText(/数了数写到/).waitFor()
     await page.screenshot({ path: OUT + '42-ai-answer.png' })
     await page.locator('.note-row').first().click()
     await page.waitForURL(/#\/entry\/\d{4}-\d{2}-\d{2}/)
@@ -526,9 +526,9 @@ describe('阶段 4：AI', () => {
 
     // 批量标注
     await page.goto(BASE + '#/ai?tab=tidy')
-    await page.getByText(/7.*篇还没标注/).waitFor()
-    await page.getByRole('button', { name: '开始标注' }).click()
-    await page.getByText(/0.*篇还没标注/).waitFor({ timeout: 30000 })
+    await page.getByText(/7.*篇还没整理/).waitFor()
+    await page.getByRole('button', { name: '开始整理' }).click()
+    await page.getByText(/0.*篇还没整理/).waitFor({ timeout: 30000 })
     await page.screenshot({ path: OUT + '43-ai-tidy.png' })
 
     // 词表合并：把“阿杰”改名为“杰哥”
@@ -545,18 +545,18 @@ describe('阶段 4：AI', () => {
     await page.goto(BASE + '#/')
     await page.getByText(/生成 \d+ 月的总结/).click()
     await page.getByText('你常去老王烧烤').waitFor({ timeout: 30000 })
-    await page.getByText('最新').waitFor()
+    await page.getByText('写好了', { exact: true }).waitFor()
     await page.screenshot({ path: OUT + '44-summary.png' })
     // 手动修改后锁定
     await page.getByRole('button', { name: '手动修改' }).click()
     await page.getByLabel('总结内容').fill('我自己写的总结。')
     await page.getByRole('button', { name: '保存' }).click()
-    await page.getByText(/已锁定/).waitFor()
-    expect(await page.getByRole('button', { name: '重新生成' }).count()).toBe(0)
+    await page.getByText(/已定稿/).waitFor()
+    expect(await page.getByRole('button', { name: '重写' }).count()).toBe(0)
 
     // 总结列表
     await page.goto(BASE + '#/ai?tab=summary')
-    await page.getByText('已锁定').first().waitFor()
+    await page.getByText('已定稿').first().waitFor()
     await page.screenshot({ path: OUT + '45-summary-list.png' })
     expect(errors).toEqual([])
     await ctx.close()
@@ -927,7 +927,7 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     await page.getByLabel('问题', { exact: true }).fill('最近在忙什么？')
     await page.getByRole('button', { name: '发送' }).click()
     await page.getByText('这几天你常看星星。').waitFor()
-    await page.getByText(/调用模型 1 次，输入 100，输出 10 tokens/).waitFor()
+    await page.getByText(/这次翻了 1 回，用了约 110 tokens（读 100，写 10）/).waitFor()
     await page.screenshot({ path: OUT + '75-ai-usage.png' })
     const body = llm.requests[llm.requests.length - 1].body as { enable_thinking?: boolean; temperature?: number; messages: { role: string; content: string }[] }
     expect(body.enable_thinking).toBe(false)
@@ -936,7 +936,9 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     expect(system).toContain('阿杰是我大学室友。')
     expect(system).toContain('回答不超过三句话。')
     expect(system).not.toContain('口气轻松一点。')
-    expect(system.startsWith('你是我的日记助手，回答要押韵。\n\n回答里可以放图表')).toBe(true)
+    // 改过的“问答”一段在最前，后面接人物和代码附加的固定部分（2026-10-19 起）
+    expect(system.startsWith('你是我的日记助手，回答要押韵。\n\n## 这次陪他聊的是：老友')).toBe(true)
+    expect(system).toContain('回答里可以放图表')
     expect(system).toContain('\n\n今天是 ')
     expect(system).not.toContain('先用工具查')
     // 恢复默认（确认框由 newPage 自动接受）

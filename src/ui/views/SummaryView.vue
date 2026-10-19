@@ -70,10 +70,10 @@ async function setLocked(v: boolean) {
 
 const STATUS: Record<SummaryStatus, string> = {
   missing: '还没有总结',
-  fresh: '最新',
-  stale: '生成后日记有改动，可以重新生成',
-  locked: '已锁定：你改过它，AI 不会覆盖',
-  'locked-stale': '已锁定。生成后日记有改动；想让 AI 重新写，先解锁',
+  fresh: '写好了',
+  stale: '写好之后日记又改过，可以重写',
+  locked: '已定稿：你改过它，不会被重写',
+  'locked-stale': '已定稿。之后日记又改过；想重写，先点右上角的锁',
 }
 </script>
 
@@ -82,15 +82,15 @@ const STATUS: Record<SummaryStatus, string> = {
     <header class="topbar">
       <button class="icon-btn" aria-label="返回" @click="router.back()"><Icon name="back" /></button>
       <h1>{{ title }}总结</h1>
-      <button v-if="doc && !editing" class="icon-btn" :aria-label="locked ? '解锁' : '锁定'" @click="setLocked(!locked)">
+      <button v-if="doc && !editing" class="icon-btn" :aria-label="locked ? '取消定稿' : '定稿'" @click="setLocked(!locked)">
         <Icon :name="locked ? 'lock' : 'unlock'" />
       </button>
     </header>
 
     <div class="body">
-      <p class="status" :class="status">{{ doc && status === 'missing' ? '上次生成的内容是空的，请重新生成' : STATUS[status] }}</p>
+      <p class="status" :class="status">{{ doc && status === 'missing' ? '上次写出来是空的，再写一次吧' : STATUS[status] }}</p>
       <p v-if="doc?.meta.generated_at" class="meta">
-        由 {{ doc.meta.model }} 生成于 {{ doc.meta.generated_at.slice(0, 16).replace('T', ' ') }}，依据 {{ doc.meta.source_count }} {{ isYear ? '份月度总结' : '篇日记' }}
+        {{ doc.meta.model }} 写于 {{ doc.meta.generated_at.slice(0, 16).replace('T', ' ') }}，读了 {{ doc.meta.source_count }} {{ isYear ? '份月度总结' : '篇日记' }}
       </p>
 
       <template v-if="editing">
@@ -99,7 +99,7 @@ const STATUS: Record<SummaryStatus, string> = {
           <button class="solid-btn" @click="saveEdit">保存</button>
           <button class="text-btn" @click="editing = false">取消</button>
         </div>
-        <p class="hint">保存后这份总结会被锁定，AI 不会再覆盖它。</p>
+        <p class="hint">保存后就算定稿，不会再被重写。</p>
       </template>
       <template v-else>
         <!-- eslint-disable-next-line vue/no-v-html -->
@@ -107,10 +107,10 @@ const STATUS: Record<SummaryStatus, string> = {
         <p v-if="busy" class="muted">{{ summarizing.message }}……</p>
         <p v-if="err" class="err">{{ err }}</p>
         <div class="row">
-          <button v-if="!locked" class="solid-btn" :disabled="busy" @click="gen">{{ doc ? '重新生成' : '生成总结' }}</button>
+          <button v-if="!locked" class="solid-btn" :disabled="busy" @click="gen">{{ doc ? '重写' : '写总结' }}</button>
           <button class="text-btn" :disabled="busy" @click="edit">{{ doc ? '手动修改' : '自己写' }}</button>
         </div>
-        <p v-if="locked" class="hint">要让 AI 重新生成，先点右上角的锁解锁。</p>
+        <p v-if="locked" class="hint">想重写，先点右上角的锁取消定稿。</p>
       </template>
     </div>
   </div>

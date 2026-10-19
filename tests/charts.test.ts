@@ -96,7 +96,7 @@ describe('问答循环里的图表', () => {
     expect(c.series[0].groups.map((g) => g.key)).toEqual(['2026-07', '2026-08', '2026-09', '2026-10'])
     const july = index.aiRows().filter((x) => x.date.startsWith('2026-07')).length
     expect(c.series[0].groups[0].days).toBe(july)
-    expect(r.steps[0].summary).toBe('做了分组统计（按月）')
+    expect(r.steps[0].summary).toBe('按月份理了理')
     expect(c.title).toBe('按月')
   })
 

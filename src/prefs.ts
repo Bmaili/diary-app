@@ -4,6 +4,7 @@
 import { reactive, watch } from 'vue'
 import { Preferences } from '@capacitor/preferences'
 import type { PromptOverride } from './core/llm/prompts'
+import type { CustomPersona } from './core/llm/personas'
 
 export interface PinnedQuestion {
   q: string
@@ -54,8 +55,10 @@ export const prefs = reactive({
     notes: '',
     /** 只给某一项功能的补充说明，接在共用说明后面 */
     taskNotes: { chat: '', extract: '', summary: '', caption: '', annotate: '' },
-    /** 问答：带上最近几轮对话、最多调用几轮工具 */
-    chat: { historyTurns: 10, maxRounds: 10 },
+    /** 问答：带上最近几轮对话、最多调用几轮工具、上次选的人物（2026-10-19 加入） */
+    chat: { historyTurns: 10, maxRounds: 10, persona: 'friend' },
+    /** 自己添加的人物（2026-10-19 加入）：名字、说话的样子、一句例句 */
+    personas: [] as CustomPersona[],
     /** 批量抽取同时处理几篇 */
     extract: { concurrency: 2 },
     /** 插图后自动让 AI 看图写一句说明（会把这张图发给 AI 服务），默认关 */

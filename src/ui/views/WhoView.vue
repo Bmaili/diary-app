@@ -102,7 +102,7 @@ const writtenAt = (at: number) => {
       <h1>{{ value }}</h1>
     </header>
 
-    <p v-if="!bio.days.length" class="note">日记的标注里还没有{{ who }}。做过 AI 标注、或者在编辑页手动填上以后，这里就有了。</p>
+    <p v-if="!bio.days.length" class="note">整理过的日记里还没有{{ who }}。在灯下“整理”过、或者在编辑页手动填上以后，这里就有了。</p>
 
     <template v-else>
       <div class="hero">
@@ -182,7 +182,7 @@ const writtenAt = (at: number) => {
         </template>
       </div>
       <button v-if="bio.days.length > limit" class="text-btn more" @click="limit += 60">再显示 {{ Math.min(60, bio.days.length - limit) }} 天</button>
-      <p v-if="unextracted" class="desc pad foot">还有 <span class="num">{{ unextracted }}</span> 篇没做过 AI 标注，这里只按标注过的统计，可能少算。</p>
+      <p v-if="unextracted" class="desc pad foot">还有 <span class="num">{{ unextracted }}</span> 篇没整理过，这里只按整理过的算，可能少算。</p>
     </template>
   </div>
 </template>

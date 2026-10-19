@@ -70,7 +70,7 @@ const byPlace = new Map<string, string[]>()
 for (const s of withYu) for (const p of s.places) byPlace.set(p, [...(byPlace.get(p) ?? []), s.date])
 const sea = withYu.find((s) => s.places.includes('海边'))
 
-/** 模拟模型：问答时先查词表、再计数、再读原文，最后写一段带表格的回答；总结时写一篇带小标题的月度总结 */
+/** 模拟模型：问答时先查词表、再计数、再读原文，最后像老友那样聊几句、给两个“接着问”；总结时写一篇带小标题的月度总结 */
 function script({ system, turns, tools }: { system: string; turns: Turn[]; tools: string[] }) {
   if (system.includes('月度日记总结')) {
     const moods = inLast.map((s) => s.mood)
@@ -92,11 +92,12 @@ function script({ system, turns, tools }: { system: string; turns: Turn[]; tools
   if (calls.length === 1) return { toolCalls: [{ name: 'count_days', args: { terms: ['小雨'], from, to } }] }
   if (calls.length === 2) return { toolCalls: [{ name: 'get_entries', args: { dates: withYu.map((s) => s.date) } }] }
   const rows = [...byPlace.entries()].sort((a, b) => b[1].length - a[1].length)
+  const top = rows.slice(0, 3).map(([p]) => p).join('、')
   return {
-    text: `${lm} 月你和小雨一起出门 **${withYu.length} 天**（按天计，同一天去两个地方算一天），去了这些地方：\n\n` +
-      `| 地方 | 天数 |\n| --- | --- |\n${rows.map(([p, d]) => `| ${p} | ${d.length} |`).join('\n')}\n\n` +
-      `${sea ? `最特别的是 ${md(sea.date)}去海边看日出，你写下“今年最开心的一天”。` : ''}去江边公园最多，几乎都是下班后散步；有一次她说想养一只猫，你们讨论了半天名字。\n\n` +
-      `相关日期：${withYu.map((s) => s.date).join('、')}`,
+    text: `${sea ? `最难忘的应该是 ${sea.date} 吧——天没亮就出门去海边看日出，你写下“今年最开心的一天”。\n\n` : ''}` +
+      `那个月你们一起出门 ${withYu.length} 天，${top}都去过，江边公园最多，几乎都是下班后散步。有一次她说想养一只猫，你们为名字讨论了半天，后来定了吗？\n\n` +
+      `相关日期：${withYu.map((s) => s.date).join('、')}\n` +
+      `接着问：小雨想养的猫后来叫什么？｜我们第一次去海边是什么时候？`,
   }
 }
 
@@ -157,7 +158,7 @@ describe('README 截图与关于页', () => {
     await page.getByLabel('问题', { exact: true }).fill(`${lm} 月我和小雨都去了哪些地方？`)
     await page.getByRole('button', { name: '发送' }).click()
     await page.getByText(/一起出门/).first().waitFor()
-    await page.locator('.a table').waitFor()
+    await page.locator('.next .nq').first().waitFor()
     await page.locator('.note-row').first().waitFor()
     expect(await page.locator('.note-row').count()).toBe(Math.min(3, withYu.length))
     // 从顶上拍：标签页、问题、查询步骤和回答都在一屏里
@@ -210,21 +211,21 @@ describe('README 截图与关于页', () => {
         answer: (r) => {
           const g = (r.series as { groups: { label: string; avg_mood: number | null }[] }[])[0].groups.filter((x) => x.avg_mood != null)
           const best = [...g].sort((a, b) => b.avg_mood! - a.avg_mood!)[0]
-          return `这几个月心情整体平稳，${best.label}平均 ${best.avg_mood} 分，最高。\n\n[[chart:${r.chart_id}:line]]\n\n每个月的心情构成：\n\n[[chart:${r.chart_id}:mood]]`
+          return `这几个月心情一直挺稳，${best.label}最好，开心的日子明显多了。\n\n[[chart:${r.chart_id}:line]]\n\n每个月的好日子和坏日子各占多少：\n\n[[chart:${r.chart_id}:mood]]`
         },
       },
       和谁: {
         call: { name: 'aggregate', args: { group_by: 'person' } },
         answer: (r) => {
           const g = (r.series as { groups: { label: string; days: number; avg_mood: number }[] }[])[0].groups
-          return `出现最多的是${g[0].label}（${g[0].days} 天），和${g[0].label}在一起的日子平均心情 ${g[0].avg_mood}。\n\n[[chart:${r.chart_id}]]`
+          return `写得最多的是${g[0].label}，有 ${g[0].days} 天，和${g[0].label}在一起的日子，你多半心情不错。\n\n[[chart:${r.chart_id}]]`
         },
       },
       晴天和下雨: {
         call: { name: 'aggregate', args: { group_by: 'none', series: [{ label: '晴天', weather: ['晴'] }, { label: '多云', weather: ['多云'] }, { label: '阴天', weather: ['阴'] }, { label: '雨天', weather: ['雨'] }] } },
         answer: (r) => {
           const s = r.series as { label: string; avg_mood: number }[]
-          return `${s.map((x) => `${x.label}平均心情 ${x.avg_mood}`).join('，')}。\n\n[[chart:${r.chart_id}:mood]]`
+          return `${s.length > 1 ? `${s[0].label}和${s[1].label}比起来，` : ''}心情的差别都在图里：\n\n[[chart:${r.chart_id}:mood]]`
         },
       },
       星期几: {

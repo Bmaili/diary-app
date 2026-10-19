@@ -11,6 +11,7 @@ import { extractEntry, runBatch, vocabulary, type BatchState, type Extraction } 
 import { generateMonthly, generateYearly } from './core/llm/summarize'
 import { captionImage } from './core/llm/caption'
 import { promptText, type PromptId } from './core/llm/prompts'
+import { cleanCustom, DEFAULT_PERSONA, personaById, type CustomPersona, type Persona } from './core/llm/personas'
 import { imageForAi } from './imageService'
 import { mergeValues } from './core/vocab'
 import type { ListField } from './core/types'
@@ -107,6 +108,9 @@ export interface ChatTurn {
   stopped?: boolean
   /** 回答里引用到的图表数据（2026-10-12 加入，旧记录没有） */
   charts?: Record<string, ChartData>
+  /** 这一句是哪个人物答的（2026-10-19 加入）：id 和当时的名字（自定义人物删了也能显示） */
+  persona?: string
+  personaName?: string
 }
 
 export interface Conversation {
@@ -114,6 +118,8 @@ export interface Conversation {
   title: string
   updatedAt: number
   turns: ChatTurn[]
+  /** 这个对话现在由哪个人物陪聊（2026-10-19 加入；旧对话没有，用上次选的） */
+  persona?: string
 }
 
 const CHATS = 'ai/chats.json'
@@ -144,6 +150,47 @@ export function newConversation() {
   chats.currentId = ''
 }
 
+// ---------- 人物（规格 7.3，2026-10-19 加入） ----------
+
+/** 现在陪聊的人物：打开着的对话用它自己的，新对话用上次选的 */
+export function activePersona(): Persona {
+  return personaById(current()?.persona ?? prefs.ai.chat.persona, prefs.ai.personas)
+}
+
+/** 换人物：记成下次的默认；打开着对话时从下一句开始换 */
+export async function setPersona(id: string) {
+  prefs.ai.chat.persona = id
+  const c = current()
+  if (c && c.persona !== id) {
+    c.persona = id
+    await saveChats()
+  }
+}
+
+/** 保存一个自定义人物（新的加在最后）。返回保存后的样子；名字或说话的样子为空返回 null */
+export function savePersona(p: CustomPersona): CustomPersona | null {
+  const c = cleanCustom(p)
+  if (!c) return null
+  const i = prefs.ai.personas.findIndex((x) => x.id === c.id)
+  if (i >= 0) prefs.ai.personas[i] = c
+  else prefs.ai.personas.push(c)
+  return c
+}
+
+/** 删掉自定义人物：正在用它的换回老友（对话记录里的名字留着） */
+export async function removePersona(id: string) {
+  prefs.ai.personas = prefs.ai.personas.filter((p) => p.id !== id)
+  if (prefs.ai.chat.persona === id) prefs.ai.chat.persona = DEFAULT_PERSONA
+  let changed = false
+  for (const c of chats.list) {
+    if (c.persona === id) {
+      c.persona = DEFAULT_PERSONA
+      changed = true
+    }
+  }
+  if (changed) await saveChats()
+}
+
 export async function deleteConversation(id: string) {
   chats.list = chats.list.filter((c) => c.id !== id)
   if (chats.currentId === id) chats.currentId = ''
@@ -165,21 +212,22 @@ export async function askQuestion(q: string): Promise<void> {
   await loadChats()
   let conv = current()
   if (!conv) {
-    conv = { id: `c${Date.now()}`, title: q.trim().slice(0, 30), updatedAt: Date.now(), turns: [] }
+    conv = { id: `c${Date.now()}`, title: q.trim().slice(0, 30), updatedAt: Date.now(), turns: [], persona: prefs.ai.chat.persona }
     chats.list.unshift(conv)
     chats.currentId = conv.id
   }
   Object.assign(asking, { busy: true, steps: [], question: q.trim(), partial: '', charts: {} })
   controller = new AbortController()
   const all = index.aiRows()
-  const turn: ChatTurn = { q: q.trim(), a: '', steps: [], dates: [], at: Date.now() }
+  const persona = personaById(conv.persona ?? prefs.ai.chat.persona, prefs.ai.personas)
+  const turn: ChatTurn = { q: q.trim(), a: '', steps: [], dates: [], at: Date.now(), persona: persona.id, personaName: persona.name }
   try {
     const r = await ask({
       cfg: await configFor('chat'),
       tools,
       question: q.trim(),
       history: conv.turns.filter((t) => !t.error).map((t) => ({ q: t.q, a: t.a })),
-      system: systemPrompt(today(), all[all.length - 1]?.date ?? null, all[0]?.date ?? null, all.length, prompt('chat')),
+      system: systemPrompt(today(), all[all.length - 1]?.date ?? null, all[0]?.date ?? null, all.length, prompt('chat'), persona),
       onStep: (s) => asking.steps.push(s),
       historyTurns: int(prefs.ai.chat.historyTurns, 10, 50, 10),
       maxRounds: int(prefs.ai.chat.maxRounds, 10, 30, 10),

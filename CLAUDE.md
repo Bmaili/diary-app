@@ -76,6 +76,7 @@ src/core/            与平台无关、有单元测试的逻辑
   llm/               client.ts（OpenAI 兼容与 Anthropic 两种协议；chatText 要正文：空输出报错、截断自动加倍重试；
                      chatJson 要 JSON：约束解码 → 宽松解析 → 请它重写；去掉 <think>）
                      prompts.ts（各功能系统提示词：可编辑部分 + 代码附加的固定部分，用户改过的存 prefs.ai.prompts）
+                     personas.ts（灯下的人物：内置六个 + 自定义，各自的首屏问候）
                      tools.ts agent.ts（工具调用问答，计数在代码里做；按上下文长度压缩发送量）
                      stats.ts（aggregate 分组统计）charts.ts（回答里的图表：编号、[[chart:…]] 标记、画法）
                      extract.ts summarize.ts caption.ts（看图写说明，user 消息可带 images）
@@ -91,7 +92,8 @@ src/core/            与平台无关、有单元测试的逻辑
   shareIn.ts（分享进来的文字怎么拼、接在哪）annotation.ts（朱批的格式、发给模型的内容、清理输出）
   yearbook.ts（年度日记本的“水墨”排版：纯函数出整本 HTML，梅枝、远山、圆相都是 SVG；yearStats 算“这一年”的数）  llm/annotate.ts（朱批）
   orphans.ts（没被用到的图片：离开编辑页时去掉的、手动清理）extractOverview.ts（AI 标注一览的分组）
-  answer.ts（问答回答的后处理：相关日期→小笺、引文逐字核对、人名地名链接）suggest.ts（问答首屏的推荐问题）
+  answer.ts（问答回答的后处理：相关日期→小笺、接着问→按钮、引文逐字核对、人名地名链接）suggest.ts（问答首屏的推荐问题）
+  greeting.ts（灯下输入框上面的问候：人物口吻、节令、日记，和首页小提示共用换句种子）
   bio.ts（人物 / 地点 / 标签小传的统计）llm/portrait.ts（小传里“请 AI 写几句”）
 src/platform/        Capacitor 适配：capStore（浏览器里文本要规范化）、nativeHttp
                      （真机直接调 CapacitorHttp 插件，不用它的 fetch 补丁：会损坏二进制）、
@@ -113,7 +115,8 @@ src/ui/              views/ 各页面，components/，style.css（主题）setti
                      editor/ 编辑页的组合式函数：useEntrySession（打开/自动保存/离开/删除）
                      usePlaceWeather useTextarea（自动增高时保持滚动、光标不被键盘挡住）useImages（插图、说明、看大图）useAiExtract
                      useShareIn（收下分享进来的内容、撤销）useAnnotation（朱批）
-                     views/AiTaggedView.vue（AI 标注一览）WhoView.vue（小传，/who/<field>/<词>）
+                     views/AiView.vue（灯下：聊聊 / 总结 / 整理）PersonaEditView.vue（添加、修改自己的人物）
+                     AiTaggedView.vue（整理过的，原“AI 标注一览”）WhoView.vue（小传，/who/<field>/<词>）
                      components/DayNotes.vue（“提到的日子”小笺列表）
                      components/ImageViewer.vue（全屏看图）AnswerChart.vue（问答图表，手写 SVG）
                      backStack.ts（安卓返回键先关覆盖层）
@@ -165,6 +168,9 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 改默认提示词时要注意：用户改过的版本不会跟着变。程序依赖的格式要求放在 `fixed`（由代码附加），不要放进可编辑部分。
 - 要正文的调用用 `chatText`，要 JSON 的用 `chatJson`，不要直接用 `chat` 再自己解析。
 - 第一次把日记发给某个服务前要征得同意（`ensureConsent`）；`ai_exclude` 的日记任何 AI 功能都不能读。
+- 问答的系统提示词 = 可编辑的“问答”一段（只管怎么翻日记）+ 人物一节（身份语气）+ 固定部分（`PERSONA_RULES` 底线、`CHART_RULES`、`QUOTE_RULES`、`TAIL_RULES`：相关日期和接着问的写法）。内置人物不开放修改；新增程序依赖的格式要放进固定部分，不要写进人物或可编辑部分。
+- 交给模型的单篇心情用文字（`moodWord`），给数字模型就会报“心情 4 分”；`get_stats` 不带心情。
+- 界面上的说法（2026-10-19 起）：AI 页叫“灯下”（聊聊 / 总结 / 整理），“标注”说成“整理”，“词表”说成“人与地”，总结“锁定”说成“定稿”。设置里的 AI 服务配置保持技术说法。编辑页的“AI 标注”按钮还没改。
 
 ## 常见的坑
 
@@ -191,6 +197,8 @@ docs/screenshots/    README 用的截图：由 e2e/readme.test.ts 用虚构日�
 - 年度日记本靠系统打印：照片很多时排版慢、占内存；页数是估的。封面、扉页用无边距的命名页（`@page bare`），书末不要再从普通页换到命名页（Chromium 会多插一张空白页）。楷体靠手机自带，没有就显示成宋体。
 
 ## 已商定的后续计划（2026-10-13 和用户确认）
+
+2026-10-19：AI 页改名“灯下”，问答加人物（老友默认、知音、说书人、损友、元气同桌、猫，可自己添加；内置的不能改）、输入框上面的问候、“接着问”；心情交给模型时用文字，不报分数；页面说法去技术化。用户决定同步合并提交先不做（担心的是 GitHub 仓库空间，算下来提交记录一年只有几 MB 到几十 MB，照片才是大头），“云端已用”也不做。
 
 2026-10-15：AI 页——问答首屏的推荐问题（代码出题）和收藏常问、回答里的日记小笺和逐字核对的原文引文、人名地名可点、人物 / 地点小传（用户从样张里选的：回答用列表小笺，小传用印章名帖加时间线）；词表点一下开小传，合并改成先“选择”。
 

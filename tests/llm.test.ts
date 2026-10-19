@@ -155,7 +155,7 @@ describe('验收：计数测试集（规格阶段 4）', () => {
       expect(r.answer).toContain('17 天')
       expect(r.dates).toEqual(d.visits)
       expect(r.answer).toContain('还没做过 AI 抽取')
-      expect(r.steps.map((s) => s.summary)).toEqual(['查了地点词表里的“老王”，找到 2 个', '统计了 “老王烧烤”、“老王家”、“老王烧烤”：17 天'])
+      expect(r.steps.map((s) => s.summary)).toEqual(['想了想“老王”还有哪些叫法，找到 2 个', '数了数写到“老王烧烤”、“老王家”、“老王烧烤”的日子：17 天'])
     })
   }
 

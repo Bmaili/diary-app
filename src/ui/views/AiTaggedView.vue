@@ -28,8 +28,8 @@ const tab = computed<Tab>(() => {
 })
 const setTab = (t: Tab) => router.replace({ query: { tab: t } })
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'tagged', label: '已标注' },
-  { id: 'pending', label: '待标注' },
+  { id: 'tagged', label: '整理过' },
+  { id: 'pending', label: '还没整理' },
   { id: 'skipped', label: '跳过' },
 ]
 
@@ -57,8 +57,8 @@ const monthLabel = (m: string) => `${m.slice(0, 4)} 年 ${Number(m.slice(5, 7))}
 const dayLabel = (d: string) => `${Number(d.slice(5, 7))} 月 ${Number(d.slice(8, 10))} 日`
 
 const EMPTY: Record<Tab, string> = {
-  tagged: '还没有标注过的日记。',
-  pending: '都标注过了。',
+  tagged: '还没有整理过的日记。',
+  pending: '都整理过了。',
   skipped: '没有跳过的日记。',
 }
 </script>
@@ -67,7 +67,7 @@ const EMPTY: Record<Tab, string> = {
   <div class="settings tagged-page">
     <header class="topbar">
       <button class="icon-btn" aria-label="返回" @click="router.back()"><Icon name="back" /></button>
-      <h1>标注一览</h1>
+      <h1>整理过的</h1>
     </header>
 
     <div class="seg" role="tablist">
@@ -76,9 +76,9 @@ const EMPTY: Record<Tab, string> = {
       </button>
     </div>
 
-    <p v-if="tab === 'tagged' && counts.tagged" class="hint pad">虚线框的是你手动改过的，AI 不会再动它。点一篇可以打开看。</p>
-    <p v-else-if="tab === 'pending' && counts.pending" class="hint pad">回到上一页点“开始标注”，会从这些里接着做。</p>
-    <p v-else-if="tab === 'skipped' && counts.skipped" class="hint pad">这些日记批量标注不会处理。</p>
+    <p v-if="tab === 'tagged' && counts.tagged" class="hint pad">虚线框的是你自己改过的，整理时不会再动它。点一篇可以打开看。</p>
+    <p v-else-if="tab === 'pending' && counts.pending" class="hint pad">回到上一页点“开始整理”，会从这些里接着做。</p>
+    <p v-else-if="tab === 'skipped' && counts.skipped" class="hint pad">整理时会跳过这些日记。</p>
 
     <p v-if="!list.length" class="desc pad empty">{{ EMPTY[tab] }}</p>
 

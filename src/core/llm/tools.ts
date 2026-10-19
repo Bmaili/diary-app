@@ -7,16 +7,25 @@ import type { FileStore, IndexRow, ListField } from '../types'
 import { hasBody, needsExtraction } from '../diaryIndex'
 import { readSummary, summaryStatus } from '../summaries'
 import type { ToolDef } from './client'
-import { aggregate, GROUP_BY, moodSummary, WEATHER_KINDS, type AggregateResult } from './stats'
+import { aggregate, GROUP_BY, WEATHER_KINDS, type AggregateResult } from './stats'
 import { chartFromAggregate, type ChartData } from './charts'
 
 const DATE = { type: 'string', description: 'YYYY-MM-DD' }
+
+/**
+ * 单篇日记的心情交给模型时用文字（2026-10-19 起）：给 1–5 的数字，模型就会在回答里报“心情 4 分”。
+ * 统计类工具（aggregate）仍用数字，提示词里要求不要把分数和平均分说给用户。
+ */
+export const MOOD_WORDS = ['很差', '不好', '一般', '不错', '很好'] as const
+export function moodWord(m: number | null | undefined): string | undefined {
+  return m != null && m >= 1 && m <= 5 ? MOOD_WORDS[Math.round(m) - 1] : undefined
+}
 const FIELD = { type: 'string', enum: ['places', 'people', 'tags'] }
 
 export const TOOL_DEFS: ToolDef[] = [
   {
     name: 'get_stats',
-    description: '日记的基本统计：篇数、日期范围、已用 AI 抽取过地点人物标签的篇数和未抽取篇数，以及心情概况（记了心情的天数、平均心情、1–5 各几天）。回答任何问题前可先调用以了解数据范围。',
+    description: '日记的基本统计：篇数、日期范围、已用 AI 抽取过地点人物标签的篇数和未抽取篇数。需要了解数据范围时调用。问心情用 aggregate。',
     parameters: { type: 'object', properties: { from: DATE, to: DATE }, required: [] },
   },
   {
@@ -62,7 +71,7 @@ export const TOOL_DEFS: ToolDef[] = [
         terms: { type: 'array', items: { type: 'string' }, description: '只统计提到这些词（任意一个）的日子' },
         fields: { type: 'array', items: FIELD },
         match_text: { type: 'boolean', description: 'terms 是否也在正文里找，默认 true' },
-        moods: { type: 'array', items: { type: 'integer' }, description: '只统计这些心情的日子' },
+        moods: { type: 'array', items: { type: 'integer' }, description: '只统计这些心情的日子：1 很差、2 不好、3 一般、4 不错、5 很好' },
         weather: { type: 'array', items: { type: 'string', enum: [...WEATHER_KINDS] } },
         places: { type: 'array', items: { type: 'string' } },
         people: { type: 'array', items: { type: 'string' } },
@@ -171,7 +180,6 @@ export class DiaryTools {
       not_extracted: pending,
       first: rows[rows.length - 1]?.date ?? null,
       last: rows[0]?.date ?? null,
-      ...moodSummary(rows),
     }
   }
 
@@ -249,7 +257,7 @@ export class DiaryTools {
       results: hits.slice(0, limit).map((h) => ({
         date: h.row.date,
         snippet: h.snippet.map((s) => s.text).join(''),
-        mood: h.row.mood ?? null,
+        mood: moodWord(h.row.mood),
         tags: h.row.tags,
         people: h.row.people,
         places: h.row.places,
@@ -277,7 +285,7 @@ export class DiaryTools {
       out.push({
         date: r.date,
         weather: m?.weather ? `${m.weather.text ?? ''} ${m.weather.temp_c ?? ''}°C`.trim() : undefined,
-        mood: m?.mood,
+        mood: moodWord(m?.mood),
         location: m?.location?.name ?? m?.location?.address,
         tags: m?.tags, people: m?.people, places: m?.places,
         text: body,

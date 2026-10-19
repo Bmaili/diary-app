@@ -2,6 +2,7 @@
  * 问答回答的后处理（2026-10-15 加入，规格 7.3）。都是纯函数，界面层只负责把结果画出来。
  *
  * - 提到的日子：回答末尾“相关日期：…”那一行拿出来，改画成日记小笺；没有这一行时用正文里出现的日期。
+ * - 接着问：回答末尾“接着问：…｜…”那一行拿出来，画成可以点的问题（2026-10-19 加入）。
  * - 原文引文：模型按 QUOTE_RULES 把原句写成引用块。代码逐字核对——在那一天（或任何一篇 AI 能读的日记）的
  *   正文里找得到才排成引文，找不到就当普通文字，免得把模型编的话当成你写过的。
  * - 人名地名：回答里出现词表里的人和地点，第一次出现处可以点开小传。
@@ -9,18 +10,63 @@
 
 const DATE = /\d{4}-\d{2}-\d{2}/g
 
-/** 拆出“相关日期”那一行。dates 按出现顺序去重 */
-export function splitRelated(md: string): { body: string; dates: string[] } {
+const RELATED = /^(?:\*\*)?相关日期(?:\*\*)?\s*[：:]/
+const NEXT = /^(?:\*\*)?接着问(?:\*\*)?\s*[：:]\s*/
+
+/**
+ * 拆出回答末尾的“相关日期：…”和“接着问：…”两行（2026-10-19 起有“接着问”，两行先后不限）。
+ * dates 按出现顺序去重；next 是“接着问”的几个问题（最多 3 个）。
+ * streaming：流式输出时最后一行可能才写到一半（“相关日”“接着”），也先藏起来，免得闪一下。
+ */
+export function splitTail(md: string, streaming = false): { body: string; dates: string[]; next: string[] } {
   const lines = md.split('\n')
+  let dates: string[] = []
+  let next: string[] = []
+  let end = lines.length
+  let seenRelated = false
+  let seenNext = false
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i].trim()
-    if (!l) continue
-    const m = /^(?:\*\*)?相关日期(?:\*\*)?\s*[：:]/.exec(l)
-    if (!m) break
-    const dates = [...new Set(l.match(DATE) ?? [])]
-    return { body: lines.slice(0, i).join('\n').trimEnd(), dates }
+    if (!l) {
+      end = i
+      continue
+    }
+    if (!seenRelated && RELATED.test(l)) {
+      seenRelated = true
+      dates = [...new Set(l.match(DATE) ?? [])]
+      end = i
+      continue
+    }
+    if (!seenNext && NEXT.test(l)) {
+      seenNext = true
+      next = l.replace(NEXT, '').split(/[｜|]/).map((q) => q.trim().replace(/^[“"「]|[”"」]$/g, '').trim()).filter((q) => q.length >= 2 && q.length <= 40).slice(0, 3)
+      end = i
+      continue
+    }
+    if (streaming && i === lines.length - 1 && l.length < 6 && ('相关日期：'.startsWith(l.replace(/^\*+/, '')) || '接着问：'.startsWith(l.replace(/^\*+/, '')))) {
+      end = i
+      continue
+    }
+    break
   }
-  return { body: md, dates: [] }
+  return { body: lines.slice(0, end).join('\n').trimEnd(), dates, next }
+}
+
+/** 拆出“相关日期”那一行（连同“接着问”）。dates 按出现顺序去重 */
+export function splitRelated(md: string): { body: string; dates: string[] } {
+  const { body, dates } = splitTail(md)
+  return { body, dates }
+}
+
+/** 回答下面“接着问”的几个问题 */
+export function nextQuestions(md: string): string[] {
+  return splitTail(md).next
+}
+
+/** 回答正文里能点开的日期显示成“10月12日”；不是今年的带上年份 */
+export function plainDay(date: string, thisYear: string): string {
+  const md = `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`
+  return date.slice(0, 4) === thisYear ? md : `${date.slice(0, 4)}年${md}`
 }
 
 /** 小笺要列的日子：有“相关日期”用它，没有就用正文里出现的日期（按先后） */

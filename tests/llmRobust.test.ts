@@ -9,7 +9,8 @@ import { extractEntry } from '../src/core/llm/extract'
 import { generateMonthly } from '../src/core/llm/summarize'
 import { readSummary } from '../src/core/summaries'
 import { ask, systemPrompt } from '../src/core/llm/agent'
-import { overrideFor, promptHash, PROMPTS, promptState, promptText, CHART_RULES, QUOTE_RULES } from '../src/core/llm/prompts'
+import { overrideFor, promptHash, PROMPTS, promptState, promptText, CHART_RULES, PERSONA_RULES, QUOTE_RULES, TAIL_RULES } from '../src/core/llm/prompts'
+import { personaBlock, personaById } from '../src/core/llm/personas'
 import { DiaryTools } from '../src/core/llm/tools'
 import { NodeStore } from './nodeStore'
 import { startLlmMock, type LlmMock } from './mocks/llmServer'
@@ -171,8 +172,12 @@ describe('可编辑的系统提示词', () => {
     expect(sys).toContain('{"places": [...], "people": [...], "tags": [...]}')
   })
 
-  it('问答：改过的提示词后面接上图表和引文的写法、今天的日期和日记概况', () => {
+  it('问答：改过的提示词后面接上人物、底线、图表和引文的写法、结尾格式、今天的日期和日记概况', () => {
     const s = systemPrompt('2026-10-07', '2025-01-01', '2026-10-07', 300, '你是我的日记助手。')
-    expect(s).toBe(`你是我的日记助手。\n\n${CHART_RULES}\n\n${QUOTE_RULES}\n\n今天是 2026-10-07。日记共 300 篇，最早 2025-01-01，最近 2026-10-07。`)
+    expect(s).toBe(`你是我的日记助手。\n\n${personaBlock(personaById('friend'))}\n\n${PERSONA_RULES}\n\n${CHART_RULES}\n\n${QUOTE_RULES}\n\n${TAIL_RULES}\n\n今天是 2026-10-07。日记共 300 篇，最早 2025-01-01，最近 2026-10-07。`)
+    // 选了别的人物：换的是人物那一节，底线照旧
+    const cat = systemPrompt('2026-10-07', null, null, 0, '你是我的日记助手。', personaById('cat'))
+    expect(cat).toContain('## 这次陪他聊的是：猫')
+    expect(cat).toContain(PERSONA_RULES)
   })
 })

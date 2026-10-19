@@ -396,6 +396,26 @@ export function pickHint(c: HintContext): Hint {
   return { text, namesDay: layer.kind === 'seasonal' && /^今天.时交|^再过|^明天/.test(text), kind: layer.kind }
 }
 
+/**
+ * 灯下首屏问候用的节令句子（2026-10-19 加入）：今天的节日节气、七十二候、此刻的时辰、交节前后。
+ * 那里是聊天不是写日记，所以去掉催人写的句子（含“写”“记”“笔”的）。
+ */
+export function seasonalLines(date: string, now: Date, cutoffHour = 4): string[] {
+  const slot = slotOf(now.getHours(), cutoffHour)
+  const l = lunarDay(date)
+  const md = date.slice(5)
+  const fest = md === '01-01' ? '元旦' : md === '05-01' ? '劳动节' : md === '10-01' ? '国庆' : l.festival
+  const p = pentad(date)
+  const gloss = PENTAD_GLOSS[p.text]
+  return [
+    ...(fest && FESTIVALS[fest] ? usable(FESTIVALS[fest], slot) : []),
+    ...(l.jieqi && JIEQI[l.jieqi] ? usable(JIEQI[l.jieqi], slot) : []),
+    ...(gloss ? [`${p.text}。${gloss}。`] : []),
+    ...SHICHEN[shichenOf(now.getHours())].lines,
+    ...countdown(now),
+  ].filter((t) => !URGE.test(t))
+}
+
 /** 测试用：全部固定句子（不含七十二候、交节和从日记里算出的句子） */
 export function allLines(): string[] {
   const all: Line[] = [

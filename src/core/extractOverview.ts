@@ -38,11 +38,11 @@ export interface ExtractOverview {
   skipped: SkippedRow[]
 }
 
-export const PENDING_LABEL: Record<PendingReason, string> = { never: '还没标注过', edited: '标注后又改过' }
+export const PENDING_LABEL: Record<PendingReason, string> = { never: '还没整理过', edited: '整理后又改过' }
 export const SKIP_LABEL: Record<SkipReason, string> = {
   exclude: '设了不让 AI 读',
   'mood-only': '只记了心情，没有正文',
-  broken: '文件格式有误',
+  broken: '这篇的格式坏了，读不出来',
 }
 
 const FIELDS: ListField[] = ['places', 'people', 'tags']

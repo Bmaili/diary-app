@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '../markdown'
-import { index, indexVersion, store, today } from '../../app'
+import { index, indexVersion, settings, store, today } from '../../app'
 import { prefs } from '../../prefs'
 import {
-  asking, askQuestion, batch, chats, current, deleteConversation, ensureConsent, isPinned, loadChats, merge, newConversation,
-  pauseBatch, profileFor, startBatch, stopAsking, togglePin, type ChatTurn,
+  activePersona, asking, askQuestion, batch, chats, current, deleteConversation, ensureConsent, isPinned, loadChats, merge, newConversation,
+  pauseBatch, setPersona, startBatch, stopAsking, togglePin, type ChatTurn,
 } from '../../aiService'
-import { answerDates, cnDay, linkNames, markQuotes, quoteFound, splitRelated } from '../../core/answer'
+import { answerDates, cnDay, linkNames, markQuotes, nextQuestions, plainDay, quoteFound, splitTail } from '../../core/answer'
+import { allPersonas, sealOf } from '../../core/llm/personas'
+import { pickGreeting } from '../../core/greeting'
+import { slotOf } from '../../core/hints'
+import { diaryFacts } from '../../core/diaryFacts'
+import { hintSeed, homeHint, refreshHintSeed } from '../../hintService'
+import Seal from '../components/Seal.vue'
 import { suggestQuestions, type SuggestKind } from '../../core/suggest'
 import DayNotes from '../components/DayNotes.vue'
 import { summaryStatus, type SummaryStatus } from '../../core/summaries'
@@ -110,12 +116,13 @@ const names = computed(() => {
   ]
 })
 
-function render(md: string): string {
+/** live：流式输出中，末尾那行可能才写到一半 */
+function render(md: string, live = false): string {
   const y = today().slice(0, 4)
-  const html = renderMarkdown(markQuotes(splitRelated(md).body, findQuote, (d) => cnDay(d, y)))
-  // 把日期变成可点开对应日记的链接
+  const html = renderMarkdown(markQuotes(splitTail(md, live).body, findQuote, (d) => cnDay(d, y)))
+  // 把日期变成可点开对应日记的链接，显示成“10月12日”（2026-10-19 起，不再露出 YYYY-MM-DD）
   const dated = html.replace(/(^|[^\w/#-])(\d{4}-\d{2}-\d{2})(?![\w-])/g, (_, pre: string, d: string) =>
-    index.get(d) ? `${pre}<a href="#/entry/${d}" class="dl">${d}</a>` : `${pre}${d}`,
+    index.get(d) ? `${pre}<a href="#/entry/${d}" class="dl">${plainDay(d, y)}</a>` : `${pre}${plainDay(d, y)}`,
   )
   return linkNames(dated, names.value)
 }
@@ -124,14 +131,63 @@ const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 function usageText(t: ChatTurn): string {
   const u = t.usage
   const parts: string[] = []
-  if (u?.input) parts.push(`调用模型 ${u.calls} 次，输入 ${k(u.input)}，输出 ${k(u.output)} tokens`)
-  if (t.compacted) parts.push('内容太多，省略了部分较早的查询结果')
+  if (u?.input) parts.push(`这次翻了 ${u.calls} 回，用了约 ${k(u.input + u.output)} tokens（读 ${k(u.input)}，写 ${k(u.output)}）`)
+  if (t.compacted) parts.push('翻得多了，前面看过的有些记不全')
   return parts.join('；')
+}
+
+// ---------- 人物、问候、接着问（规格 7.3，2026-10-19 加入） ----------
+
+const persona = computed(() => {
+  void chats.currentId
+  void conv.value?.persona
+  return activePersona()
+})
+const personaList = computed(() => allPersonas(prefs.ai.personas))
+const showPersonas = ref(false)
+async function choosePersona(id: string) {
+  await setPersona(id)
+  showPersonas.value = false
+}
+
+/** 问候和首页小提示共用换句的种子：隔 30 分钟或换了时段才换，切页面不换 */
+const nowTs = ref(Date.now())
+function refreshGreeting() {
+  nowTs.value = Date.now()
+  refreshHintSeed(today(), slotOf(new Date().getHours(), settings.cutoffHour), false)
+}
+refreshGreeting()
+onActivated(refreshGreeting)
+const facts = computed(() => {
+  void indexVersion.value
+  return prefs.ui.diaryHints ? diaryFacts(index.all(), today()).personal : []
+})
+const greeting = computed(() => {
+  if (!hintSeed.value) return ''
+  return pickGreeting({
+    persona: persona.value.id, date: today(), now: new Date(nowTs.value), cutoffHour: settings.cutoffHour,
+    seed: hintSeed.value, personal: facts.value, avoid: homeHint.value,
+  })
+})
+const showGreeting = computed(() => !conv.value && !asking.busy && !!greeting.value)
+
+/** 最后一个回答下面的“接着问” */
+const lastNext = computed(() => {
+  const t = conv.value?.turns[conv.value.turns.length - 1]
+  return t && !t.error && !t.stopped && t.a ? nextQuestions(t.a) : []
+})
+/** 回答由谁答：对话的第一句，和中途换了人物的那一句标出来 */
+function byline(t: ChatTurn, i: number): string {
+  if (!t.personaName) return ''
+  const prev = conv.value?.turns[i - 1]
+  return !prev || prev.personaName !== t.personaName ? t.personaName : ''
 }
 
 async function send(text = q.value) {
   if (!text.trim() || asking.busy) return
   q.value = ''
+  // 清空后输入框缩回一行（长问题把它撑高过）
+  void nextTick(autosize)
   const p = askQuestion(text)
   await nextTick()
   scrollDown()
@@ -164,7 +220,7 @@ function openConv(id: string) {
 
 interface Row { period: string; label: string; status: SummaryStatus | '…' }
 const years = ref<{ year: string; yearly: Row; months: Row[] }[]>([])
-const STATUS: Record<string, string> = { missing: '还没有', fresh: '最新', stale: '源内容已变', locked: '已锁定', 'locked-stale': '已锁定，源内容已变', '…': '' }
+const STATUS: Record<string, string> = { missing: '还没有', fresh: '写好了', stale: '日记改过，可以重写', locked: '已定稿', 'locked-stale': '已定稿，日记又改过', '…': '' }
 
 async function loadSummaries() {
   const all = index.all()
@@ -258,9 +314,9 @@ function chipTap(v: string) {
 </script>
 
 <template>
-  <div class="page ai" :class="{ asking: tab === 'ask' && hasProfile }">
+  <div class="page ai" :class="{ asking: tab === 'ask' && hasProfile, greeting: tab === 'ask' && hasProfile && showGreeting }">
     <header class="topbar">
-      <h1>AI</h1>
+      <h1>灯下</h1>
       <template v-if="tab === 'ask' && hasProfile">
         <button class="icon-btn" aria-label="以前的对话" @click="showHistory = true"><Icon name="list" /></button>
         <button class="icon-btn" aria-label="新对话" :disabled="!conv" @click="newConversation"><Icon name="plus" /></button>
@@ -268,7 +324,7 @@ function chipTap(v: string) {
     </header>
 
     <div v-if="hasProfile" class="tabs" role="tablist">
-      <button v-for="t in ([['ask', '问答'], ['summary', '总结'], ['tidy', '整理']] as const)" :key="t[0]" role="tab"
+      <button v-for="t in ([['ask', '聊聊'], ['summary', '总结'], ['tidy', '整理']] as const)" :key="t[0]" role="tab"
         :aria-selected="tab === t[0]" :class="{ on: tab === t[0] }" @click="setTab(t[0])">{{ t[1] }}</button>
     </div>
 
@@ -280,12 +336,12 @@ function chipTap(v: string) {
         <div class="s-a">
           <p>今年有 <b class="num">14</b> 天写到和小雨一起出门，九月最多。心情最好的是 <span class="s-date">9 月 8 日</span>，你们去海边看了日出。</p>
           <AnswerChart :data="SAMPLE_CHART" kind="bar" class="s-chart" />
-          <p class="s-note">次数由 app 在手机上数，不靠模型估。</p>
+          <p class="s-note">次数是手机上一篇篇数出来的，不是估的。</p>
         </div>
       </section>
 
-      <p class="lead">接上一个 AI 服务，就能这样问你的日记</p>
-      <p class="muted center">还能标注人物和地点、写月度和年度总结。以 DeepSeek 为例，三步：</p>
+      <p class="lead">接上一个 AI 服务，就能在灯下这样聊你的日记</p>
+      <p class="muted center">还能替你整理日记里的人和地方、写月度和年度总结。以 DeepSeek 为例，三步：</p>
       <ol class="steps3">
         <li><span class="sn num">1</span><span>在 <a href="#" @click.prevent="openLink('https://platform.deepseek.com')">DeepSeek 开放平台</a> 注册，先充一点钱（按用量付费）。</span></li>
         <li><span class="sn num">2</span><span>在“API Keys”里新建一个，复制下来。</span></li>
@@ -302,7 +358,7 @@ function chipTap(v: string) {
     <!-- 问答 -->
     <section v-else-if="tab === 'ask'" class="chat">
       <div v-if="!conv && !asking.busy" class="hello">
-        <p class="muted lead2">用 {{ profileFor('chat')?.name }} 回答，查的是你手机上全部 <span class="num">{{ stats.count }}</span> 篇日记。</p>
+        <p class="muted lead2">你写下的 <span class="num">{{ stats.count }}</span> 篇，都可以问。</p>
         <template v-if="pinned.length">
           <h3 class="hsec">常问的</h3>
           <div v-for="p in pinned" :key="p.q" class="pin">
@@ -331,12 +387,17 @@ function chipTap(v: string) {
         </ul>
         <p v-if="t.error" class="err">没有回答成功：{{ t.error }}</p>
         <div v-else-if="t.a" class="a">
+          <p v-if="byline(t, i)" class="by"><Seal :text="sealOf(t.persona, byline(t, i))" :size="18" />{{ byline(t, i) }}</p>
           <template v-for="(p, k) in splitAnswer(t.a)" :key="k">
             <!-- eslint-disable-next-line vue/no-v-html -->
             <div v-if="'md' in p" class="prose" v-html="render(p.md)" />
             <AnswerChart v-else-if="t.charts?.[p.chart]" :data="t.charts[p.chart]" :kind="p.kind" />
           </template>
           <DayNotes :dates="answerDates(t.a)" />
+          <div v-if="i === (conv?.turns.length ?? 0) - 1 && !asking.busy && lastNext.length" class="next" role="group" aria-label="接着问">
+            <span class="nlab">接着问</span>
+            <button v-for="nq in lastNext" :key="nq" class="chip nq" @click="send(nq)">{{ nq }}</button>
+          </div>
         </div>
         <p v-if="t.stopped" class="usage">你停止了这次回答</p>
         <p v-if="usageText(t)" class="usage">{{ usageText(t) }}</p>
@@ -350,7 +411,7 @@ function chipTap(v: string) {
         <div v-if="asking.partial" class="a live">
           <template v-for="(p, k) in splitAnswer(asking.partial)" :key="k">
             <!-- eslint-disable-next-line vue/no-v-html -->
-            <div v-if="'md' in p" class="prose" v-html="render(k === splitAnswer(asking.partial).length - 1 ? p.md + '<span class=&quot;caret&quot;></span>' : p.md)" />
+            <div v-if="'md' in p" class="prose" v-html="k === splitAnswer(asking.partial).length - 1 ? render(p.md, true) + '<span class=&quot;caret&quot;></span>' : render(p.md)" />
             <AnswerChart v-else-if="asking.charts[p.chart]" :data="asking.charts[p.chart]" :kind="p.kind" />
           </template>
         </div>
@@ -376,22 +437,22 @@ function chipTap(v: string) {
     <!-- 整理 -->
     <section v-else class="tidy">
       <div class="card">
-        <h2>标注人物、地点和标签</h2>
+        <h2>整理人和地方</h2>
         <p class="muted">
-          AI 会读每篇日记，把去过的地方、提到的人和主题写进元数据，让“去过几次”这类问题数得更准。你手动改过的字段不会被覆盖。
+          替你读一遍每篇日记，记下去过的地方、写到的人和这一天的主题，以后问“去过几次”就数得准了。你自己改过的不会被动。
         </p>
         <p v-if="batch.running" class="num-line">
-          正在标注 <span class="num big">{{ batch.done }}</span> / <span class="num">{{ batch.total }}</span>
+          正在整理 <span class="num big">{{ batch.done }}</span> / <span class="num">{{ batch.total }}</span>
           <span v-if="batch.paused" class="muted">，正在停下</span>
         </p>
         <template v-else>
-          <p class="num-line"><span class="num big">{{ pending }}</span> 篇还没标注，或标注后又改过</p>
-          <p v-if="batch.done && !batch.paused" class="muted small">刚才标注了 {{ batch.done - batch.failed.length }} 篇。</p>
+          <p class="num-line"><span class="num big">{{ pending }}</span> 篇还没整理，或整理后又改过</p>
+          <p v-if="batch.done && !batch.paused" class="muted small">刚才整理了 {{ batch.done - batch.failed.length }} 篇。</p>
         </template>
         <div class="row">
-          <button v-if="!batch.running" class="solid-btn" :disabled="!pending" @click="runBatch">开始标注</button>
+          <button v-if="!batch.running" class="solid-btn" :disabled="!pending" @click="runBatch">开始整理</button>
           <button v-else class="text-btn" :disabled="batch.paused" @click="pauseBatch">暂停</button>
-          <router-link to="/ai/tagged" class="text-btn see">标注一览<Icon name="right" /></router-link>
+          <router-link to="/ai/tagged" class="text-btn see">整理过的<Icon name="right" /></router-link>
         </div>
         <p v-if="batch.paused && !batch.running && batch.done < batch.total" class="muted small">已暂停。随时可以继续，会从没做完的接着做。</p>
         <ul v-if="batch.failed.length" class="fails">
@@ -400,7 +461,7 @@ function chipTap(v: string) {
       </div>
 
       <div class="card">
-        <h2>词表</h2>
+        <h2>人与地</h2>
         <p class="muted">点一个看它的小传。同一个地方或人有几种写法时，点“选择”（或长按）选中它们合并成一个；只选一个可以改名。</p>
         <div class="seg">
           <button v-for="f in (['places', 'people', 'tags'] as ListField[])" :key="f" :class="{ on: field === f }" @click="field = f">{{ FIELD_LABEL[f] }}</button>
@@ -422,13 +483,39 @@ function chipTap(v: string) {
       </div>
     </section>
 
-    <!-- 输入框 -->
-    <form v-if="tab === 'ask' && hasProfile" class="composer" @submit.prevent="send()">
-      <textarea ref="input" v-model="q" rows="1" placeholder="问问你的日记" aria-label="问题" enterkeyhint="send"
-        @input="autosize" @keydown.enter.exact.prevent="send()" />
-      <button v-if="asking.busy" class="icon-btn sendb stop" type="button" aria-label="停止" @click="stopAsking"><span class="sq"></span></button>
-      <button v-else class="icon-btn sendb" type="submit" aria-label="发送" :disabled="!q.trim()"><Icon name="send" /></button>
-    </form>
+    <!-- 输入框：上面一句问候（新对话时），左边是陪聊的人物 -->
+    <div v-if="tab === 'ask' && hasProfile" class="composer">
+      <Transition name="greet">
+        <p v-if="showGreeting" :key="greeting" class="greet">{{ greeting }}</p>
+      </Transition>
+      <form class="crow" @submit.prevent="send()">
+        <button type="button" class="who" :aria-label="`陪你聊的是${persona.name}，点一下换人`" @click="showPersonas = true">
+          <Seal :text="sealOf(persona.id, persona.name)" :size="20" /><span class="wn">{{ persona.name }}</span><Icon name="down" class="wd" />
+        </button>
+        <textarea ref="input" v-model="q" rows="1" :placeholder="`和${persona.name}聊聊你的日记`" aria-label="问题" enterkeyhint="send"
+          @input="autosize" @keydown.enter.exact.prevent="send()" />
+        <button v-if="asking.busy" class="icon-btn sendb stop" type="button" aria-label="停止" @click="stopAsking"><span class="sq"></span></button>
+        <button v-else class="icon-btn sendb" type="submit" aria-label="发送" :disabled="!q.trim()"><Icon name="send" /></button>
+      </form>
+    </div>
+
+    <Sheet :open="showPersonas" title="谁来陪你聊" @close="showPersonas = false">
+      <p class="muted small sheet-tip">换了以后从下一句开始。不管是谁，次数都由手机一篇篇数，原话都会核对。</p>
+      <div class="plist" role="radiogroup" aria-label="人物">
+        <div v-for="p in personaList" :key="p.id" class="pitem" :class="{ on: p.id === persona.id }">
+          <button class="ppick" role="radio" :aria-checked="p.id === persona.id" @click="choosePersona(p.id)">
+            <Seal :text="sealOf(p.id, p.name)" :size="30" />
+            <span class="ptext">
+              <span class="pname">{{ p.name }}<span v-if="p.custom" class="ptag">自己添的</span></span>
+              <span class="pdesc">{{ p.desc }}</span>
+              <span v-if="p.example && !p.custom" class="pex">“{{ p.example }}”</span>
+            </span>
+          </button>
+          <router-link v-if="p.custom" :to="`/ai/persona/${p.id}`" class="pedit" :aria-label="`修改${p.name}`" @click="showPersonas = false"><Icon name="pen" /></router-link>
+        </div>
+      </div>
+      <router-link to="/ai/persona/new" class="text-btn padd" @click="showPersonas = false"><Icon name="plus" />添加人物</router-link>
+    </Sheet>
 
     <Sheet :open="showHistory" title="以前的对话" @close="showHistory = false">
       <p v-if="!chats.list.length" class="muted">还没有对话。</p>
@@ -445,6 +532,7 @@ function chipTap(v: string) {
 
 <style scoped>
 .ai.asking { padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 90px); }
+.ai.asking.greeting { padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 130px); }
 .tabs { display: flex; gap: 6px; padding: 0 16px 10px; }
 .tabs button, .seg button {
   min-height: 34px;
@@ -535,16 +623,55 @@ function chipTap(v: string) {
   right: 0;
   bottom: calc(var(--nav-h) + var(--safe-bottom));
   z-index: 25;
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  padding: 8px 10px 8px 16px;
+  padding: 8px 10px 8px 12px;
   background-color: var(--bg);
   background-image: var(--paper, none);
   border-top: 1px solid var(--line);
 }
+.crow { display: flex; align-items: flex-end; gap: 6px; }
+/* 问候：楷体一句，像有人在灯下先开了口 */
+.greet { margin: 2px 4px 8px; font-family: var(--kai); font-size: 16px; line-height: 1.5; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.greet-enter-active { transition: opacity 0.4s ease, transform 0.4s var(--ease-out); }
+.greet-leave-active { transition: opacity 0.15s ease; }
+.greet-enter-from { opacity: 0; transform: translateY(4px); }
+.greet-leave-to { opacity: 0; }
+.who {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 44px;
+  padding: 0 6px 0 8px;
+  border: 1.5px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+.who .wn { max-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .wd { width: 14px; height: 14px; color: var(--faint); }
+.by { display: flex; align-items: center; gap: 7px; margin: 0 0 6px; font-family: var(--kai); font-size: 14px; color: var(--muted); }
+.next { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.nq { display: inline-flex; align-items: center; gap: 5px; height: auto; min-height: 34px; padding: 5px 12px; font-size: 14px; line-height: 1.4; white-space: normal; text-align: left; }
+.nlab { width: 100%; font-size: 13px; color: var(--muted); }
+.sheet-tip { margin: 0 0 12px; line-height: 1.6; }
+.plist { display: flex; flex-direction: column; gap: 8px; }
+.pitem { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.pitem.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ppick { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 12px; padding: 12px; border: 0; background: none; color: inherit; text-align: left; }
+.ppick .seal { margin-top: 2px; }
+.ptext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pname { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700; }
+.ptag { padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; font-weight: 400; color: var(--muted); }
+.pdesc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.pex { margin-top: 2px; font-family: var(--kai); font-size: 14px; color: var(--muted); line-height: 1.55; }
+.pedit { flex: none; display: grid; place-items: center; width: 46px; color: var(--muted); }
+.pedit svg { width: 18px; height: 18px; }
+.padd { display: inline-flex; align-items: center; gap: 4px; margin-top: 12px; text-decoration: none; }
+.padd svg { width: 18px; height: 18px; }
 .composer textarea {
   flex: 1;
+  min-width: 0;
   min-height: 44px;
   max-height: 140px;
   padding: 10px 14px;

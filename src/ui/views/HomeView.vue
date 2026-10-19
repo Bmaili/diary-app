@@ -18,7 +18,7 @@ import { store } from '../../app'
 import { addDays, daysBetween, parseYmd, weekday } from '../../core/time'
 import { pickHint, slotOf } from '../../core/hints'
 import { diaryFacts } from '../../core/diaryFacts'
-import { hintSeed, refreshHintSeed } from '../../hintService'
+import { hintSeed, homeHint, refreshHintSeed } from '../../hintService'
 import { pickWander } from '../../core/wander'
 import { letters } from '../../lettersService'
 import { motionOn } from '../motion'
@@ -113,6 +113,8 @@ const hint = computed(() => {
     personal: facts.value.personal, afterWrite: facts.value.afterWrite,
   }).text
 })
+
+watch(hint, (t) => (homeHint.value = t), { immediate: true })
 
 /** 最近 30 天的心情条，最左边是 29 天前，最右边是今天 */
 const ribbon = computed(() => {

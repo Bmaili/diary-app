@@ -22,6 +22,8 @@ function load(): State {
 
 let state = load()
 export const hintSeed = ref('')
+/** 首页正在显示的那句小提示：灯下的问候不和它重复（2026-10-19 加入） */
+export const homeHint = ref('')
 
 /**
  * @param resumed 是打开 app 或从后台回来（这时才看 30 分钟）；切页面回到首页时传 false

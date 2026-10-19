@@ -334,7 +334,7 @@ try {
   await dp.getByRole('link', { name: '日历' }).click()
   await dp.getByText(/这个月/).first().waitFor()
   await dp.screenshot({ path: OUT + '14-dark-calendar.png' })
-  await dp.getByRole('link', { name: 'AI' }).click()
+  await dp.getByRole('link', { name: '灯下' }).click()
   await dp.waitForTimeout(300)
   await dp.screenshot({ path: OUT + '15-dark-ai.png' })
   await dp.getByRole('link', { name: '日记', exact: true }).click()

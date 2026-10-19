@@ -409,7 +409,7 @@ describe('AI 页', () => {
     for (const dark of [false, true]) {
       const { ctx, page, errors } = await newPage({ dark })
       await page.goto(BASE + '#/ai')
-      await page.getByText('接上一个 AI 服务，就能这样问你的日记').waitFor()
+      await page.getByText('接上一个 AI 服务，就能在灯下这样聊你的日记').waitFor()
       await page.screenshot({ path: OUT + `recall-16-ai-empty${dark ? '-dark' : ''}.png`, fullPage: true })
       if (!dark) {
         await page.getByRole('link', { name: '添加 AI 服务' }).click()
