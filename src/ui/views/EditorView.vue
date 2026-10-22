@@ -494,7 +494,7 @@ function goBack() {
 .paper { padding: 4px 20px calc(40px + var(--safe-bottom)); }
 .paper.with-tools { padding-bottom: calc(96px + var(--safe-bottom)); }
 .reading :deep(li:has(> .task)) { list-style: none; margin-left: -1.2em; }
-.reading :deep(.task) { width: 18px; height: 18px; margin: 0 6px 0 0; vertical-align: -3px; accent-color: var(--m4); }
+.reading :deep(.task) { width: 18px; height: 18px; margin: 0 6px 0 0; vertical-align: -3px; accent-color: var(--ok); }
 .input {
   display: block;
   width: 100%;

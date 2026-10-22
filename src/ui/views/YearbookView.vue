@@ -188,7 +188,7 @@ async function make() {
 .ln { display: block; height: 5px; margin-top: 7px; border-radius: 2px; background: var(--line); }
 .ln.short { width: 70%; }
 .ln.shorter { width: 55%; }
-.ph { height: 46px; margin-top: 9px; border-radius: 2px; background: color-mix(in srgb, var(--m2) 45%, var(--line)); }
+.ph { height: 46px; margin-top: 9px; border-radius: 2px; background: color-mix(in srgb, var(--muted) 40%, var(--line)); }
 .mo { position: relative; overflow: hidden; }
 .wash { position: absolute; left: -10px; top: 4px; width: 80px; height: 70px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--muted) 35%, transparent), transparent); }
 .pm { position: relative; margin-top: 8px; font-family: var(--kai); font-size: 34px; line-height: 1; }

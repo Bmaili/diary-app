@@ -119,7 +119,7 @@ const STATUS: Record<SummaryStatus, string> = {
 <style scoped>
 .body { padding: 0 20px; }
 .status { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--muted); }
-.status.fresh { color: var(--m4); }
+.status.fresh { color: var(--ok); }
 .status.stale, .status.locked-stale { color: var(--accent); }
 .meta { margin: 0 0 16px; font-size: 12px; color: var(--faint); }
 .ed { min-height: 55vh; padding: 12px; resize: vertical; line-height: 1.8; }

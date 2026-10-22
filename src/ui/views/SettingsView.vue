@@ -19,6 +19,7 @@ import { SLOGAN } from '../../appInfo'
 import { holidaySourceChanged, holidayStatus, refreshHolidays } from '../../holidayService'
 import { showBadge, updateState } from '../../updateService'
 import { ask } from '../dialog'
+import { presetOf } from '../../core/moodPalette'
 
 const router = useRouter()
 const busy = ref('')
@@ -113,6 +114,7 @@ function tapVersion() {
 }
 
 const hours = [0, 1, 2, 3, 4, 5, 6]
+const moodPreset = computed(() => presetOf(prefs.ui.moodColors))
 const DAILY_DESC = {
   local: '按节日、节气和季节挑一句古诗词，不联网。',
   online: '用“今日诗词”接口，按时间、天气推荐，诗句更多。每天联网一次，对方会知道你的大致位置（IP）；取不到时用内置的。',
@@ -259,6 +261,15 @@ const syncLine = computed(() => {
         </div>
         <Switch :model-value="prefs.calendar.holidayOnline" label="节假日联网更新" @update:model-value="toggleHoliday" />
       </div>
+      <router-link to="/settings/mood-colors" class="item link">
+        <div>
+          <div>心情颜色</div>
+          <div class="desc mood-desc">
+            <span class="mdots"><i v-for="i in 5" :key="i" :class="`mood-${i}`" /></span>{{ moodPreset ? moodPreset.name : '自己调过' }}
+          </div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
       <div class="item">
         <div>
           <div>动态效果</div>
@@ -388,6 +399,9 @@ const syncLine = computed(() => {
 </template>
 
 <style scoped>
+.mood-desc { display: flex; align-items: center; gap: 8px; }
+.mdots { display: inline-flex; gap: 3px; }
+.mdots i { width: 10px; height: 10px; border-radius: 50%; background: var(--mc); }
 .select { width: auto; min-height: 38px; padding: 0 8px; }
 .readme { margin: 0 20px; padding: 4px 0 12px; font-size: 14px; line-height: 1.7; }
 .readme :deep(h1) { font-size: 16px; margin-top: 8px; }

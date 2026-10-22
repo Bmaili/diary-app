@@ -172,9 +172,9 @@ describe('可编辑的系统提示词', () => {
     expect(sys).toContain('{"places": [...], "people": [...], "tags": [...]}')
   })
 
-  it('问答：改过的提示词后面接上人物、底线、图表和引文的写法、结尾格式、今天的日期和日记概况', () => {
+  it('问答：改过的提示词后面接上底线、图表和引文的写法、结尾格式、今天的日期和日记概况，人物放在最后', () => {
     const s = systemPrompt('2026-10-07', '2025-01-01', '2026-10-07', 300, '你是我的日记助手。')
-    expect(s).toBe(`你是我的日记助手。\n\n${personaBlock(personaById('friend'))}\n\n${PERSONA_RULES}\n\n${CHART_RULES}\n\n${QUOTE_RULES}\n\n${TAIL_RULES}\n\n今天是 2026-10-07。日记共 300 篇，最早 2025-01-01，最近 2026-10-07。`)
+    expect(s).toBe(`你是我的日记助手。\n\n${PERSONA_RULES}\n\n${CHART_RULES}\n\n${QUOTE_RULES}\n\n${TAIL_RULES}\n\n今天是 2026-10-07。日记共 300 篇，最早 2025-01-01，最近 2026-10-07。\n\n${personaBlock(personaById('friend'))}`)
     // 选了别的人物：换的是人物那一节，底线照旧
     const cat = systemPrompt('2026-10-07', null, null, 0, '你是我的日记助手。', personaById('cat'))
     expect(cat).toContain('## 这次陪他聊的是：猫')

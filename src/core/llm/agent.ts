@@ -28,15 +28,17 @@ export interface AskResult {
 }
 
 /**
- * 问答的系统提示词：可编辑的部分（prompts.ts，怎么翻日记）→ 人物（身份和语气）→ 代码附加的底线和格式 → 今天的日期和日记概况。
+ * 问答的系统提示词：可编辑的部分（prompts.ts，怎么翻日记）→ 代码附加的底线和格式 → 今天的日期和日记概况 → 人物（身份和语气）。
+ * 人物放在最后（2026-10-22 起）：以前夹在中间，后面跟着几大段格式规则，模型读到最后全是格式，人物的口吻被冲淡。
  */
 export function systemPrompt(
   today: string, first: string | null, last: string | null, total: number,
   base: string = PROMPTS.chat.text, persona: Persona = personaById(undefined),
 ): string {
   return [
-    base.trim(), personaBlock(persona), PERSONA_RULES, CHART_RULES, QUOTE_RULES, TAIL_RULES,
+    base.trim(), PERSONA_RULES, CHART_RULES, QUOTE_RULES, TAIL_RULES,
     `今天是 ${today}。日记共 ${total} 篇${first ? `，最早 ${first}，最近 ${last}` : ''}。`,
+    personaBlock(persona),
   ].join('\n\n')
 }
 

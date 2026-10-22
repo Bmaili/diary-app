@@ -7,6 +7,7 @@
  *   → 这个月的日记 → 牌记。
  * 装饰都是 SVG 和 CSS 画的；不内置字体，用手机自带的宋体、楷体。
  */
+import { DEFAULT_LIGHT, validColors } from './moodPalette'
 import { parseYmd, weekday } from './time'
 import { ganzhiYear, monthTerms } from './lunar'
 import { POEMS } from './poems'
@@ -54,12 +55,14 @@ export interface YearbookInput {
   lunar?: (date: string) => string
   /** 生成日期 YYYY-MM-DD，写在牌记里 */
   today: string
+  /** 心情配色（设置里换过的浅色五档；不传或不合法用默认，2026-10-22 加入） */
+  moodColors?: string[]
 }
 
 const DIG = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九']
 const MOODS = ['很差', '不好', '一般', '不错', '很好']
-/** 浅色主题的心情色（印在纸上）；记了但没选心情的花用淡墨 */
-const MOOD_HEX = ['#3b3d4f', '#5b6d80', '#93b1ae', '#6f9460', '#e3a33b']
+/** 浅色主题的心情色（印在纸上，跟着设置里的心情配色）；记了但没选心情的花用淡墨 */
+let MOOD_HEX: string[] = DEFAULT_LIGHT
 const NO_MOOD = '#b9b1a4'
 const ZHU = '#b5382c'
 
@@ -338,6 +341,7 @@ export function estimatePages(entries: { chars: number; images: number }[], mont
 
 export function buildYearbook(input: YearbookInput): string {
   const { year, entries } = input
+  MOOD_HEX = validColors(input.moodColors) ? input.moodColors : DEFAULT_LIGHT
   const byMonth = new Map<number, YearbookEntry[]>()
   for (const e of entries) {
     const m = Number(e.date.slice(5, 7))

@@ -6,8 +6,9 @@ import { index, indexVersion, settings, store, today } from '../../app'
 import { prefs } from '../../prefs'
 import {
   activePersona, asking, askQuestion, batch, chats, current, deleteConversation, ensureConsent, isPinned, loadChats, merge, newConversation,
-  pauseBatch, setPersona, startBatch, stopAsking, togglePin, type ChatTurn,
+  pauseBatch, setPersona, startBatch, stopAsking, togglePin, toggleStarConversation, type ChatTurn,
 } from '../../aiService'
+import { splitChats } from '../../core/chats'
 import { answerDates, cnDay, linkNames, markQuotes, nextQuestions, plainDay, quoteFound, splitTail } from '../../core/answer'
 import { allPersonas, sealOf } from '../../core/llm/personas'
 import { pickGreeting } from '../../core/greeting'
@@ -24,7 +25,7 @@ import Sheet from '../components/Sheet.vue'
 import AnswerChart from '../components/AnswerChart.vue'
 import { splitAnswer, type GroupsChart } from '../../core/llm/charts'
 import { Capacitor } from '@capacitor/core'
-import { promptText } from '../dialog'
+import { ask, promptText } from '../dialog'
 
 defineOptions({ name: 'AiView' })
 
@@ -216,6 +217,15 @@ function openConv(id: string) {
   showHistory.value = false
 }
 
+/** 以前的对话分两栏：收藏的、最近的（2026-10-22） */
+const histGroups = computed(() => splitChats(chats.list))
+/** 收藏过的对话删之前问一句 */
+async function removeConv(id: string) {
+  const c = chats.list.find((x) => x.id === id)
+  if (c?.starred && !(await ask({ title: '删掉这段收藏的对话？', message: '删了就找不回来了。', ok: '删除', danger: true }))) return
+  await deleteConversation(id)
+}
+
 // ---------- 总结 ----------
 
 interface Row { period: string; label: string; status: SummaryStatus | '…' }
@@ -318,6 +328,8 @@ function chipTap(v: string) {
     <header class="topbar">
       <h1>灯下</h1>
       <template v-if="tab === 'ask' && hasProfile">
+        <button v-if="conv" class="icon-btn mark" :class="{ on: conv.starred }" :aria-pressed="!!conv.starred"
+          :aria-label="conv.starred ? '取消收藏这段对话' : '收藏这段对话'" @click="toggleStarConversation(conv.id)"><Icon name="bookmark" /></button>
         <button class="icon-btn" aria-label="以前的对话" @click="showHistory = true"><Icon name="list" /></button>
         <button class="icon-btn" aria-label="新对话" :disabled="!conv" @click="newConversation"><Icon name="plus" /></button>
       </template>
@@ -519,13 +531,19 @@ function chipTap(v: string) {
 
     <Sheet :open="showHistory" title="以前的对话" @close="showHistory = false">
       <p v-if="!chats.list.length" class="muted">还没有对话。</p>
-      <div v-for="c in chats.list" :key="c.id" class="hist">
-        <button class="hist-open" @click="openConv(c.id)">
-          <span>{{ c.title }}</span>
-          <span class="muted small">{{ new Date(c.updatedAt).toLocaleDateString('zh-CN') }}，{{ c.turns.length }} 个问题</span>
-        </button>
-        <button class="icon-btn" aria-label="删除这个对话" @click="deleteConversation(c.id)"><Icon name="trash" /></button>
-      </div>
+      <template v-for="g in ([['starred', '收藏的'], ['recent', '最近的']] as const)" :key="g[0]">
+        <h3 v-if="histGroups[g[0]].length && histGroups.starred.length" class="hsec hgroup">{{ g[1] }}</h3>
+        <div v-for="c in histGroups[g[0]]" :key="c.id" class="hist">
+          <button class="hist-open" @click="openConv(c.id)">
+            <span>{{ c.title }}</span>
+            <span class="muted small">{{ new Date(c.updatedAt).toLocaleDateString('zh-CN') }}，{{ c.turns.length }} 个问题</span>
+          </button>
+          <button class="icon-btn mark" :class="{ on: c.starred }" :aria-pressed="!!c.starred"
+            :aria-label="c.starred ? '取消收藏这段对话' : '收藏这段对话'" @click="toggleStarConversation(c.id)"><Icon name="bookmark" /></button>
+          <button class="icon-btn" aria-label="删除这个对话" @click="removeConv(c.id)"><Icon name="trash" /></button>
+        </div>
+      </template>
+      <p v-if="chats.list.length" class="muted small hnote">只留最近 50 段，收藏的一直留着。对话记录只在这台手机上，不同步。</p>
     </Sheet>
   </div>
 </template>
@@ -691,7 +709,7 @@ function chipTap(v: string) {
 .srow { display: flex; justify-content: space-between; align-items: center; min-height: 50px; padding: 0 20px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
 .srow.yearly span:first-child { font-weight: 700; }
 .st { font-size: 13px; color: var(--faint); }
-.st.fresh { color: var(--m4); }
+.st.fresh { color: var(--ok); }
 .st.stale, .st.locked-stale { color: var(--accent); }
 .st.locked { color: var(--muted); }
 .tidy { padding: 0 16px 20px; }
@@ -708,7 +726,13 @@ function chipTap(v: string) {
 .seg { display: flex; gap: 6px; margin-bottom: 12px; }
 .vals { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; max-height: 40vh; overflow-y: auto; }
 .cnt { margin-left: 2px; font-size: 13px; opacity: 0.6; }
-.ok { color: var(--m4); font-weight: 600; }
+.ok { color: var(--ok); font-weight: 600; }
 .hist { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.hgroup { margin: 14px 0 2px; }
+.hgroup:first-of-type { margin-top: 0; }
+.hnote { margin: 12px 0 0; }
+.icon-btn.mark { color: var(--faint); }
+.icon-btn.mark.on { color: var(--accent); }
+.icon-btn.mark.on svg { fill: currentColor; }
 .hist-open { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 0; border: 0; background: transparent; text-align: left; }
 </style>

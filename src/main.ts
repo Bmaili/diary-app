@@ -10,6 +10,7 @@ import { initLetters } from './lettersService'
 import { initHolidays } from './holidayService'
 import { initUpdate } from './updateService'
 import { applyMotionClass, installTransitions } from './ui/motion'
+import { initMoodTheme } from './ui/moodTheme'
 import { prefs } from './prefs'
 import { watch } from 'vue'
 
@@ -19,6 +20,7 @@ initReminder()
 initLetters()
 initHolidays()
 initUpdate()
+initMoodTheme()
 
 installTransitions(router)
 watch(() => prefs.ui.motion, applyMotionClass, { immediate: true })

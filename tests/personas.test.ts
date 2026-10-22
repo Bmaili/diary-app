@@ -1,7 +1,7 @@
 /** 灯下的人物、问候、接着问（2026-10-19） */
 import { describe, expect, it } from 'vitest'
 import { nextQuestions, plainDay, splitRelated, splitTail } from '../src/core/answer'
-import { allPersonas, cleanCustom, greetingLines, greetSlot, personaBlock, personaById, PERSONAS } from '../src/core/llm/personas'
+import { allPersonas, cleanCustom, greetingLines, greetSlot, personaBlock, personaById, PERSONAS, STYLE_MAX } from '../src/core/llm/personas'
 import { pickGreeting } from '../src/core/greeting'
 import { allLines, seasonalLines } from '../src/core/hints'
 import { moodWord } from '../src/core/llm/tools'
@@ -53,6 +53,26 @@ describe('人物', () => {
     const b = personaBlock(personaById('cat'))
     expect(b).toContain('## 这次陪他聊的是：猫')
     expect(b).toContain('身份和语气以这一节为准')
+  })
+  it('内置人物：设定能照着改（不超过上限），各有心情不好时的陪法和两三段示范问答', () => {
+    for (const p of PERSONAS) {
+      expect(p.style.length).toBeLessThanOrEqual(STYLE_MAX)
+      expect(p.low).toBeTruthy()
+      expect(p.samples!.length).toBeGreaterThanOrEqual(2)
+      const b = personaBlock(p)
+      expect(b).toContain(p.samples![0].a)
+      expect(b).toContain(p.low!)
+      expect(b).toContain('虚构的')
+      // 示范里不写具体日期，免得被当成他的日记
+      for (const s of p.samples!) expect(s.a).not.toMatch(/\d{4}-\d{2}-\d{2}/)
+    }
+    expect(personaBlock(personaById('cat'))).toContain('铲屎的')
+  })
+  it('自定义人物没有示范，用例句', () => {
+    const c = cleanCustom({ id: 'u2', name: '外婆', style: '叫我乖乖', example: '乖乖，吃饭了没有？' })!
+    const b = personaBlock(personaById('u2', [c]))
+    expect(b).toContain('说话大概是这个味道：“乖乖，吃饭了没有？”')
+    expect(b).not.toContain('说话的样子（下面的人和事是虚构的')
   })
   it('每个内置人物每个时段都有问候；时段归并', () => {
     for (const p of PERSONAS) for (const s of ['morning', 'day', 'evening', 'night'] as const) expect(greetingLines(p.id, s).length).toBeGreaterThan(1)

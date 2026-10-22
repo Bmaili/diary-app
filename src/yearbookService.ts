@@ -6,6 +6,7 @@
  */
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { index, repo, store, today } from './app'
+import { prefs } from './prefs'
 import { ROOT } from './core/repo'
 import { hasRecord } from './core/entryFile'
 import { annotationPath, parseAnnotation } from './core/annotation'
@@ -125,7 +126,7 @@ export async function buildYearbookHtml(o: YearbookOptions, onProgress?: (done: 
     if (y?.body.trim()) yearly = renderMarkdown(y.body)
   }
   const html = buildYearbook({
-    year: o.year, entries, moods, monthly, yearly, stats, photos: o.photos, starredOnly: o.starredOnly, today: today(),
+    year: o.year, entries, moods, monthly, yearly, stats, photos: o.photos, starredOnly: o.starredOnly, today: today(), moodColors: [...prefs.ui.moodColors],
     lunar: (d) => {
       const l = lunar(d)
       return [l.full, l.jieqi, l.festival].filter(Boolean).join(' ')

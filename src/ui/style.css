@@ -25,6 +25,15 @@
   --m4: #6f9460;
   --m5: #e3a33b;
   --m0: #d3cabb;
+  --onm1: #f6f1e6;
+  --onm2: #f6f1e6;
+  --onm3: #2a2724;
+  --onm4: #f6f1e6;
+  --onm5: #2a2724;
+  /* 不是心情的地方（开关、成功、高亮、暖色底）用自己的变量，心情配色换了它们不跟着变（2026-10-22 拆开） */
+  --ok: #6f9460;
+  --hl: #93b1ae;
+  --warm: #e3a33b;
   /* 问答图表里几组对比的颜色（固定顺序：靛蓝、杏黄、紫棠、竹青），配色经过色弱区分度校验 */
   --s1: #2a68a8;
   --s2: #cf8f1f;
@@ -62,6 +71,14 @@
     --m4: #8db27a;
     --m5: #eab055;
     --m0: #47454a;
+    --onm1: #f6f1e6;
+    --onm2: #1a1a1c;
+    --onm3: #1a1a1c;
+    --onm4: #1a1a1c;
+    --onm5: #1a1a1c;
+    --ok: #8db27a;
+    --hl: #9fbdb9;
+    --warm: #eab055;
     --s1: #4a86d4;
     --s2: #bd8424;
     --s3: #ad62b0;
@@ -165,15 +182,13 @@ button { cursor: pointer; }
 .muted { color: var(--muted); }
 
 /* 心情色：元素加 mood-N 类后，用 var(--mc) 取到这一档的颜色 */
+/* --onmN 是这一档上面写字的颜色；设置里换了心情配色时，由 ui/moodTheme.ts 一起覆盖 */
 .mood-0 { --mc: var(--m0); --onm: var(--ink); }
-.mood-1 { --mc: var(--m1); --onm: #f6f1e6; }
-.mood-2 { --mc: var(--m2); --onm: #f6f1e6; }
-.mood-3 { --mc: var(--m3); --onm: #2a2724; }
-.mood-4 { --mc: var(--m4); --onm: #f6f1e6; }
-.mood-5 { --mc: var(--m5); --onm: #2a2724; }
-@media (prefers-color-scheme: dark) {
-  .mood-2, .mood-3, .mood-4, .mood-5 { --onm: #1a1a1c; }
-}
+.mood-1 { --mc: var(--m1); --onm: var(--onm1); }
+.mood-2 { --mc: var(--m2); --onm: var(--onm2); }
+.mood-3 { --mc: var(--m3); --onm: var(--onm3); }
+.mood-4 { --mc: var(--m4); --onm: var(--onm4); }
+.mood-5 { --mc: var(--m5); --onm: var(--onm5); }
 
 .dot {
   display: inline-block;
@@ -200,7 +215,7 @@ button { cursor: pointer; }
 .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .chip.add { background: transparent; border: 1.5px dashed var(--faint); color: var(--muted); }
 
-.hl { background: color-mix(in srgb, var(--m3) 55%, transparent); color: var(--ink); border-radius: 2px; padding: 0 2px; }
+.hl { background: color-mix(in srgb, var(--hl) 55%, transparent); color: var(--ink); border-radius: 2px; padding: 0 2px; }
 
 .field {
   width: 100%;

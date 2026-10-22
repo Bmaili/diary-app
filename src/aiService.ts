@@ -1,4 +1,5 @@
 /** AI 的应用层：服务配置、首次发送确认、问答记录、批量抽取、总结、词表合并。 */
+import { trimChats } from './core/chats'
 import { chartRefs, type ChartData } from './core/llm/charts'
 import { reactive } from 'vue'
 import { diaryChanged, enqueue, index, refreshDate, repo, store, today } from './app'
@@ -91,7 +92,7 @@ export async function ensureConsent(task: Task): Promise<boolean> {
   return ok
 }
 
-// ---------- 问答记录：只存在本机（app 数据目录的 ai/ 下），不进 diary/，不同步 ----------
+// ---------- 问答记录：只存在本机（app 数据目录的 ai/ 下），不进 diary/，不同步；最近 50 段加上收藏的 ----------
 
 export interface ChatTurn {
   q: string
@@ -120,6 +121,8 @@ export interface Conversation {
   turns: ChatTurn[]
   /** 这个对话现在由哪个人物陪聊（2026-10-19 加入；旧对话没有，用上次选的） */
   persona?: string
+  /** 收藏了（2026-10-22 加入）：不算在最近 50 段里，不会被挤掉 */
+  starred?: boolean
 }
 
 const CHATS = 'ai/chats.json'
@@ -136,8 +139,7 @@ export async function loadChats() {
 }
 
 async function saveChats() {
-  chats.list.sort((a, b) => b.updatedAt - a.updatedAt)
-  chats.list = chats.list.slice(0, 50)
+  chats.list = trimChats(chats.list)
   await store.mkdirp('ai')
   await store.writeText(CHATS, JSON.stringify(chats.list))
 }
@@ -189,6 +191,15 @@ export async function removePersona(id: string) {
     }
   }
   if (changed) await saveChats()
+}
+
+/** 收藏、取消收藏一个对话（不改 updatedAt，不打乱先后） */
+export async function toggleStarConversation(id: string) {
+  const c = chats.list.find((x) => x.id === id)
+  if (!c) return
+  if (c.starred) delete c.starred
+  else c.starred = true
+  await saveChats()
 }
 
 export async function deleteConversation(id: string) {

@@ -314,7 +314,7 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
   border: 1px solid var(--line);
   border-left: 3px solid var(--accent);
   border-radius: 2px 4px 4px 2px;
-  background: color-mix(in srgb, var(--m5) 12%, var(--surface));
+  background: color-mix(in srgb, var(--warm) 12%, var(--surface));
   font-family: var(--kai);
   font-size: 13px;
 }

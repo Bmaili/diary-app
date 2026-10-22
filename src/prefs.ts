@@ -112,6 +112,11 @@ export const prefs = reactive({
     diaryHints: true,
     /** 首页旧页：摆一篇随机的旧日记（2026-10-13 加入） */
     oldPage: true,
+    /**
+     * 心情配色（2026-10-22 加入）：浅色下五档的颜色（#rrggbb，很差 → 很好），空数组是默认的玄青…杏黄。
+     * 深色下的颜色和字色由代码推出来（core/moodPalette.ts）。
+     */
+    moodColors: [] as string[],
   },
   update: {
     /** 自动检查新版本（2026-10-10 加入）：每天最多一次 */

@@ -169,7 +169,7 @@ function open(url: string) {
 .notes { margin-top: 8px; max-height: 40vh; overflow-y: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
 .notes::first-line { font-weight: 600; }
 .bar { height: 6px; margin-top: 14px; border-radius: 3px; background: var(--line); overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--m4); transition: width 0.2s linear; }
+.bar i { display: block; height: 100%; background: var(--ok); transition: width 0.2s linear; }
 .upd-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 .upd-row.end { justify-content: flex-end; }
 .upd-row .solid-btn { min-height: 42px; }

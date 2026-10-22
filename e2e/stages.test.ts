@@ -982,8 +982,9 @@ describe('删除与最近删除、阅读视图换行、AI 高级设置', () => {
     expect(system).toContain('阿杰是我大学室友。')
     expect(system).toContain('回答不超过三句话。')
     expect(system).not.toContain('口气轻松一点。')
-    // 改过的“问答”一段在最前，后面接人物和代码附加的固定部分（2026-10-19 起）
-    expect(system.startsWith('你是我的日记助手，回答要押韵。\n\n## 这次陪他聊的是：老友')).toBe(true)
+    // 改过的“问答”一段在最前，后面接代码附加的固定部分，人物在最后（2026-10-22 起）
+    expect(system.startsWith('你是我的日记助手，回答要押韵。\n\n不管扮演谁')).toBe(true)
+    expect(system.indexOf('## 这次陪他聊的是：老友')).toBeGreaterThan(system.indexOf('\n\n今天是 '))
     expect(system).toContain('回答里可以放图表')
     expect(system).toContain('\n\n今天是 ')
     expect(system).not.toContain('先用工具查')
