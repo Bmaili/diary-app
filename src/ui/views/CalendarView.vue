@@ -10,6 +10,7 @@ import { MOOD_LABELS } from '../mood'
 import { lunar as lunarDay } from '../../holidayService'
 import { letters } from '../../lettersService'
 import { letterState } from '../../core/letters'
+import { dominantMood } from '../../core/moodSummary'
 
 defineOptions({ name: 'CalendarView' })
 
@@ -23,10 +24,10 @@ const rows = computed(() => {
   return new Map(index.month(year.value, month.value).map((r) => [r.date, r]))
 })
 
+/** 这个月写了几天、心情多是哪一档（天数最多的，不是平均分） */
 const summary = computed(() => {
   const moods = Array.from(rows.value.values()).map((r) => r.mood).filter((m): m is number => m != null)
-  const avg = moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null
-  return { days: rows.value.size, avg }
+  return { days: rows.value.size, top: dominantMood(moods) }
 })
 
 /** 周一为一周的第一天 */
@@ -188,10 +189,10 @@ const arrivedLetter = computed(() => letters.list.find((l) => letterState(l, tod
     </header>
 
     <div class="summary">
-      <MoodFace :value="summary.avg" :size="44" />
+      <MoodFace :value="summary.top?.mood ?? null" :size="44" />
       <p v-if="summary.days">
-        这个月写了 <strong>{{ summary.days }}</strong> 天<template v-if="summary.avg != null">，心情大多
-          <strong>{{ MOOD_LABELS[Math.round(summary.avg) - 1] }}</strong></template>。
+        这个月写了 <strong>{{ summary.days }}</strong> 天<template v-if="summary.top">，心情多是
+          <strong>{{ MOOD_LABELS[summary.top.mood - 1] }}</strong>（<span class="num">{{ summary.top.days }}</span> 天）</template>。
       </p>
       <p v-else class="muted">这个月还没有日记。</p>
     </div>

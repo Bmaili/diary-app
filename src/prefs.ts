@@ -5,6 +5,7 @@ import { reactive, watch } from 'vue'
 import { Preferences } from '@capacitor/preferences'
 import type { PromptOverride } from './core/llm/prompts'
 import type { CustomPersona } from './core/llm/personas'
+import type { ChecklistItem } from './core/checklist'
 
 export interface PinnedQuestion {
   q: string
@@ -73,6 +74,13 @@ export const prefs = reactive({
     >,
     /** 问答里收藏的“常问的”问题（2026-10-15 加入）：at 上次问的时间，brief 上次回答的第一句 */
     pinned: [] as PinnedQuestion[],
+  },
+  /** 写日记（2026-10-26 加入） */
+  write: {
+    /** 今天第一次从“写今天”进入也加 `### HH:mm` 时间标题；默认关（以前只有再次写作才加） */
+    firstHeading: false,
+    /** 每日清单：今天第一次打开编辑时预填成待办（core/checklist.ts） */
+    checklist: [] as ChecklistItem[],
   },
   reminder: {
     enabled: false,

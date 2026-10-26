@@ -115,6 +115,14 @@ function tapVersion() {
 
 const hours = [0, 1, 2, 3, 4, 5, 6]
 const moodPreset = computed(() => presetOf(prefs.ui.moodColors))
+/** 每日清单的一句话：列几项，或者说明这是什么 */
+const checklistDesc = computed(() => {
+  const list = prefs.write.checklist.filter((i) => i.text?.trim())
+  if (!list.length) return '把每天照例要做的事列好，打开今天的日记时自动填成待办。'
+  const names = list.slice(0, 3).map((i) => i.text).join('、')
+  return `${list.length} 项：${names}${list.length > 3 ? '……' : ''}`
+})
+
 const DAILY_DESC = {
   local: '按节日、节气和季节挑一句古诗词，不联网。',
   online: '用“今日诗词”接口，按时间、天气推荐，诗句更多。每天联网一次，对方会知道你的大致位置（IP）；取不到时用内置的。',
@@ -211,6 +219,20 @@ const syncLine = computed(() => {
           <option v-for="h in hours" :key="h" :value="h">凌晨 {{ h }}:00</option>
         </select>
       </label>
+      <div class="item">
+        <div>
+          <div>第一次写也标上时间</div>
+          <div class="desc">点“写今天”时，当天的第一段也加上时间（比如 09:30）。关着的话，只有同一天再写时才加。</div>
+        </div>
+        <Switch v-model="prefs.write.firstHeading" label="第一次写也标上时间" />
+      </div>
+      <router-link to="/settings/checklist" class="item link">
+        <div>
+          <div>每日清单</div>
+          <div class="desc">{{ checklistDesc }}</div>
+        </div>
+        <Icon name="right" class="chev" />
+      </router-link>
       <router-link to="/settings/reminder" class="item link">
         <div>
           <div>写日记提醒</div>

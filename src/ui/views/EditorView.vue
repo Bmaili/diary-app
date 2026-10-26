@@ -9,7 +9,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '../markdown'
 import { index, indexVersion, today } from '../../app'
-import { bodyFor } from '../../core/session'
+import { bodyFor, shownBody } from '../../core/session'
 import { hasContent, setListFieldManually } from '../../core/entryFile'
 import { isValidYmd, parseYmd, weekday } from '../../core/time'
 import { lunar as lunarDay } from '../../holidayService'
@@ -75,7 +75,8 @@ const subtitle = computed(() => {
 
 // ---------- 阅读视图 ----------
 
-const renderedRaw = computed(() => (session.value ? renderMarkdown(bodyFor(session.value, text.value)) : ''))
+// 预填的清单没动过也显示出来，好在阅读视图里直接勾
+const renderedRaw = computed(() => (session.value ? renderMarkdown(shownBody(session.value, text.value)) : ''))
 const rendered = ref('')
 watch([renderedRaw, mode], async ([raw, m]) => {
   if (m !== 'read') return
@@ -172,8 +173,8 @@ function toggleStar() {
   metaChanged()
 }
 
-/** 只记了心情、没写正文 */
-const moodOnly = computed(() => !!session.value && meta.value?.mood != null && !hasContent(bodyFor(session.value, text.value)))
+/** 只记了心情、没写正文（阅读视图用：预填的清单算有东西可看） */
+const moodOnly = computed(() => !!session.value && meta.value?.mood != null && !hasContent(shownBody(session.value, text.value)))
 const placeholder = computed(() => {
   if (meta.value?.mood != null) return '心情已经记下了。想写的时候，写一句就好。'
   return isToday.value ? '今天过得怎么样？拖一下心情也算记了。' : '这一天发生了什么？'

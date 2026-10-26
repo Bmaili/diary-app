@@ -15,6 +15,9 @@ import { bodyFor, openSession, revertedRaw, type EditSession } from '../../core/
 import { entryPath } from '../../core/repo'
 import { hasContent, hasRecord } from '../../core/entryFile'
 import { ask, choose } from '../dialog'
+import { prefs } from '../../prefs'
+import { checklistMarkdown, itemsFor } from '../../core/checklist'
+import { holidayOn } from '../../core/holidays'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'empty' | 'error'
 
@@ -109,7 +112,9 @@ export function useEntrySession(date: string) {
 
   async function open(append: boolean): Promise<EditSession> {
     openedAt = Date.now()
-    const s = await openSession(repo, date, { append })
+    // 今天还没写正文时：预填每日清单；从“写今天”进入、设置里开了的话也加时间标题
+    const prefill = date === today() ? checklistMarkdown(itemsFor(prefs.write.checklist, date, holidayOn)) : ''
+    const s = await openSession(repo, date, { append, firstHeading: prefs.write.firstHeading, prefill })
     session.value = s
     savedBody = s.originalBody
     text.value = s.initialText

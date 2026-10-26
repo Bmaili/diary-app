@@ -22,6 +22,7 @@ export const router = createRouter({
     { path: '/who/:field(people|places|tags)/:value', component: () => import('./views/WhoView.vue') },
     { path: '/ai/summary/:period', component: () => import('./views/SummaryView.vue') },
     { path: '/settings/mood-colors', component: () => import('./views/MoodColorsView.vue') },
+    { path: '/settings/checklist', component: () => import('./views/ChecklistSettingsView.vue') },
     { path: '/settings/reminder', component: () => import('./views/ReminderSettingsView.vue') },
     { path: '/settings/lock', component: () => import('./views/LockSettingsView.vue') },
     { path: '/settings/about', component: () => import('./views/AboutView.vue') },
